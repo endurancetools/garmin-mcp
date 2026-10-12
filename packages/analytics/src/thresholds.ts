@@ -137,6 +137,84 @@ export function profileZoneFloors(profileRaw: unknown): ProfileZoneFloors {
   return { ...(DEFAULT && { DEFAULT }), ...(CYCLING && { CYCLING }) };
 }
 
+/** One sport's HR zones in the Garmin profile: zone 1–5 floors (bpm) and the values Garmin set them from. */
+export interface HrZones {
+  /** Garmin's `trainingMethod`: HR_MAX, HR_RESERVE or LACTATE_THRESHOLD. */
+  method?: string;
+  floors: number[];
+  hrmax?: number;
+  rhr?: number;
+  lthr?: number;
+}
+
+/** One sport's power zones in the Garmin profile: zone floors (W, 5 to 7 zones) and the FTP they come from. */
+export interface PowerZones {
+  floors: number[];
+  ftp?: number;
+}
+
+/** HR and power zones of every sport in the profile, keyed by Garmin's sport in lower case (`default`, `cycling`, `running` …). */
+export interface ProfileZones {
+  hr: Record<string, HrZones>;
+  power: Record<string, PowerZones>;
+}
+
+/** Fewest zone floors a sport needs to be listed. */
+const MIN_ZONES = 5;
+const HR_FLOOR_KEYS = ['zone1Floor', 'zone2Floor', 'zone3Floor', 'zone4Floor', 'zone5Floor'] as const;
+const POWER_FLOOR_KEYS = [...HR_FLOOR_KEYS, 'zone6Floor', 'zone7Floor'] as const;
+
+/** Leading floors that are numbers ≥ 0 rising strictly (Garmin fills unused power zones 6–7 with 0). */
+function risingFloors(z: Obj, keys: readonly string[]): number[] {
+  const out: number[] = [];
+  for (const k of keys) {
+    const v = num(z[k]);
+    if (v === undefined || v < 0 || (out.length > 0 && !(v > (out.at(-1) ?? Infinity)))) break;
+    out.push(v);
+  }
+  return out;
+}
+
+function sportsOf<T>(list: unknown, one: (z: Obj) => T | undefined): Record<string, T> {
+  const out: Record<string, T> = {};
+  for (const z of Array.isArray(list) ? list.map(obj) : []) {
+    const sport = z?.['sport'];
+    if (!z || typeof sport !== 'string' || sport === '' || Object.hasOwn(out, sport.toLowerCase())) continue;
+    const zones = one(z);
+    if (zones) out[sport.toLowerCase()] = zones;
+  }
+  return out;
+}
+
+/**
+ * HR and power zones of every sport in a stored Garmin profile (`profile.raw`). An HR sport
+ * needs all five floors rising strictly; a power sport at least five, zones 6–7 when they keep
+ * rising. These are the profile's current zones, not a history.
+ */
+export function profileZones(profileRaw: unknown): ProfileZones {
+  const p = obj(profileRaw);
+  const hr = sportsOf<HrZones>(p?.['heartRateZones'], (z) => {
+    const floors = risingFloors(z, HR_FLOOR_KEYS);
+    if (floors.length < MIN_ZONES) return undefined;
+    const method = typeof z['trainingMethod'] === 'string' && z['trainingMethod'] !== '' ? z['trainingMethod'] : undefined;
+    const values = {
+      method,
+      floors,
+      hrmax: num(z['maxHeartRateUsed']),
+      rhr: num(z['restingHeartRateUsed']),
+      lthr: num(z['lactateThresholdHeartRateUsed']),
+    };
+    return Object.fromEntries(Object.entries(values).filter(([, v]) => v !== undefined)) as unknown as HrZones;
+  });
+  const power = sportsOf<PowerZones>(p?.['powerZones'], (z) => {
+    const floors = risingFloors(z, POWER_FLOOR_KEYS);
+    if (floors.length < MIN_ZONES) return undefined;
+    const ftp = num(z['functionalThresholdPower']);
+    return { floors, ...(ftp !== undefined && { ftp }) };
+  });
+  return { hr, power };
+}
+
 /**
  * Adds a `garmin-auto` row for each profile value that differs from the last `garmin-auto`
  * row of its param, dated with the local date of `profile.fetched_at`. Idempotent and offline;
