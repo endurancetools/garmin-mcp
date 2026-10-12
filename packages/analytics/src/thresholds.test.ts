@@ -5,6 +5,7 @@ import {
   lt1For,
   lthrFor,
   profileThresholds,
+  profileZoneFloors,
   recordProfileThresholds,
   restingHrOn,
   thresholdOn,
@@ -53,6 +54,35 @@ describe('profileThresholds', () => {
     ).toEqual([{ param: 'lthr_run', value: 171 }]);
     expect(profileThresholds(null)).toEqual([]);
     expect(profileThresholds({ heartRateZones: 'x' })).toEqual([]);
+  });
+});
+
+describe('profileZoneFloors', () => {
+  const zone = (sport: string, floors: (number | null)[], max: number | null = 185) => ({
+    sport,
+    zone1Floor: floors[0],
+    zone2Floor: floors[1],
+    zone3Floor: floors[2],
+    zone4Floor: floors[3],
+    zone5Floor: floors[4],
+    maxHeartRateUsed: max,
+  });
+
+  it('reads the DEFAULT and CYCLING zone floors and HRmax', () => {
+    expect(
+      profileZoneFloors({ heartRateZones: [zone('DEFAULT', [94, 134, 154, 163, 174]), zone('CYCLING', [109, 133, 148, 159, 167]), zone('RUNNING', [1, 2, 3, 4, 5])] }),
+    ).toEqual({
+      DEFAULT: { zone1Floor: 94, zone2Floor: 134, zone3Floor: 154, zone4Floor: 163, zone5Floor: 174, maxHeartRateUsed: 185 },
+      CYCLING: { zone1Floor: 109, zone2Floor: 133, zone3Floor: 148, zone4Floor: 159, zone5Floor: 167, maxHeartRateUsed: 185 },
+    });
+  });
+
+  it('leaves out a sport with a missing or non-rising bound', () => {
+    expect(profileZoneFloors({ heartRateZones: [zone('DEFAULT', [94, 134, null, 163, 174]), zone('CYCLING', [109, 133, 148, 159, 167], 160)] })).toEqual({});
+    expect(profileZoneFloors({ heartRateZones: [zone('DEFAULT', [94, 134, 134, 163, 174])] })).toEqual({});
+    expect(profileZoneFloors(profile())).toEqual({});
+    expect(profileZoneFloors(null)).toEqual({});
+    expect(profileZoneFloors({ heartRateZones: 'x' })).toEqual({});
   });
 });
 

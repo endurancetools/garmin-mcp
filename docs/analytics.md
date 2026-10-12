@@ -103,11 +103,14 @@ At most one of the three ACWR flags is raised. While `warming_up` is true, `tsb_
 
 `intensity` splits run and bike time of the last 28 days of the range (the whole range when shorter) into three zones (Seiler 2010): Z1 below LT1, Z2 between LT1 and LTHR, Z3 above LTHR.
 
-- An activity with Garmin's time in HR zones: Z1 = zones 1-2, Z2 = zone 3, Z3 = zones 4-5.
+- An activity with Garmin's time in HR zones: each Garmin zone goes to Z1, Z2 or Z3 by its heart rate range in the Garmin profile (`heartRateZones`: the zone floors, zone 5 up to the HRmax Garmin uses; cycling uses the CYCLING zones when the profile has them, else the default ones) against LT1 and LTHR of the activity's sport and date. A zone whose ceiling is at or below LT1 is Z1, a zone whose floor is at or above LTHR is Z3, the one in between is Z2, and a zone that crosses a threshold is split in proportion to its width in bpm. Example: floors 94/134/154/163/174, HRmax 185, LT1 151, LTHR 168: zone 2 (134-154) is 17/20 Z1 and 3/20 Z2, zone 3 is Z2, zone 4 (163-174) is 5/11 Z2 and 6/11 Z3, zone 5 is Z3.
+- Without zone bounds in the profile (no profile yet, or a profile without them), Z1 = zones 1-2, Z2 = zone 3, Z3 = zones 4-5, and `meta.note` says so.
 - An activity without zones: its whole duration goes to the zone of its average heart rate (below LT1, below LTHR, else Z3), with LT1 and LTHR of its sport and date.
 - Activities with neither are skipped.
 
 The answer has minutes and percentages per zone, the number of activities counted each way (`sessions_with_zones`, `sessions_by_avg_hr`), and the `z1_below_target` flag.
+
+The zone bounds come from the profile as it is now, while Garmin counted the time in zones of each activity with the zones valid on the activity's day. After a change of HRmax, resting heart rate or the zone method, older activities are split with the new bounds, so their split is an approximation.
 
 ## Efficiency
 
