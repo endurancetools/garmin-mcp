@@ -1,0 +1,13 @@
+# Local preview of the documentation site with the same Jekyll stack GitHub Pages uses.
+# Run it through Docker (no Ruby on the machine needed): `pnpm docs` from the repository root.
+source "https://rubygems.org"
+gem "github-pages", group: :jekyll_plugins
+gem "jekyll-remote-theme"
+gem "jekyll-include-cache"
+gem "webrick"
+# Standard-library gems that newer Rubies no longer bundle but Jekyll 3.x still expects.
+gem "csv"
+gem "base64"
+gem "bigdecimal"
+gem "logger"
+gem "ostruct"
