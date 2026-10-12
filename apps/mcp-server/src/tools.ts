@@ -260,7 +260,7 @@ export const TOOLS: ToolDef[] = [
     name: 'get_period_summary',
     title: 'Summarise a week, month or range',
     description:
-      'Training week or month at a glance: sessions and volume per sport, HR zone distribution, active vs rest days, longest and hardest session, ' +
+      'Training week or month at a glance: sessions and volume per sport, time in the Garmin HR zones 1-5 (for the 3-zone Z1/Z2/Z3 split against LT1/LTHR, e.g. time below LT1 or polarisation, use get_load), active vs rest days, longest and hardest session, ' +
       "`garmin_load_model` at the end (CTL/ATL/TSB from Garmin's daily training load (EPOC); the own TSS model is get_load), and only avg/min/max of sleep, HRV, resting HR, steps, stress and body battery plus average daily kcal. " +
       'Day-by-day values and other metrics (calorie totals, intensity minutes, floors, respiration, SpO2) come from query_health, weight from get_body_composition. Weeks run Monday-Sunday. ' +
       'Period "range" gives the same for any from..to up to 366 days, e.g. a training block: {"period":"range","from":"2026-08-04","to":"2026-09-28"}. ' +
@@ -377,7 +377,7 @@ export const TOOLS: ToolDef[] = [
     description:
       "Own transparent load model (TSS per activity from power, else pace, else heart rate, else session RPE, with date-dependent thresholds), not Garmin's EPOC load; for Garmin's status and CTL/ATL/TSB from Garmin's load (`garmin_load_model`) use get_training_status. " +
       'Returns CTL/ATL/TSB, ACWR, monotony and strain on `to` (`latest`), warning `flags`, ISO weeks per sport (sessions, hours, km, TSS, hrTSS, Garmin load, hours in Z1-2/Z3/Z4-5), ' +
-      'the 3-zone intensity split of the last 28 days (Z1/Z2/Z3 minutes and %) and the thresholds used. ' +
+      'the 3-zone intensity split against LT1/LTHR of the last 28 days (Z1/Z2/Z3 minutes and %; answers time below LT1, % in Z1, polarisation) and the thresholds used. ' +
       'include_series adds the daily curve, include_activities TSS/IF/load_source/EF per activity, include_efficiency the monthly EF trend, ' +
       'include_by_sport CTL/ATL/TSB/ACWR per sport group (`by_sport`, plus run_ctl… columns in the series) next to the total, which stays the default. ' +
       'Example: {"from":"2026-09-01","to":"2026-09-30","include_activities":true}.',
