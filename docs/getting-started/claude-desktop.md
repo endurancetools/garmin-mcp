@@ -44,7 +44,7 @@ To change a setting, add an `env` block, for example:
 
 ## Restart and check
 
-Quit Claude Desktop completely (menu Claude → Quit) and start it again. In a new conversation, the tools icon next to the message box lists `garmin` with 21 tools.
+Quit Claude Desktop completely (menu Claude → Quit) and start it again. In a new conversation, the tools icon next to the message box lists `garmin` with 20 tools.
 
 If `npx` is not found, Claude Desktop does not see your shell's PATH. Put the full path to `npx` in `command` (run `which npx` in a terminal to find it), or install Node.js with the official installer.
 

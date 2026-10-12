@@ -15,9 +15,9 @@ export const SERVER_VERSION: string = (JSON.parse(readFileSync(new URL('../packa
 const INSTRUCTIONS = `Garmin Connect data for the signed-in user, served from a local cache. Read tools download data that is not in the cache yet by themselves (within the daily Garmin request limit), so just call them and answer; there is no need to ask about or describe syncing. If auto fetch is turned off (GARMIN_AUTO_FETCH=false), missing data comes back as meta.sync_hint; then ask the user before calling garmin_sync with it.
 - Dates are YYYY-MM-DD in the user's local time zone; "today" is resolved by the server.
 - Prefer one coarse call (query_health with several metrics, get_period_summary) over many small ones.
-- Every result has meta.source: "cache", "live", "partial" or "local" (computed by the server without Garmin, e.g. preview_workout). On "partial", mention briefly that some days are still downloading (meta.note says when to ask again).
+- Every result has meta.source: "cache", "live", "partial" or "local" (computed by the server without Garmin, e.g. create_workout with dry_run: true). On "partial", mention briefly that some days are still downloading (meta.note says when to ask again).
 - Errors come back as {"error":{"code","message","hint"}}; relay the hint to the user (e.g. to run \`garmin login\`).
-- Every result is also in structuredContent (the same JSON, typed by the tool's outputSchema), and a workout is saved only after you showed the user the preview_workout steps and they agreed.`;
+- Every result is also in structuredContent (the same JSON, typed by the tool's outputSchema), and a workout is saved only after you showed the user its steps from create_workout with dry_run: true and they agreed.`;
 
 function json(value: unknown) {
   return { content: [{ type: 'text' as const, text: JSON.stringify(value) }] };
@@ -219,7 +219,7 @@ function registerPrompts(server: McpServer) {
               `Plan my next training week.${goal ? ` Goal: ${goal}.` : ''}${days_available ? ` Days available: ${days_available}.` : ''} ` +
               'Look at get_period_summary for the last two weeks, get_training_status and query_health (hrv, sleep, resting_hr, last 14 days) before proposing. ' +
               'Propose day by day with purpose, duration and intensity (HR zones or pace). Do not create anything yet: after I approve, ' +
-              'show each session with preview_workout and create it with create_workout (a preset for standard sessions, otherwise a typed definition), then put them on the calendar with schedule_workouts.',
+              'show each session with create_workout and dry_run: true, then save it with create_workout (a preset for standard sessions, otherwise a typed definition) and put them on the calendar with schedule_workouts.',
           },
         },
       ],

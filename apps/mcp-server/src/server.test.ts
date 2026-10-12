@@ -67,13 +67,14 @@ describe('MCP server', () => {
     expect((await connect(runtime())).getServerVersion()?.version).toBe(pkg.version);
   });
 
-  it('exposes 21 tools, and destructive ones only when enabled', async () => {
+  it('exposes 20 tools, and destructive ones only when enabled', async () => {
     const tools = (await (await connect(runtime())).listTools()).tools.map((t) => t.name);
-    expect(tools).toHaveLength(21);
+    expect(tools).toHaveLength(20);
+    expect(tools).not.toContain('preview_workout');
     expect(tools.slice(-4)).toEqual(['get_load', 'get_readiness', 'get_thresholds', 'set_threshold']);
     expect(tools).not.toContain('delete_activity');
     const all = (await (await connect(runtime({ enableDestructive: true }))).listTools()).tools;
-    expect(all).toHaveLength(24);
+    expect(all).toHaveLength(23);
     const del = all.find((t) => t.name === 'delete_activity');
     expect(del?.annotations?.destructiveHint).toBe(true);
     expect(del?.description?.startsWith('PERMANENTLY deletes')).toBe(true);
@@ -99,12 +100,10 @@ describe('MCP server', () => {
     const tools = (await (await connect(runtime())).listTools()).tools;
     const create = tools.find((t) => t.name === 'create_workout');
     expect(JSON.stringify(create?.inputSchema)).toContain('repeat');
-    expect(Object.keys(create?.inputSchema.properties ?? {})).toEqual(['preset', 'definition', 'garmin_json']);
-    expect(create?.annotations).toMatchObject({ readOnlyHint: false, destructiveHint: false });
-    // The preview takes the same workout input and is read-only and local, so clients need not ask before it.
-    const preview = tools.find((t) => t.name === 'preview_workout');
-    expect(preview?.inputSchema.properties).toEqual(create?.inputSchema.properties);
-    expect(preview?.annotations).toEqual({ readOnlyHint: true, openWorldHint: false });
+    expect(Object.keys(create?.inputSchema.properties ?? {})).toEqual(['preset', 'definition', 'garmin_json', 'dry_run']);
+    // One tool for preview and save: the client asks before every call, dry_run included.
+    expect(create?.annotations).toEqual({ readOnlyHint: false, destructiveHint: false, openWorldHint: true });
+    expect(create?.description).toContain('Call with dry_run: true first, show the steps to the user and save only after they agree');
     expect(JSON.stringify(create?.inputSchema)).toContain('strength_circuit');
     const qh = tools.find((t) => t.name === 'query_health');
     expect(qh?.inputSchema.required).toContain('metrics');
@@ -121,18 +120,15 @@ describe('MCP server', () => {
     const tools = (await (await connect(runtime())).listTools()).tools;
     const all = (await (await connect(runtime({ enableDestructive: true }))).listTools()).tools;
     const create = tools.find((t) => t.name === 'create_workout')?.inputSchema;
-    const preview = tools.find((t) => t.name === 'preview_workout')?.inputSchema;
     const overwrite = all.find((t) => t.name === 'create_workout')?.inputSchema;
-    expect(context(tools)).toBeLessThanOrEqual(43_131);
+    expect(context(tools)).toBeLessThanOrEqual(31_889);
     expect(size(create)).toBeLessThanOrEqual(11_500);
-    expect(context(all)).toBeLessThanOrEqual(44_697);
-    expect(size(tools)).toBeLessThanOrEqual(81_000);
-    expect(size(all)).toBeLessThanOrEqual(84_707);
-    // The preview is create_workout without `workout_id`. Without destructive tools create_workout
-    // is a strict object (a stray workout_id fails loudly); the preview stays lenient.
+    expect(context(all)).toBeLessThanOrEqual(33_471);
+    expect(size(tools)).toBeLessThanOrEqual(69_127);
+    expect(size(all)).toBeLessThanOrEqual(72_850);
+    // Without destructive tools create_workout is a strict object (a stray workout_id fails loudly).
     const { workout_id: _overwrite, ...properties } = overwrite?.properties ?? {};
-    expect(preview).toEqual({ ...overwrite, properties });
-    expect(create).toEqual({ ...preview, additionalProperties: false });
+    expect(create).toEqual({ ...overwrite, properties, additionalProperties: false });
     expect(JSON.stringify(create)).toContain('"$ref":"#/$defs/Target"');
   });
 
@@ -150,7 +146,7 @@ describe('MCP server', () => {
 
   it('publishes an output schema for every tool: the { data, meta } envelope', async () => {
     const all = (await (await connect(runtime({ enableDestructive: true }))).listTools()).tools;
-    expect(all).toHaveLength(24);
+    expect(all).toHaveLength(23);
     // SDK 2 types `properties` as a plain object, so the fields are looked up through a record.
     const props = (t: (typeof all)[number]) => (t.outputSchema?.properties ?? {}) as Record<string, unknown>;
     const envelope = (t: (typeof all)[number]) => ({ name: t.name, type: t.outputSchema?.type, required: t.outputSchema?.required, meta: props(t)['meta'] });
@@ -210,6 +206,29 @@ describe('MCP server', () => {
     // set_threshold writes only the local database: not read-only, but neither destructive nor open-world.
     expect(tools.find((t) => t.name === 'set_threshold')?.annotations).toEqual({ readOnlyHint: false, destructiveHint: false, openWorldHint: false });
     expect(tools.find((t) => t.name === 'get_readiness')?.description).toContain('`rules`');
+    store.close();
+  });
+
+  it('shows a workout with create_workout dry_run without contacting Garmin or saving it', async () => {
+    const garminCalls: string[] = [];
+    const garmin = new Proxy({}, { get: (_, name) => (name === 'then' ? undefined : () => (garminCalls.push(String(name)), Promise.reject(new Error('no Garmin')))) });
+    const store = Store.open(':memory:');
+    const now = Date.parse('2026-10-08T12:00:00Z');
+    const syncer = new Syncer(garmin as never, store, { timeZone: 'UTC', now: () => now, fetchOnDemand: false });
+    const jobs = new SyncJobRunner(syncer, store, { chunkDays: 7, pause: { minMs: 0, maxMs: 0 }, maxRequestsPerDay: 10, timeZone: 'UTC', now: () => now });
+    const service = new GarminService({ client: garmin as never, store, syncer, jobs, timeZone: 'UTC', downloadDir: os.tmpdir(), budgetMs: 100, autoSync: false, now: () => now });
+    const client = await connect(runtime({}, service));
+    const preset = { name: 'easy_z2', params: { duration_min: 40 } };
+    const res = await client.callTool({ name: 'create_workout', arguments: { preset, dry_run: true } });
+    expect(res.isError).toBeFalsy();
+    // The SDK checked structuredContent against the one create_workout outputSchema.
+    expect(res.structuredContent).toEqual(text(res));
+    expect(res.structuredContent).toMatchObject({ data: { dry_run: true, name: 'Easy running 40 min', estimated_duration: '40:00' }, meta: { source: 'local' } });
+    expect(garminCalls).toEqual([]);
+    expect(store.getWorkouts()).toHaveLength(0);
+    // Without dry_run the same call saves, so it reaches Garmin.
+    expect((await client.callTool({ name: 'create_workout', arguments: { preset } })).isError).toBe(true);
+    expect(garminCalls).toEqual(['createWorkout']);
     store.close();
   });
 
@@ -380,7 +399,7 @@ describe('HTTP transport', () => {
     await client.connect(transport);
     expect(client.getProtocolEra()).toBe('modern');
     const tools = await client.listTools();
-    expect(tools.tools).toHaveLength(21);
+    expect(tools.tools).toHaveLength(20);
     expect(tools).toMatchObject({ ttlMs: 3_600_000, cacheScope: 'private' });
     const res = await client.callTool({ name: 'get_activities', arguments: { limit: 1 } });
     expect(res.structuredContent).toMatchObject({ data: { activities: [{ id: 1 }] }, meta });

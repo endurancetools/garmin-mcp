@@ -255,9 +255,16 @@ export const listWorkoutsOutput = envelope({
 
 export const workoutOutput = envelope({ id: z.union([z.number(), z.string()]).optional(), ...readableWorkout, estimated_duration_s: num });
 
-export const previewWorkoutOutput = envelope({ ...readableWorkout, estimated_duration: str, estimate_note: str, next: str });
-
-export const createWorkoutOutput = envelope({ workout_id: num, name: str, sport: str, updated: bool });
+/** `create_workout`: the saved workout, or with `dry_run` the readable steps and estimate (nothing saved). */
+export const createWorkoutOutput = envelope({
+  dry_run: bool,
+  workout_id: num,
+  ...readableWorkout,
+  updated: bool,
+  estimated_duration: str,
+  estimate_note: str,
+  next: str,
+});
 
 export const scheduleOutput = envelope({
   results: list(z.looseObject({ date: str, workout_id: num, ok: bool, schedule_id: num, error: str })),

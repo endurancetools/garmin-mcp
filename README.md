@@ -70,7 +70,7 @@ Measured on a real account after a 90-day sync (433 requests in about an hour): 
 | `get_body_composition` | weigh-ins in kg with trend |
 | `get_period_summary` | week, month or any `from`..`to` range up to 366 days: volume per sport, HR zones, rest days, longest/hardest, `garmin_load_model` at the end, health and energy averages |
 | `list_workouts`, `get_workout` | workout library, scheduled workouts, races and events from the calendar in any date range (default: next 60 days), readable steps |
-| `preview_workout`, `create_workout`, `schedule_workouts` | workouts from presets (run intervals, walk/run, easy Z2, strength circuit) or a typed definition (nestable repeats, HR/pace/power targets); `preview_workout` shows the steps and estimated duration without saving; `schedule_workouts` puts workouts on the calendar and takes them off again |
+| `create_workout`, `schedule_workouts` | workouts from presets (run intervals, walk/run, easy Z2, strength circuit) or a typed definition (nestable repeats, HR/pace/power targets); `create_workout` with `dry_run: true` shows the steps and estimated duration without saving; `schedule_workouts` puts workouts on the calendar and takes them off again |
 | `get_gear`, `get_devices` | gear with distance, devices with last sync and settings |
 | `garmin_sync` | explicit download of a scope (all/activities/health/training/reference) and date range, with progress notifications |
 | `get_load` | own load model (TSS per activity from power, pace, heart rate or RPE, with the thresholds valid on each date): CTL/ATL/TSB, ACWR 7:28, monotony and strain, flags with overridable thresholds, ISO weeks per sport, 3-zone intensity split; optional daily series, per-activity TSS/IF/load source/EF, monthly EF trend |

@@ -35,7 +35,7 @@ describe('protocol eras over stdio', () => {
     try {
       expect(client.getServerVersion()).toMatchObject({ name: 'garmin-mcp' });
       const { tools } = await client.listTools();
-      expect(tools).toHaveLength(21);
+      expect(tools).toHaveLength(20);
       expect(tools.find((t) => t.name === 'get_period_summary')?.outputSchema).toBeDefined();
     } finally {
       await client.close();
@@ -51,7 +51,7 @@ describe('protocol eras over stdio', () => {
       expect(client.getInstructions()).toContain('Garmin Connect');
       const cache = { ttlMs: 3_600_000, cacheScope: 'private' };
       const tools = await client.listTools();
-      expect(tools.tools).toHaveLength(21);
+      expect(tools.tools).toHaveLength(20);
       expect(tools).toMatchObject(cache);
       expect(await client.listResources()).toMatchObject(cache);
       expect(await client.listPrompts()).toMatchObject(cache);

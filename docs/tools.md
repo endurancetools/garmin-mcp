@@ -16,7 +16,7 @@ You do not need to call tools by name; the assistant does. This page tells you w
 | `get_body_composition` | weigh-ins with trend |
 | `get_period_summary` | a week, a month or any range up to a year: volume per sport, heart rate zones, active and rest days, longest and hardest session, CTL/ATL/TSB from Garmin's training load at the end (`garmin_load_model`), health and energy averages |
 | `list_workouts`, `get_workout` | your workout library, scheduled workouts, races and events in any date range, with readable steps |
-| `preview_workout`, `create_workout`, `schedule_workouts` | build a workout from a preset (run intervals, walk/run, easy zone 2, strength circuit) or from typed steps with repeats and heart rate, pace or power targets; preview before saving; put it on the calendar or take it off |
+| `create_workout`, `schedule_workouts` | build a workout from a preset (run intervals, walk/run, easy zone 2, strength circuit) or from typed steps with repeats and heart rate, pace or power targets; `dry_run: true` shows the steps and estimated duration before anything is saved; put it on the calendar or take it off |
 | `get_gear`, `get_devices` | gear with distance, devices with firmware, last sync and settings |
 | `garmin_sync` | download a scope (activities, health, training, reference or all) and date range explicitly, with progress |
 | `get_load` | your own training load model from power, pace, heart rate or RPE: CTL/ATL/TSB (the form to ask about; [two load models](analytics.md#load-model)), ACWR, monotony and strain, warning flags, weekly volume per sport, the 3-zone intensity split, optionally per-activity TSS and the efficiency trend ([formulas](analytics.md)) |
