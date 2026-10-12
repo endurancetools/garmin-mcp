@@ -28,9 +28,10 @@ function profile(lthr: number) {
   };
 }
 
-/** Daily 1 h runs at 150 bpm from June, resting HR 50 from May, LTHR 170: hrTSS 69.4 a day. */
+/** Daily 1 h runs at 150 bpm from June, resting HR 50 from May, LTHR 170: hrTSS 69.4 a day; profile synced, empty. */
 function trained() {
   const t = setup();
+  t.store.markReferenceFetched('profile', NOW);
   t.activities(t.dailyRuns('2026-06-01', TODAY), '2026-06-01', TODAY);
   t.daily('daily_summary', '2026-05-01', TODAY, () => ({ resting_hr: 50, avg_stress: 30, body_battery_high: 80 }));
   t.store.addThreshold({ date: '2026-01-01', param: 'lthr_run', value: 170, source: 'manual', created_at: NOW });
@@ -279,10 +280,41 @@ describe('AnalyticsService thresholds', () => {
     expect(store.listThresholds()).toEqual([]);
   });
 
-  it('hints the resting HR window when it was never synced', async () => {
+  it('takes HRmax from the cached Garmin profile as garmin-auto', async () => {
+    const { analytics, store, calls, daily } = setup();
+    daily('daily_summary', '2026-09-10', '2026-10-07', () => ({ resting_hr: 50 }));
+    store.setProfile(profile(168), Date.parse('2026-10-01T08:00:00Z'));
+    store.markReferenceFetched('profile', Date.parse('2026-10-01T08:00:00Z'));
+    const res = await analytics.getThresholds({ date: TODAY });
+    expect(res.data.hrmax).toEqual({ value: 192 });
+    expect(res.data.effective.hrmax).toEqual({ value: 192, since: '2026-10-01', source: 'garmin-auto' });
+    expect(res.meta).toEqual({ source: 'cache' });
+    expect(calls).toEqual([]);
+  });
+
+  it('hints a reference sync when the profile was never fetched, without calling Garmin', async () => {
+    const { analytics, calls, daily } = setup();
+    daily('daily_summary', '2026-09-10', '2026-10-07', () => ({ resting_hr: 50 }));
+    for (const read of [() => analytics.getThresholds(), () => analytics.getReadiness(), () => analytics.getLoad()]) {
+      const res = await read();
+      expect(res.meta.sync_hint).toMatchObject({ scope: expect.stringMatching(/^(reference|all)$/) });
+      expect(res.meta.note).toMatch(/profile/);
+    }
+    const res = await analytics.getThresholds();
+    expect(res.meta).toEqual({
+      source: 'cache',
+      sync_hint: { scope: 'reference' },
+      note: expect.stringMatching(/^Not synced from Garmin yet: profile\..*--scope reference/),
+    });
+    expect(res.data.hrmax).toEqual({ note: expect.stringMatching(/No HRmax/) });
+    expect(calls).toEqual([]);
+  });
+
+  it('hints the resting HR window and the profile when neither was synced', async () => {
     const { analytics } = setup();
     const res = await analytics.getThresholds();
-    expect(res.meta.sync_hint).toEqual({ scope: 'health', from: '2026-09-10', to: '2026-10-07' });
+    expect(res.meta.sync_hint).toEqual({ scope: 'all', from: '2026-09-10', to: '2026-10-07' });
+    expect(res.meta.note).toMatch(/daily_summary.*The Garmin profile is missing too\.$/);
     expect(res.data.rhr_28d).toMatchObject({ value: 50, samples: 0, note: expect.stringMatching(/default 50/) });
     expect(res.data.by_sport.run).toEqual({
       lthr: 170,
