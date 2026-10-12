@@ -1,0 +1,50 @@
+# Top bar (masthead) and the left sidebar of every page.
+main:
+  - title: "Getting started"
+    url: /getting-started/
+  - title: "What you can ask"
+    url: /asking/
+  - title: "GitHub"
+    url: https://github.com/endurancetools/garmin-mcp
+
+docs:
+  - title: Start
+    children:
+      - title: "Home"
+        url: /
+      - title: "Getting started"
+        url: /getting-started/
+      - title: "Claude Code"
+        url: /getting-started/claude-code/
+      - title: "Claude Desktop"
+        url: /getting-started/claude-desktop/
+      - title: "Other clients"
+        url: /getting-started/other-clients/
+  - title: Using it
+    children:
+      - title: "What you can ask"
+        url: /asking/
+      - title: "Signing in"
+        url: /sign-in/
+      - title: "Configuration"
+        url: /configuration/
+      - title: "Troubleshooting"
+        url: /troubleshooting/
+  - title: Reference
+    children:
+      - title: "Tools reference"
+        url: /tools/
+      - title: "Coverage map"
+        url: /coverage/
+      - title: "How it works"
+        url: /how-it-works/
+  - title: Links
+    children:
+      - title: "GitHub"
+        url: https://github.com/endurancetools/garmin-mcp
+      - title: "npm"
+        url: https://www.npmjs.com/package/garmin-mcp-server
+      - title: "MCP registry"
+        url: https://registry.modelcontextprotocol.io/v0.1/servers/io.github.endurancetools%2Fgarmin-mcp/versions
+      - title: "Claude Desktop extension"
+        url: https://github.com/endurancetools/garmin-mcp/releases/latest

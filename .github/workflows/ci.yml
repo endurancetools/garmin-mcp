@@ -1,0 +1,116 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Explicit version or semver keyword (e.g. 0.1.0, patch, minor); empty = from conventional commits'
+        required: false
+        default: ''
+      registry_only:
+        description: 'Skip versioning: only publish the version already on main to the MCP registry'
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - uses: nrwl/nx-set-shas@v4
+      # Layer violations fail here: oxlint no-restricted-imports + @nx/enforce-module-boundaries.
+      # A manual run (the release path) checks every project on every OS; pushes and PRs only the affected ones.
+      - run: pnpm nx ${{ github.event_name == 'workflow_dispatch' && 'run-many' || 'affected' }} -t lint typecheck test build --parallel=3
+
+  mcpb:
+    runs-on: ubuntu-latest
+    needs: check
+    steps:
+      - uses: actions/checkout@v4
+      - run: ./scripts/build-mcpb.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mcpb
+          path: dist/*.mcpb
+
+  release:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    needs: check
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # nx release commits the version bump and changelog; the runner has no git identity of its own.
+      - run: |
+          git config user.name "Marcin Milewicz"
+          git config user.email "marcinmilewicz87@gmail.com"
+      # nx release: version bump (conventional commits, or the explicit input), changelog, commit,
+      # tag and GitHub release; --skip-publish because npm is published by hand (below).
+      - if: ${{ !inputs.registry_only }}
+        run: pnpm nx release ${{ inputs.version }} --skip-publish
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # npm is not published from here: npm creates new packages only through a staged publish
+      # approved with 2FA, and granular tokens lose direct publish in 2027, so the maintainer runs
+      # `pnpm -r publish` locally (DEVELOPMENT.md, Release). The MCP registry accepts GitHub OIDC, so that
+      # part stays here and can be re-run alone with registry_only once the npm version exists.
+      # MCP registry: https://github.com/modelcontextprotocol/registry/blob/main/docs/modelcontextprotocol-io/github-actions.mdx
+      # nx release bumps package.json only; server.json takes the version of the npm package it points to.
+      - name: Set version in server.json
+        run: |
+          node -e '
+            const fs = require("node:fs");
+            const { version } = JSON.parse(fs.readFileSync("apps/mcp-server/package.json", "utf8"));
+            const server = JSON.parse(fs.readFileSync("server.json", "utf8"));
+            server.version = version;
+            for (const p of server.packages) if (p.identifier === "garmin-mcp-server") p.version = version;
+            fs.writeFileSync("server.json", JSON.stringify(server, null, 2) + "\n");
+            console.log(`server.json -> ${version}`);
+          '
+      # Pinned version + SHA-256 of mcp-publisher_linux_amd64.tar.gz (ubuntu-latest is x86_64), taken from
+      # registry_<ver>_checksums.txt in https://github.com/modelcontextprotocol/registry/releases/tag/v1.8.1
+      # and matched against the downloaded archive. To update: set MCP_PUBLISHER_VERSION, copy the
+      # mcp-publisher_linux_amd64.tar.gz line from registry_<ver>_checksums.txt of that release.
+      - name: Install mcp-publisher
+        env:
+          MCP_PUBLISHER_VERSION: 1.8.1
+          MCP_PUBLISHER_SHA256: a06c9096dcb9727c13555b6be26c7effa707b01f06a4c561ba7a3635443cf2cc
+        run: |
+          curl -fsSL -o mcp-publisher_linux_amd64.tar.gz "https://github.com/modelcontextprotocol/registry/releases/download/v${MCP_PUBLISHER_VERSION}/mcp-publisher_linux_amd64.tar.gz"
+          echo "${MCP_PUBLISHER_SHA256}  mcp-publisher_linux_amd64.tar.gz" | sha256sum -c -
+          tar xzf mcp-publisher_linux_amd64.tar.gz mcp-publisher
+          rm mcp-publisher_linux_amd64.tar.gz
+      - name: Authenticate to MCP Registry
+        run: ./mcp-publisher login github-oidc
+      - name: Publish server to MCP Registry
+        run: ./mcp-publisher publish

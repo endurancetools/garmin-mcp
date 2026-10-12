@@ -1,0 +1,9 @@
+{
+  "workoutScheduleId": 9900001,
+  "calendarDate": "2026-10-10",
+  "workout": {
+    "workoutId": 700001,
+    "workoutName": "Z2 Run"
+  },
+  "ownerId": 90001
+}

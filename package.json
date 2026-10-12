@@ -1,0 +1,30 @@
+{
+  "name": "garmin-mcp-workspace",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.34.5",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "nx run-many -t build",
+    "lint": "nx run-many -t lint",
+    "typecheck": "nx run-many -t typecheck",
+    "test": "nx run-many -t test",
+    "check": "nx run-many -t lint typecheck test build",
+    "graph": "nx graph"
+  },
+  "devDependencies": {
+    "@nx/eslint-plugin": "23.3.0",
+    "@nx/js": "23.3.0",
+    "@types/node": "^22.20.5",
+    "@typescript-eslint/parser": "^8.71.1",
+    "eslint": "^10.12.0",
+    "garmin-mcp-server": "workspace:*",
+    "msw": "^3.0.2",
+    "nx": "23.3.0",
+    "oxlint": "^1.87.0",
+    "typescript": "~6.0.3",
+    "vitest": "^5.0.3"
+  }
+}

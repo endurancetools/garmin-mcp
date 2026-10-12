@@ -1,0 +1,55 @@
+{
+  "name": "garmin-mcp-server",
+  "mcpName": "io.github.endurancetools/garmin-mcp",
+  "version": "0.1.1",
+  "description": "MCP server for Garmin Connect backed by a local SQLite cache",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/endurancetools/garmin-mcp.git",
+    "directory": "apps/mcp-server"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "exports": {
+    ".": {
+      "garmin-mcp-source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "!dist/**/*.test.*",
+    "!dist/**/*.tsbuildinfo",
+    "!dist/test-utils"
+  ],
+  "dependencies": {
+    "garmin-mcp-domain": "workspace:*",
+    "garmin-mcp-store": "workspace:*",
+    "garmin-mcp-client": "workspace:*",
+    "garmin-mcp-auth": "workspace:*",
+    "garmin-mcp-config": "workspace:*",
+    "zod": "^4.6.5",
+    "@modelcontextprotocol/server": "^2.3.1",
+    "@modelcontextprotocol/node": "^2.1.1"
+  },
+  "bin": {
+    "garmin-mcp-server": "./dist/main.js"
+  },
+  "keywords": [
+    "mcp",
+    "garmin",
+    "garmin-connect",
+    "model-context-protocol"
+  ],
+  "devDependencies": {
+    "@modelcontextprotocol/client": "^2.3.1",
+    "@modelcontextprotocol/sdk": "^1.32.1"
+  }
+}

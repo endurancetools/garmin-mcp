@@ -1,0 +1,11 @@
+{
+  "name": "garmin-mcp-scripts",
+  "$schema": "../node_modules/nx/schemas/project-schema.json",
+  "projectType": "application",
+  "tags": ["scope:scripts", "type:tool"],
+  "targets": {
+    "test": {
+      "inputs": ["default", "{workspaceRoot}/docs/evals/tool-selection.jsonl"]
+    }
+  }
+}

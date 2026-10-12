@@ -1,0 +1,37 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.endurancetools/garmin-mcp",
+  "description": "Garmin Connect activities, health, training and workouts via a local SQLite cache",
+  "repository": {
+    "url": "https://github.com/endurancetools/garmin-mcp",
+    "source": "github"
+  },
+  "version": "0.1.1",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "garmin-mcp-server",
+      "version": "0.1.1",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "GARMIN_DATA_DIR",
+          "description": "Tokens and database directory (default ~/.garmin-mcp)",
+          "isRequired": false
+        },
+        {
+          "name": "GARMIN_REGION",
+          "description": "global or cn",
+          "isRequired": false
+        },
+        {
+          "name": "GARMIN_ENABLE_DESTRUCTIVE",
+          "description": "true registers delete tools",
+          "isRequired": false
+        }
+      ]
+    }
+  ]
+}

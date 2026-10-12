@@ -1,0 +1,89 @@
+{
+  "manifest_version": "0.3",
+  "name": "garmin-mcp",
+  "display_name": "Garmin Connect",
+  "version": "0.1.0",
+  "description": "Your Garmin Connect activities, sleep, HRV, training status, body composition and workouts, served from a fast local cache.",
+  "long_description": "Garmin Connect data for Claude through 17 coarse tools backed by a local SQLite cache: questions about the last 90 days are answered from disk instead of 90 requests to Garmin.\n\n**First-time setup:** run `npx -y garmin-mcp-cli login` once in a terminal; it opens Garmin's own sign-in page in your browser (MFA supported). Only tokens are stored (0600, in the data directory); the password is never saved.\n\n**Downloading:** logging in downloads nothing. When a question needs days that are not in the local database yet, the tool downloads just that range itself (7-day chunks with pauses and a daily request cap), waits up to 20 s and answers; anything left keeps downloading in the background. Stored data is kept and never re-downloaded. To pre-load a range, run `npx -y garmin-mcp-cli sync --scope health --from <date> --to <date>` or ask Claude to sync. Turn off **Download missing data automatically** in the extension settings and nothing is downloaded until you sync: tools report the missing range and Claude asks before syncing.",
+  "author": { "name": "garmin-mcp contributors" },
+  "license": "MIT",
+  "keywords": ["garmin", "fitness", "health", "running", "cycling", "training", "sleep", "hrv"],
+  "server": {
+    "type": "node",
+    "entry_point": "npx",
+    "mcp_config": {
+      "command": "npx",
+      "args": ["-y", "garmin-mcp-server@0.1.0"],
+      "env": {
+        "GARMIN_AUTO_FETCH": "${user_config.auto_fetch}",
+        "GARMIN_DATA_DIR": "${user_config.data_dir}",
+        "GARMIN_ENABLE_DESTRUCTIVE": "${user_config.enable_destructive}",
+        "GARMIN_REGION": "${user_config.region}"
+      }
+    }
+  },
+  "user_config": {
+    "data_dir": {
+      "type": "directory",
+      "title": "Data directory",
+      "description": "Where tokens and the local database live. Must match the directory used by `garmin-mcp-cli login`.",
+      "required": false,
+      "default": "${HOME}/.garmin-mcp"
+    },
+    "region": {
+      "type": "string",
+      "title": "Region",
+      "description": "global, or cn for Garmin Connect China",
+      "required": false,
+      "default": "global"
+    },
+    "auto_fetch": {
+      "type": "boolean",
+      "title": "Download missing data automatically",
+      "description": "When a question needs days that are not in the local database, download them from Garmin Connect. Turned off, tools report the missing range and Claude asks before syncing.",
+      "required": false,
+      "default": true
+    },
+    "enable_destructive": {
+      "type": "boolean",
+      "title": "Enable delete tools",
+      "description": "Register delete_activity, delete_workout and delete_weigh_in. Deletions cannot be undone.",
+      "required": false,
+      "default": false
+    }
+  },
+  "tools": [
+    { "name": "garmin_sync", "description": "Download a scope and date range from Garmin Connect into the local cache" },
+    { "name": "get_activities", "description": "List activities as dense summaries by date and type" },
+    { "name": "get_activity", "description": "One activity: summary, splits, HR or power zones, weather, strength sets or raw stream" },
+    { "name": "update_activity", "description": "Rename, retype, describe or rate an activity" },
+    { "name": "download_activity_file", "description": "Save an activity as FIT, GPX, TCX, KML or CSV" },
+    { "name": "query_health", "description": "Daily health metrics over a range with trends" },
+    { "name": "get_sleep", "description": "Sleep stages, score, SpO2 and respiration" },
+    { "name": "get_training_status", "description": "VO2max, readiness, Garmin status, CTL/ATL/TSB and race predictions" },
+    { "name": "get_body_composition", "description": "Weigh-ins and trend" },
+    { "name": "get_period_summary", "description": "A week, a month or any date range at a glance" },
+    { "name": "list_workouts", "description": "Workout library, scheduled workouts, races and events" },
+    { "name": "get_workout", "description": "Readable workout steps" },
+    { "name": "preview_workout", "description": "Show a workout's steps and duration without saving it" },
+    { "name": "create_workout", "description": "Create a structured workout" },
+    { "name": "schedule_workouts", "description": "Put workouts on the calendar or take them off" },
+    { "name": "get_gear", "description": "Shoes and bikes with distance" },
+    { "name": "get_devices", "description": "Devices, last sync and settings" }
+  ],
+  "prompts": [
+    {
+      "name": "weekly_review",
+      "description": "Review a training week",
+      "arguments": ["week_of"],
+      "text": "Review my training week containing ${arguments.week_of}. Call get_period_summary (period \"week\") first, then query_health for sleep, hrv and resting_hr over the same week, and get_training_status. Summarise volume per sport, intensity distribution, recovery signals and form (TSB) in a few short paragraphs, compare with the previous week if useful, flag anything concerning, and finish with two or three questions about how the week felt (energy, soreness, motivation)."
+    },
+    {
+      "name": "plan_next_week",
+      "description": "Plan next week and create the workouts",
+      "arguments": ["goal", "days_available"],
+      "text": "Plan my next training week. Goal: ${arguments.goal}. Days available: ${arguments.days_available}. Look at get_period_summary for the last two weeks, get_training_status and query_health (hrv, sleep, resting_hr, last 14 days) before proposing. Propose day by day with purpose, duration and intensity (HR zones or pace). Do not create anything yet: after I approve, show each session with preview_workout and create it with create_workout (a preset for standard sessions, otherwise a typed definition), then put them on the calendar with schedule_workouts."
+    }
+  ],
+  "compatibility": { "platforms": ["darwin", "linux", "win32"], "runtimes": { "node": ">=22" } }
+}

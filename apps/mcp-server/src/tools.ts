@@ -1,0 +1,421 @@
+import type { ToolAnnotations } from '@modelcontextprotocol/server';
+import {
+  activitiesOutput,
+  activityOutput,
+  bodyCompositionOutput,
+  createWorkoutOutput,
+  deleteActivityOutput,
+  deleteWeighInOutput,
+  deleteWorkoutOutput,
+  devicesOutput,
+  downloadOutput,
+  gearOutput,
+  HEALTH_METRICS,
+  healthOutput,
+  listWorkoutsOutput,
+  periodSummaryOutput,
+  previewWorkoutOutput,
+  scheduleOutput,
+  sleepOutput,
+  syncOutput,
+  trainingStatusOutput,
+  updateActivityOutput,
+  workoutDefinitionSchema,
+  workoutOutput,
+  workoutPresetSchema,
+  type GarminService,
+  type SyncProgressOptions,
+} from 'garmin-mcp-domain';
+import { SYNC_SCOPES } from 'garmin-mcp-store';
+import { z } from 'zod';
+
+const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD');
+const id = z.coerce.number().int().positive();
+
+export interface ToolDef {
+  name: string;
+  title: string;
+  description: string;
+  input: Record<string, z.ZodType>;
+  /** `{ data, meta }` envelope of the result: MCP `outputSchema`, checked by the SDK against `structuredContent`. */
+  output: z.ZodType;
+  annotations: ToolAnnotations;
+  destructive?: boolean;
+  /** Opt-in part of an always-on tool: merged in by selectTools only with GARMIN_ENABLE_DESTRUCTIVE. */
+  destructiveOption?: { input: Record<string, z.ZodType>; description: string; disabledError: string };
+  /** Set by selectTools when the option is off: sending one of these fields fails with this error instead of being dropped. */
+  rejectedFields?: { names: string[]; error: string };
+  /** `ctx.onProgress` is set when the client asked for progress (`_meta.progressToken`). */
+  run(service: GarminService, args: Record<string, unknown>, ctx: SyncProgressOptions): Promise<unknown>;
+}
+
+const READ: ToolAnnotations = { readOnlyHint: true, openWorldHint: true };
+const WRITE: ToolAnnotations = { readOnlyHint: false, destructiveHint: false, openWorldHint: true };
+/** Computed by the server alone: no Garmin request, no cache write. */
+const LOCAL: ToolAnnotations = { readOnlyHint: true, openWorldHint: false };
+const DELETE: ToolAnnotations = { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true };
+
+/** Input of create_workout and preview_workout. */
+const WORKOUT_INPUT = {
+  preset: workoutPresetSchema.optional(),
+  definition: workoutDefinitionSchema.optional(),
+  garmin_json: z.record(z.string(), z.unknown()).optional().describe('Raw Garmin workout JSON with workoutName, sportType and workoutSegments'),
+};
+
+/**
+ * What a handler may return for an output schema: its fields without the open `[key]: unknown`
+ * of loose objects (so service types need no index signature), and `null` in optional fields
+ * and `undefined` in records, which `compact` drops before the result is sent.
+ */
+type Fits<T> = T extends readonly (infer E)[]
+  ? readonly Fits<E>[]
+  : T extends object
+    ? {
+        [K in keyof T as K extends string ? (string extends K ? (unknown extends T[K] ? never : K) : K) : never]: undefined extends T[K]
+          ? Fits<T[K]> | null
+          : string extends K
+            ? Fits<T[K]> | undefined
+            : Fits<T[K]>;
+      }
+    : T;
+
+/** Shorthand for typed handlers: the compiler checks the service result against the output schema. */
+function tool<S extends Record<string, z.ZodType>, O extends z.ZodType>(def: Omit<ToolDef, 'input' | 'output' | 'run'> & {
+  input: S;
+  output: O;
+  run(service: GarminService, args: z.infer<z.ZodObject<S>>, ctx: SyncProgressOptions): Promise<Fits<z.output<O>>>;
+}): ToolDef {
+  return def as unknown as ToolDef;
+}
+
+/** The 17 coarse tools, plus opt-in destructive ones. */
+export const TOOLS: ToolDef[] = [
+  tool({
+    name: 'garmin_sync',
+    title: 'Sync Garmin data',
+    description:
+      'Download data from Garmin Connect into the local cache. ' +
+      'Read tools already download missing data by themselves, so call this only when the user asks to sync/refresh or to pre-load a range, or when a tool returned meta.sync_hint (auto fetch turned off) and the user agreed; pass the hint\'s scope/from/to. ' +
+      'Days already stored are skipped. Long ranges run in the background in 7-day chunks with pauses and a daily request cap to stay gentle with Garmin; ' +
+      'this waits at most 20 s and reports progress (also in garmin://sync-status). Example: {"scope":"health","from":"2026-09-01","to":"2026-09-30"}.',
+    input: {
+      scope: z.enum(SYNC_SCOPES).default('all').describe('all | activities | health (daily summary, sleep, HRV, weight) | training (status, readiness, VO2max) | reference (profile, gear, devices, activity types, workouts, calendar months of from..to, also in the future)'),
+      from: date.optional().describe('Start date; default: 7 days before `to`'),
+      to: date.optional().describe('End date; default: today'),
+      force: z.boolean().default(false).describe('Re-download days that are already stored'),
+    },
+    output: syncOutput,
+    annotations: WRITE,
+    run: (s, a, ctx) => s.sync(a.scope, a.from, a.to, a.force, ctx),
+  }),
+  tool({
+    name: 'get_activities',
+    title: 'List activities',
+    description:
+      'List workouts/activities (runs, rides, swims, strength...) as dense summaries: id, date, type, name, duration, distance, pace or speed, HR, training load. ' +
+      'Use for "what did I do last week", finding an activity id, or comparing sessions. For one activity in depth use get_activity; ' +
+      'for weekly/monthly totals use get_period_summary. Example: {"from":"2026-10-01","type":"running","limit":10}.',
+    input: {
+      from: date.optional(),
+      to: date.optional(),
+      type: z.string().optional().describe('Garmin type key, e.g. running, trail_running, cycling, lap_swimming, strength_training; partial match. All keys: resource garmin://activity-types'),
+      limit: z.number().int().min(1).max(100).default(20),
+      cursor: z.string().optional().describe('next_cursor from the previous page'),
+      sort: z.enum(['desc', 'asc']).default('desc'),
+    },
+    output: activitiesOutput,
+    annotations: READ,
+    run: (s, a) => s.getActivities(a),
+  }),
+  tool({
+    name: 'get_activity',
+    title: 'Get one activity',
+    description:
+      'Details of one activity by id. detail="summary" (default) for the overview incl. description, RPE and feel; "splits" adds laps; "hr_zones" adds time in HR zones; ' +
+      '"power_zones" adds time in power zones (power meter); "weather" adds temperature, wind and conditions during the activity; "exercise_sets" adds strength sets ' +
+      '(exercise, reps, weight, rest); "full" adds all of these plus the raw second-by-second stream (HR, pace, GPS...) paginated with next_cursor, 50 KB per page - ' +
+      'only when the user needs raw samples.',
+    input: {
+      id: id.describe('Activity id from get_activities'),
+      detail: z.enum(['summary', 'splits', 'hr_zones', 'power_zones', 'weather', 'exercise_sets', 'full']).default('summary'),
+      cursor: z.string().optional().describe('For detail="full": next_cursor of the previous page'),
+    },
+    output: activityOutput,
+    annotations: READ,
+    run: (s, a) => s.getActivity(a.id, a.detail, a.cursor),
+  }),
+  tool({
+    name: 'update_activity',
+    title: 'Edit an activity',
+    description:
+      'Change an activity in Garmin Connect: name, type (Garmin type key such as "trail_running"; valid keys in resource garmin://activity-types), description (notes), rpe (0-10 perceived effort) ' +
+      'or feel (0 very weak, 25 weak, 50 normal, 75 strong, 100 very strong). Only call when the user asked for the change. Returns the activity after the edit.',
+    input: {
+      id,
+      name: z.string().max(200).optional(),
+      type: z.string().optional().describe('Garmin type key from garmin://activity-types, e.g. trail_running'),
+      description: z.string().max(2000).optional(),
+      rpe: z.number().min(0).max(10).optional(),
+      feel: z.union([z.literal(0), z.literal(25), z.literal(50), z.literal(75), z.literal(100)]).optional(),
+    },
+    output: updateActivityOutput,
+    annotations: { ...WRITE, idempotentHint: true },
+    run: (s, { id: activityId, ...patch }) => s.updateActivity(activityId, patch),
+  }),
+  tool({
+    name: 'download_activity_file',
+    title: 'Download activity file',
+    description:
+      'Save an activity as a file on this machine and return its path: fit (original device file), gpx, tcx, kml or csv (laps). ' +
+      'Use when the user wants the file itself, e.g. to import elsewhere.',
+    input: {
+      id,
+      format: z.enum(['fit', 'gpx', 'tcx', 'kml', 'csv']).default('fit'),
+      output_dir: z
+        .string()
+        .optional()
+        .describe('Subdirectory of the download directory (GARMIN_FIT_DOWNLOAD_DIR or <data dir>/downloads), e.g. "races"; default the download directory itself. Paths outside it are rejected'),
+    },
+    output: downloadOutput,
+    annotations: WRITE,
+    run: (s, a) => s.downloadActivityFile(a.id, a.format, a.output_dir),
+  }),
+  tool({
+    name: 'query_health',
+    title: 'Query daily health metrics',
+    description:
+      'For "how did I sleep this week", "calories and intensity minutes this week", "steps yesterday" or any single health metric over days: ' +
+      'a table per day or per ISO week plus summary with averages, totals, min/max and 7/28-day trend. Metrics: ' +
+      steps_desc() +
+      ' steps also returns the daily distance in km, resting_hr the daily min/max HR, hrv the Garmin HRV status and baseline range, floors the floors climbed.' +
+      ' Ask for several metrics in one call (e.g. calories and intensity_minutes together). ' +
+      'Use get_sleep for sleep stages of particular nights. Example: {"metrics":["hrv","resting_hr","sleep"],"from":"2026-07-01","to":"2026-09-30","granularity":"week"}.',
+    input: {
+      metrics: z.array(z.enum(HEALTH_METRICS)).min(1),
+      from: date.optional().describe('Default: 7 days before `to`'),
+      to: date.optional().describe('Default: today'),
+      granularity: z.enum(['day', 'week']).default('day').describe('"week" for ranges longer than ~3 weeks'),
+    },
+    output: healthOutput,
+    annotations: READ,
+    run: (s, a) => s.queryHealth(a.metrics, a.from, a.to, a.granularity),
+  }),
+  tool({
+    name: 'get_sleep',
+    title: 'Get sleep',
+    description:
+      'Sleep for one night ({"date":"2026-10-08"}, the morning date) with stages, score, SpO2, respiration and overnight HRV; ' +
+      'or for a range ({"from","to"}) a per-night table with averages and trends.',
+    input: { date: date.optional(), from: date.optional(), to: date.optional() },
+    output: sleepOutput,
+    annotations: READ,
+    run: (s, a) => s.getSleep(a),
+  }),
+  tool({
+    name: 'get_training_status',
+    title: 'Get training status',
+    description:
+      'Fitness and fatigue: VO2max (running/cycling) with trend, training readiness, remaining recovery time, Garmin training status (productive, maintaining, ...), ' +
+      'Garmin acute/chronic load and load focus (aerobic low/high, anaerobic vs. targets), and computed CTL/ATL/TSB (fitness/fatigue/form). ' +
+      '`metrics` holds race predictions (5k to marathon), endurance and hill score, fitness age, personal records and heat/altitude acclimation ' +
+      'as of the newest training sync on or before `to`. Set include_series for the daily load curve.',
+    input: { from: date.optional().describe('Default: 28 days before `to`'), to: date.optional(), include_series: z.boolean().default(false) },
+    output: trainingStatusOutput,
+    annotations: READ,
+    run: (s, a) => s.getTrainingStatus(a),
+  }),
+  tool({
+    name: 'get_body_composition',
+    title: 'Get body composition',
+    description: 'Weigh-ins (kg, body fat %, muscle mass, BMI) in a range with change and trend. Default range: last 90 days.',
+    input: { from: date.optional(), to: date.optional() },
+    output: bodyCompositionOutput,
+    annotations: READ,
+    run: (s, a) => s.getBodyComposition(a.from, a.to),
+  }),
+  tool({
+    name: 'get_period_summary',
+    title: 'Summarise a week, month or range',
+    description:
+      'Training week or month at a glance: sessions and volume per sport, HR zone distribution, active vs rest days, longest and hardest session, ' +
+      'load (CTL/ATL/TSB) at the end, and only avg/min/max of sleep, HRV, resting HR, steps, stress and body battery plus average daily kcal. ' +
+      'Day-by-day values and other metrics (calorie totals, intensity minutes, floors, respiration, SpO2) come from query_health, weight from get_body_composition. Weeks run Monday-Sunday. ' +
+      'Period "range" gives the same for any from..to up to 366 days, e.g. a training block: {"period":"range","from":"2026-08-04","to":"2026-09-28"}. ' +
+      '`complete` is true when the period is over and all its data is in the cache; `training` is left out while its activities are not. ' +
+      'Example: {"period":"week","anchor_date":"2026-10-08"}.',
+    input: {
+      period: z.enum(['week', 'month', 'range']).default('week'),
+      anchor_date: date.optional().describe('week/month: any date inside the period; default today'),
+      from: date.optional().describe('range only, required'),
+      to: date.optional().describe('range only, required'),
+    },
+    output: periodSummaryOutput,
+    annotations: READ,
+    run: (s, a) => s.getPeriodSummary(a.period, { anchor_date: a.anchor_date, from: a.from, to: a.to }),
+  }),
+  tool({
+    name: 'list_workouts',
+    title: 'Workouts and calendar',
+    description:
+      'For "my next race", "what is planned this week" or "which workouts do I have": the saved workout library (`workouts`), ' +
+      'scheduled workouts (`upcoming_schedule`) and races or events the user added or subscribed to (`upcoming_events`: date, title, distance, start time, location; ' +
+      '`race`/`primary` present only when true, `primary` marks the goal race of an active training plan). The calendar covers `from` to `to` ' +
+      '(default: today and the next 60 days); any range works, past or future, and months not in the cache yet are downloaded on the way. ' +
+      'Example: {"from":"2027-03-01","to":"2027-05-31"} for races next spring.',
+    input: {
+      limit: z.number().int().min(1).max(200).default(50),
+      sport: z.string().optional().describe('e.g. running, cycling, strength_training'),
+      from: date.optional().describe('Calendar start; default today (or 60 days before `to` when `to` is in the past)'),
+      to: date.optional().describe('Calendar end; default 60 days after `from`'),
+    },
+    output: listWorkoutsOutput,
+    annotations: READ,
+    run: (s, a) => s.listWorkouts(a),
+  }),
+  tool({
+    name: 'get_workout',
+    title: 'Get a planned workout',
+    description: 'Steps of a saved workout in readable form (warm-up, repeats, targets in pace/HR/power).',
+    input: { id },
+    output: workoutOutput,
+    annotations: READ,
+    run: (s, a) => s.getWorkout(a.id),
+  }),
+  tool({
+    name: 'preview_workout',
+    title: 'Preview a workout',
+    description:
+      'Show what create_workout would save, without saving anything or contacting Garmin: the readable steps and the estimated duration ' +
+      '(time steps, plus distance steps at the middle of their pace range; steps with neither are listed in estimate_note, ' +
+      'and for garmin_json that carries its own estimate the note says it was taken from there). ' +
+      'Takes the same input as create_workout. Call it before every create_workout, show the result to the user and save only after they agree.',
+    input: WORKOUT_INPUT,
+    output: previewWorkoutOutput,
+    annotations: LOCAL,
+    run: (s, a) => s.previewWorkout(a),
+  }),
+  tool({
+    name: 'create_workout',
+    title: 'Create a workout',
+    description:
+      'Save a new structured workout to Garmin Connect (then use schedule_workouts to put it on the calendar so it syncs to the watch). ' +
+      'Pass exactly one of: `preset` for a standard session from a few parameters (run_intervals, walk_run, easy_z2, strength_circuit); ' +
+      '`definition` for anything else (typed steps with duration and target, nestable repeats); `garmin_json` only to copy an existing Garmin workout JSON. ' +
+      'Errors name the bad field, e.g. steps[2].steps[0].target. ' +
+      'Show the workout with preview_workout (same input) first and save only after the user agreed.',
+    input: WORKOUT_INPUT,
+    output: createWorkoutOutput,
+    annotations: WRITE,
+    // Overwriting loses the old steps for good, so it sits behind the same switch as delete_workout.
+    destructiveOption: {
+      input: { workout_id: id.optional().describe('Saved workout to overwrite; omit to create a new one') },
+      description:
+        'With `workout_id` it overwrites that saved workout instead (same id, so its calendar entries stay; the old steps are lost): ' +
+        'read the current steps with get_workout, preview the full new version and overwrite only after the user agreed.',
+      disabledError: 'Overwriting a saved workout (workout_id) is turned off; it needs GARMIN_ENABLE_DESTRUCTIVE=true. Omit workout_id to save it as a new workout.',
+    },
+    run: (s, a) => {
+      const { workout_id, ...input } = a as typeof a & { workout_id?: number };
+      return s.createWorkout(input, workout_id);
+    },
+  }),
+  tool({
+    name: 'schedule_workouts',
+    title: 'Schedule workouts',
+    description:
+      'Put saved workouts on the Garmin calendar (they then sync to the watch), or take them off it. ' +
+      '`unschedule` takes schedule_id values (from list_workouts upcoming_schedule or an earlier schedule_workouts result); ' +
+      'the workout stays in the library, only the calendar entry goes. Unschedule only what the user asked to remove. ' +
+      'Unscheduling runs first, so moving a workout is one call. Returns a result per item. ' +
+      'Examples: {"items":[{"date":"2026-10-10","workout_id":123}]}, {"unschedule":[456]}.',
+    input: {
+      items: z.array(z.object({ date, workout_id: id })).max(60).default([]),
+      unschedule: z.array(id).max(60).default([]).describe('schedule_id values of calendar entries to remove'),
+    },
+    output: scheduleOutput,
+    annotations: { ...WRITE, destructiveHint: true },
+    run: (s, a) => s.scheduleWorkouts(a.items, a.unschedule),
+  }),
+  tool({
+    name: 'get_gear',
+    title: 'Get gear',
+    description: 'Shoes, bikes and other gear with total distance, usage since, notes and status. include_activities adds the last 10 activities per item.',
+    input: { include_activities: z.boolean().default(false) },
+    output: gearOutput,
+    annotations: READ,
+    run: (s, a) => s.getGear(a.include_activities),
+  }),
+  tool({
+    name: 'get_devices',
+    title: 'Get devices',
+    description: 'Garmin devices on the account with model, firmware, last sync time and settings (time/date format, units, tones, move and heart-rate alerts, pulse ox during sleep, number of alarms). Comes from the reference sync.',
+    input: {},
+    output: devicesOutput,
+    annotations: READ,
+    run: (s) => s.getDevices(),
+  }),
+  // ---------------------------------------------------------------- destructive, opt-in
+  tool({
+    name: 'delete_activity',
+    title: 'Delete an activity',
+    description: 'PERMANENTLY deletes the activity from Garmin Connect; it cannot be restored. Only call after the user explicitly confirmed deleting this activity id.',
+    input: { id },
+    output: deleteActivityOutput,
+    annotations: DELETE,
+    destructive: true,
+    run: (s, a) => s.deleteActivity(a.id),
+  }),
+  tool({
+    name: 'delete_workout',
+    title: 'Delete a workout',
+    description: 'PERMANENTLY deletes a saved workout and its calendar entries from Garmin Connect. Only call after explicit user confirmation.',
+    input: { id },
+    output: deleteWorkoutOutput,
+    annotations: DELETE,
+    destructive: true,
+    run: (s, a) => s.deleteWorkout(a.id),
+  }),
+  tool({
+    name: 'delete_weigh_in',
+    title: 'Delete a weigh-in',
+    description: 'PERMANENTLY deletes one weigh-in (sample_pk from get_body_composition raw data) on the given date. Only call after explicit user confirmation.',
+    input: { sample_pk: id, date },
+    output: deleteWeighInOutput,
+    annotations: DELETE,
+    destructive: true,
+    run: (s, a) => s.deleteWeighIn(a.sample_pk, a.date),
+  }),
+];
+
+function steps_desc(): string {
+  return `${HEALTH_METRICS.join(', ')}.`;
+}
+
+/** Apply GARMIN_ENABLED_TOOLS / GARMIN_DISABLED_TOOLS / GARMIN_ENABLE_DESTRUCTIVE. */
+export function selectTools(opts: { enabled?: string[]; disabled?: string[]; destructive: boolean }): ToolDef[] {
+  return TOOLS.filter((t) => {
+    if (t.destructive && !opts.destructive) return false;
+    if (opts.enabled && !opts.enabled.includes(t.name)) return false;
+    if (opts.disabled?.includes(t.name)) return false;
+    return true;
+  }).map((t) => {
+    const option = t.destructiveOption;
+    if (!option) return t;
+    if (!opts.destructive) return { ...t, rejectedFields: { names: Object.keys(option.input), error: option.disabledError } };
+    return {
+      ...t,
+      description: `${t.description} ${option.description}`,
+      input: { ...t.input, ...option.input },
+      annotations: { ...t.annotations, destructiveHint: true },
+    };
+  });
+}
+
+/** What the SDK validates against: an object of the input fields, strict when some fields must fail loudly. */
+export function inputSchema(def: ToolDef): z.ZodObject {
+  const rejected = def.rejectedFields;
+  if (!rejected) return z.object(def.input);
+  return z.strictObject(def.input, {
+    error: (issue) => (issue.code === 'unrecognized_keys' && issue.keys.some((k) => rejected.names.includes(k)) ? rejected.error : undefined),
+  });
+}

@@ -1,0 +1,19 @@
+{
+  "name": "garmin-mcp-server",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "apps/mcp-server/src",
+  "projectType": "application",
+  "tags": [
+    "scope:mcp-server",
+    "type:app"
+  ],
+  "targets": {
+    "build": {},
+    "typecheck": {},
+    "lint": {},
+    "test": {
+      "dependsOn": ["build"],
+      "inputs": ["default", "^production", "{workspaceRoot}/vitest.shared.ts", "{workspaceRoot}/mcpb/manifest.json"]
+    }
+  }
+}

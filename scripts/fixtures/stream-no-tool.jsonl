@@ -1,0 +1,3 @@
+{"type":"system","subtype":"init","cwd":"/tmp/garmin-mcp-eval-x","session_id":"00000000-0000-4000-8000-000000000002","tools":["mcp__garmin__get_activity"],"mcp_servers":[{"name":"garmin","status":"connected"}],"model":"claude-sonnet-5-5"}
+{"type":"assistant","message":{"model":"claude-sonnet-5-5","id":"msg_02","type":"message","role":"assistant","content":[{"type":"text","text":"Nie mogę usuwać aktywności: narzędzia destrukcyjne są wyłączone."}],"stop_reason":"end_turn"},"parent_tool_use_id":null,"session_id":"00000000-0000-4000-8000-000000000002"}
+{"type":"result","subtype":"success","is_error":false,"result":"Nie mogę usuwać aktywności: narzędzia destrukcyjne są wyłączone.","stop_reason":"end_turn","num_turns":1,"session_id":"00000000-0000-4000-8000-000000000002"}

@@ -1,0 +1,9 @@
+packages:
+  - apps/*
+  - packages/*
+
+# better-sqlite3 ships prebuilt binaries for every platform (prebuilds/*.node) and loads them
+# when there is no build/ directory, so it must not be built: without a compiler (Windows CI)
+# the implicit node-gyp rebuild fails, and with one it only wastes minutes.
+onlyBuiltDependencies:
+  - nx

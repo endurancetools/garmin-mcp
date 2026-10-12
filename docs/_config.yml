@@ -1,0 +1,63 @@
+# GitHub Pages site (Jekyll, "deploy from a branch": main, /docs). User documentation only; the
+# repository's README.md and DEVELOPMENT.md are not part of the site.
+# Theme: Minimal Mistakes (remote theme). Left sidebar from _data/navigation.yml (`docs`), table of
+# contents on every page, search, author only in the footer,
+# Mermaid diagrams through _includes/footer/custom.html.
+remote_theme: "mmistakes/minimal-mistakes@4.28.1"
+minimal_mistakes_skin: default
+
+title: Garmin MCP
+name: Marcin Milewicz
+description: Your Garmin Connect data in Claude Code, Claude Desktop and any other MCP client
+url: https://endurancetools.github.io
+baseurl: /garmin-mcp
+repository: endurancetools/garmin-mcp
+permalink: pretty
+locale: en-US
+search: true
+breadcrumbs: true
+
+plugins:
+  - jekyll-include-cache
+  - jekyll-remote-theme
+  - jekyll-relative-links
+  - jekyll-seo-tag
+  - jekyll-sitemap
+
+relative_links:
+  enabled: true
+
+# The author appears only at the very bottom of every page (footer), not in the sidebar.
+author:
+  name: Marcin Milewicz
+
+footer:
+  links:
+    - label: GitHub
+      icon: fab fa-fw fa-github
+      url: https://github.com/endurancetools/garmin-mcp
+    - label: npm
+      icon: fab fa-fw fa-npm
+      url: https://www.npmjs.com/package/garmin-mcp-server
+    - label: LinkedIn
+      icon: fab fa-fw fa-linkedin
+      url: https://www.linkedin.com/in/marcinmilewicz/
+
+defaults:
+  - scope:
+      path: ""
+    values:
+      layout: single
+      sidebar:
+        nav: docs
+      toc: true
+      toc_sticky: true
+      toc_label: On this page
+      read_time: false
+      share: false
+      related: false
+      comments: false
+
+exclude:
+  - evals
+  - vendor
