@@ -2,7 +2,7 @@ import { isoWeek, type IsoDate } from 'garmin-mcp-config';
 import { round } from 'garmin-mcp-domain';
 import type { ActivityRow, ImportedActivityRow } from 'garmin-mcp-store';
 import { sportGroup, type SportGroup } from './sport.js';
-import { lthrFor, restingHrOn, type ThresholdPoint } from './thresholds.js';
+import { lt1For, lthrFor, restingHrOn, type ThresholdPoint } from './thresholds.js';
 
 /** One activity, normalized from an `activities` row or an `imported_activities` row. */
 export interface SessionInput {
@@ -73,6 +73,8 @@ export interface Session {
   z4_s?: number;
   z5_s?: number;
   lthr_used: number;
+  /** LT1 HR of the sport on the session date (`lt1For`); the aerobic filter of the EF trend. */
+  lt1_used: number;
   rhr_used: number;
   source: 'db' | 'import';
 }
@@ -210,13 +212,14 @@ export interface SessionContext {
 export type NoteSink = (note: string) => void;
 
 /**
- * Metrics of one session with the thresholds valid on its date (LTHR of its sport, rolling
- * resting HR). Rounding: IF, EF, EF-GAP, GAP 3 places; hrTSS, Garmin load, TE, RHR 1 place;
+ * Metrics of one session with the thresholds valid on its date (LTHR and LT1 of its sport,
+ * rolling resting HR). LT1 notes are not reported: `get_load` takes them from `thresholds_used`. Rounding: IF, EF, EF-GAP, GAP 3 places; hrTSS, Garmin load, TE, RHR 1 place;
  * durations, distances, HR, power, cadence, calories whole numbers.
  */
 export function sessionMetrics(input: SessionInput, ctx: SessionContext, onNote?: NoteSink): Session {
   const sport = sportGroup(input.type);
   const lthr = lthrFor(ctx.thresholds, sport, input.date);
+  const lt1 = lt1For(ctx.thresholds, sport, input.date);
   const rhr = restingHrOn(ctx.daily, ctx.thresholds, input.date);
   if (lthr.note) onNote?.(lthr.note);
   if (rhr.note) onNote?.(rhr.note);
@@ -258,6 +261,7 @@ export function sessionMetrics(input: SessionInput, ctx: SessionContext, onNote?
     z4_s: round(z?.[3], 0),
     z5_s: round(z?.[4], 0),
     lthr_used: lthr.value,
+    lt1_used: lt1.value,
     rhr_used: round(rhr.value, 1) ?? rhr.value,
     source: input.source,
   };

@@ -114,9 +114,9 @@ The zone bounds come from the profile as it is now, while Garmin counted the tim
 
 ## Efficiency
 
-`include_efficiency` adds the monthly trend (`YYYY-MM`) of the efficiency factor over aerobic sessions: average heart rate below the LTHR of the date and at least 30 minutes. Running uses EF from speed (and EF-GAP when Garmin gave a grade adjusted speed), cycling EF from normalized power when the activity has it. Per month and sport: `n`, `ef_avg`, `ef_max`, `ef_gap_avg`.
+`include_efficiency` adds the monthly trend (`YYYY-MM`) of the efficiency factor over aerobic sessions: average heart rate below LT1 of the activity's sport and date (Z1 of the intensity distribution) and at least 30 minutes. Each entry of `activities[]` shows the thresholds it was judged with: `lt1_used` next to `lthr_used`. Running uses EF from speed (and EF-GAP when Garmin gave a grade adjusted speed), cycling EF from normalized power when the activity has it. Per month and sport: `n`, `ef_avg`, `ef_max`, `ef_gap_avg`.
 
-A rising EF at the same heart rate means more speed or power per beat, i.e. better aerobic fitness. Compare like with like: the same routes and conditions. Hills and walking breaks lower EF by definition; EF-GAP corrects for gradient, not for walking or surface.
+Below LT1 heart rate and pace are close to steady state, so EF reflects aerobic fitness rather than how hard a tempo session was; a session between LT1 and LTHR is left out even though it is still below threshold. A rising EF at the same heart rate means more speed or power per beat, i.e. better aerobic fitness. Compare like with like: the same routes and conditions. Hills and walking breaks lower EF by definition; EF-GAP corrects for gradient, not for walking or surface.
 
 ## Morning readiness
 

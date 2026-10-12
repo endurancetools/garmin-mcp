@@ -58,6 +58,7 @@ const session = z.looseObject({
   z4_s: num,
   z5_s: num,
   lthr_used: num,
+  lt1_used: num,
   rhr_used: num,
   source: str,
 });
