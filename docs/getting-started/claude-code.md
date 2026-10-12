@@ -17,7 +17,7 @@ claude mcp add garmin --scope user -- npx -y garmin-mcp-server
 
 ## Check it
 
-Start `claude` and type `/mcp`. The list shows `garmin` as connected with 17 tools. The first start takes a moment while `npx` downloads the package.
+Start `claude` and type `/mcp`. The list shows `garmin` as connected with 21 tools. The first start takes a moment while `npx` downloads the package.
 
 ## Try it
 
