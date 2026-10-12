@@ -12,7 +12,8 @@ import { loadMarkdown, parseThresholdsCsv, readinessMarkdown, readJsonObject, se
 import { err, out, prompt, promptHidden, table } from './io.js';
 import { RECORDABLE, writeFixture } from './record.js';
 
-export const VERSION = '0.1.0';
+/** Read from the package's own package.json (src/ in tests, dist/ when installed), so `nx release` bumps it. */
+export const VERSION: string = (JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as { version: string }).version;
 
 interface GlobalOpts {
   dataDir?: string;

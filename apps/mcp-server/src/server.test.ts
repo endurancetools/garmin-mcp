@@ -62,6 +62,11 @@ async function connect(rt: Runtime) {
 const text = (res: unknown) => JSON.parse(((res as { content: { text: string }[] }).content)[0]?.text ?? 'null') as Record<string, unknown>;
 
 describe('MCP server', () => {
+  it('reports serverInfo.version from its own package.json', async () => {
+    const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as { version: string };
+    expect((await connect(runtime())).getServerVersion()?.version).toBe(pkg.version);
+  });
+
   it('exposes 21 tools, and destructive ones only when enabled', async () => {
     const tools = (await (await connect(runtime())).listTools()).tools.map((t) => t.name);
     expect(tools).toHaveLength(21);
