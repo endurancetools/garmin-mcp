@@ -282,11 +282,11 @@ export function buildProgram(deps: ProgramDeps = {}): Command {
 
   program
     .command('load')
-    .description('own training load model from the local database: TSS from power, pace or HR, CTL/ATL/TSB, ACWR, monotony, weeks, intensity (no network)')
+    .description('own training load model from the local database: TSS from power, pace, HR or RPE, CTL/ATL/TSB, ACWR, monotony, weeks, intensity (no network)')
     .option('--from <date>', 'start date YYYY-MM-DD (default: 27 days before --to)')
     .option('--to <date>', 'end date YYYY-MM-DD (default: today)')
     .addOption(
-      new Option('--source <source>', 'daily load: auto (power, pace, then heart rate per activity), hrtss (heart rate only), or Garmin training load')
+      new Option('--source <source>', 'daily load: auto (power, pace, heart rate, then RPE per activity), hrtss (heart rate only), or Garmin training load')
         .choices([...LOAD_SOURCES])
         .default('auto'),
     )

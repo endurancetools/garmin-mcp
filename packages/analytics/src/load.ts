@@ -4,7 +4,7 @@ import type { Session } from './session.js';
 import type { SportGroup } from './sport.js';
 
 /**
- * Daily stress source: `auto` the per-session hierarchy (power → pace → heart rate, `tss`),
+ * Daily stress source: `auto` the per-session hierarchy (power → pace → heart rate → session RPE, `tss`),
  * `hrtss` heart rate only, or Garmin's per-activity training load (EPOC).
  */
 export const LOAD_SOURCES = ['auto', 'hrtss', 'garmin_load'] as const;
@@ -15,6 +15,12 @@ export type LoadSource = (typeof LOAD_SOURCES)[number];
  * settle. Before that it reads low, so TSB reads deeply negative after a few normal days.
  */
 export const CTL_WARMUP_DAYS = 42;
+/**
+ * Session RPE (Foster) to the scale where an hour at threshold is 100: CR-10 × minutes alone
+ * gives about 360 an hour for an RPE of 6, against about 80 from heart rate, so the product is
+ * multiplied by this. An approximation; `flags.rpe_calibration` of `get_load` overrides it.
+ */
+export const RPE_LOAD_CALIBRATION = 0.23;
 /** ACWR acute and chronic windows (rolling means, days). */
 export const ACWR_ACUTE_DAYS = 7;
 export const ACWR_CHRONIC_DAYS = 28;
@@ -60,6 +66,8 @@ export interface LoadFlags {
   week_jump_pct: number;
   /** Share of Z1 (below LT1) in run and bike time under this percentage (spec 5.5). */
   z1_min_pct: number;
+  /** Multiplier of session RPE × minutes (`load_source: "rpe"`); not a flag threshold, but overridden the same way. */
+  rpe_calibration: number;
 }
 
 export const DEFAULT_LOAD_FLAGS: Readonly<LoadFlags> = {
@@ -71,6 +79,7 @@ export const DEFAULT_LOAD_FLAGS: Readonly<LoadFlags> = {
   tsb_fresh: 15,
   week_jump_pct: 15,
   z1_min_pct: 75,
+  rpe_calibration: RPE_LOAD_CALIBRATION,
 };
 
 export type LoadFlagCode =
