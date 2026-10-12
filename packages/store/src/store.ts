@@ -131,6 +131,87 @@ export interface SyncLogRow {
   stats: Record<string, number> | null;
 }
 
+/** Threshold parameters kept in `thresholds` (heart rates in bpm, power in W, CSS in s/100 m). */
+export const THRESHOLD_PARAMS = [
+  'hrmax',
+  'rhr',
+  'lthr_run',
+  'lthr_bike',
+  'lthr_swim',
+  'lt1_hr',
+  'ftp_w',
+  'run_ftp_w',
+  'vo2max_run',
+  'css_s_per_100m',
+] as const;
+export type ThresholdParam = (typeof THRESHOLD_PARAMS)[number];
+export const THRESHOLD_SOURCES = ['garmin-auto', 'test', 'manual', 'import'] as const;
+export type ThresholdSource = (typeof THRESHOLD_SOURCES)[number];
+
+/** One threshold value, effective from `date` (YYYY-MM-DD) until the next row of the same param. */
+export interface ThresholdRow {
+  id: number;
+  date: string;
+  param: ThresholdParam;
+  value: number;
+  source: ThresholdSource;
+  note: string | null;
+  /** epoch ms */
+  created_at: number;
+}
+
+export type NewThreshold = Omit<ThresholdRow, 'id' | 'note'> & { note?: string | null };
+
+/** An activity from a Garmin Connect CSV export; `id` is `csv-` plus a content hash, so re-imports deduplicate. */
+export interface ImportedActivityInput {
+  id: string;
+  start_time_local: string;
+  type?: string | null;
+  name?: string | null;
+  duration_s?: number | null;
+  moving_s?: number | null;
+  distance_m?: number | null;
+  elevation_gain_m?: number | null;
+  elevation_loss_m?: number | null;
+  avg_hr?: number | null;
+  max_hr?: number | null;
+  avg_power?: number | null;
+  norm_power?: number | null;
+  avg_cadence?: number | null;
+  calories?: number | null;
+  training_effect_aerobic?: number | null;
+  training_effect_anaerobic?: number | null;
+  source_file: string;
+  /** epoch ms */
+  imported_at: number;
+}
+
+export type ImportedActivityRow = { [K in keyof ImportedActivityInput]-?: Exclude<ImportedActivityInput[K], undefined> } & {
+  date: string;
+};
+
+const IMPORTED_ACTIVITY_COLUMNS = [
+  'id',
+  'start_time_local',
+  'type',
+  'name',
+  'duration_s',
+  'moving_s',
+  'distance_m',
+  'elevation_gain_m',
+  'elevation_loss_m',
+  'avg_hr',
+  'max_hr',
+  'avg_power',
+  'norm_power',
+  'avg_cadence',
+  'calories',
+  'training_effect_aerobic',
+  'training_effect_anaerobic',
+  'source_file',
+  'imported_at',
+] as const satisfies readonly (keyof ImportedActivityInput)[];
+
 export interface ActivityQuery {
   from?: IsoDate;
   to?: IsoDate;
@@ -537,6 +618,93 @@ export class Store {
     this.setMeta(`ref:${kind}:fetched_at`, String(at));
   }
 
+  // ------------------------------------------------------------ analytics: thresholds
+
+  /** Threshold history, oldest first (same date: in insertion order); one param or all. */
+  listThresholds(param?: ThresholdParam): ThresholdRow[] {
+    const order = 'ORDER BY param, date, created_at, id';
+    return (
+      param
+        ? this.db.prepare(`SELECT * FROM thresholds WHERE param = ? ${order}`).all(param)
+        : this.db.prepare(`SELECT * FROM thresholds ${order}`).all()
+    ) as ThresholdRow[];
+  }
+
+  /** Adds one row; a row with the same (date, param, source) already stored is left as it is. */
+  addThreshold(row: NewThreshold): { added: boolean } {
+    const res = this.db
+      .prepare(
+        `INSERT INTO thresholds (date, param, value, source, note, created_at) VALUES (@date, @param, @value, @source, @note, @created_at)
+         ON CONFLICT(date, param, source) DO NOTHING`,
+      )
+      .run({ ...row, note: row.note ?? null });
+    return { added: res.changes > 0 };
+  }
+
+  /**
+   * Import: each row overwrites the value and note of the stored row with the same
+   * (date, param, source) (its `created_at` stays), or is added. Rows with other keys stay;
+   * identical rows count as skipped.
+   */
+  replaceThresholds(rows: readonly NewThreshold[]): { added: number; updated: number; skipped: number } {
+    const find = this.db.prepare('SELECT value, note FROM thresholds WHERE date = ? AND param = ? AND source = ?');
+    const insert = this.db.prepare(
+      'INSERT INTO thresholds (date, param, value, source, note, created_at) VALUES (@date, @param, @value, @source, @note, @created_at)',
+    );
+    const update = this.db.prepare(
+      'UPDATE thresholds SET value = @value, note = @note WHERE date = @date AND param = @param AND source = @source',
+    );
+    const out = { added: 0, updated: 0, skipped: 0 };
+    this.db.transaction(() => {
+      for (const r of rows) {
+        const row = { ...r, note: r.note ?? null };
+        const old = find.get(row.date, row.param, row.source) as { value: number; note: string | null } | undefined;
+        if (!old) {
+          insert.run(row);
+          out.added++;
+        } else if (old.value !== row.value || old.note !== row.note) {
+          update.run(row);
+          out.updated++;
+        } else out.skipped++;
+      }
+    })();
+    return out;
+  }
+
+  // ------------------------------------------------------------ analytics: imported activities
+
+  /** Adds or overwrites activities by `id` (a re-import of the same export only updates). */
+  upsertImportedActivities(rows: readonly ImportedActivityInput[]): { added: number; updated: number } {
+    const cols = IMPORTED_ACTIVITY_COLUMNS;
+    const stmt = this.db.prepare(
+      `INSERT INTO imported_activities (${cols.join(', ')}) VALUES (${cols.map((c) => `@${c}`).join(', ')})
+       ON CONFLICT(id) DO UPDATE SET ${cols
+         .filter((c) => c !== 'id')
+         .map((c) => `${c} = excluded.${c}`)
+         .join(', ')}`,
+    );
+    const exists = this.db.prepare('SELECT 1 FROM imported_activities WHERE id = ?');
+    const out = { added: 0, updated: 0 };
+    this.db.transaction(() => {
+      for (const r of rows) {
+        if (exists.get(r.id)) out.updated++;
+        else out.added++;
+        stmt.run(Object.fromEntries(cols.map((c) => [c, r[c] ?? null])));
+      }
+    })();
+    return out;
+  }
+
+  getImportedActivities(from: IsoDate, to: IsoDate): ImportedActivityRow[] {
+    return this.db
+      .prepare('SELECT * FROM imported_activities WHERE date >= ? AND date <= ? ORDER BY start_time_local, id')
+      .all(from, to) as ImportedActivityRow[];
+  }
+
+  countImportedActivities(): number {
+    return (this.db.prepare('SELECT count(*) AS n FROM imported_activities').get() as { n: number }).n;
+  }
+
   // ------------------------------------------------------------ sync log
 
   startSync(scope: string, mode: string, from: string | undefined, to: string | undefined, at: number): number {
@@ -577,6 +745,8 @@ export class Store {
       ['body_composition', 'date'],
       ['workout_schedule', 'date'],
       ['calendar_events', 'date'],
+      ['thresholds', 'date'],
+      ['imported_activities', 'date'],
     ];
     const out = dated.map(([table, col]) => {
       const r = this.db.prepare(`SELECT count(*) AS n, min(${col}) AS a, max(${col}) AS b FROM ${table}`).get() as {
