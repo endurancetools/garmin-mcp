@@ -230,13 +230,14 @@ describe('AnalyticsService thresholds', () => {
     expect(Object.keys(res.data.effective)).toEqual(['lthr_bike']);
     expect(res.data.by_sport).toEqual({
       run: { lthr: 170, lt1: 150 },
-      bike: { lthr: 160, lt1: 143 },
+      // Cycling LT1 from its own LTHR (0.90 × 160), not from the running lt1_hr.
+      bike: { lthr: 160, lt1: 144, lt1_note: expect.stringMatching(/cycling LTHR/) },
       swim: { lthr: 170, lt1: 150, lthr_note: expect.stringMatching(/No lthr_swim/) },
     });
     expect(res.data.hrmax).toEqual({ value: 190 });
     // Before the bike and LT1 tests the history carries them back: the first row applies.
     const early = await analytics.getThresholds({ date: '2026-07-01' });
-    expect(early.data.by_sport.bike).toEqual({ lthr: 160, lt1: 143 });
+    expect(early.data.by_sport.bike).toMatchObject({ lthr: 160, lt1: 144 });
   });
 
   it('set_threshold is visible in get_thresholds and in the load model', async () => {

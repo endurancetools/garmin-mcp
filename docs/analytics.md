@@ -35,12 +35,14 @@ Sources of a row: `garmin-auto` (the Garmin profile), `test` and `manual` (`set_
 
 - **From the Garmin profile.** Before every analytics read, the values of the stored profile are compared with the last `garmin-auto` row of each parameter, and a new row dated with the day the profile was downloaded is added only when a value changed: `hrmax`, `rhr` and `lthr_run` from the default heart rate zones (running LTHR falls back to the user settings), `lthr_bike` from the cycling zones, `ftp_w` and `run_ftp_w` from the power zones, `vo2max_run` from the user settings. The profile comes from the reference sync; when it is not in the cache yet, the first analytics read downloads it (as `get_profile` does, within the daily request limit). With auto fetch off (`GARMIN_AUTO_FETCH=false`, and always in the CLI), a missing profile comes back as a note and `meta.sync_hint` with `scope: "reference"` instead.
 - **Value on a day D.** The row with the latest date on or before D wins, whatever its source. When every row is later than D, the first row is carried back. No row: no value.
-- **LTHR of a sport.** Cycling uses `lthr_bike`, swimming `lthr_swim`, both falling back to `lthr_run` (with a note in `by_sport`); every other sport uses `lthr_run`. Without any LTHR, 170 bpm is used and the answer says so.
-- **LT1.** The `lt1_hr` row, else 0.90 × running LTHR rounded (noted as an approximation to confirm with a test). Cycling LT1 is 7 bpm lower.
+- **LTHR of a sport.** Cycling uses `lthr_bike`, swimming `lthr_swim`, both falling back to `lthr_run` (with a note in `by_sport`); every other sport uses `lthr_run`. Without any LTHR, 0.89 × HRmax (rounded) is used when HRmax is in the history, noted as estimated from HRmax and to be confirmed with a test (HRmax 185 gives 165 bpm); without HRmax either, 170 bpm is used and the answer says so.
+- **LT1.** Cycling and swimming with their own LTHR row (`lthr_bike`, `lthr_swim`) use 0.90 × that LTHR rounded, noted as an approximation; an `lt1_hr` row is a running value and does not replace it. Otherwise: the `lt1_hr` row, else 0.90 × running LTHR rounded (noted as an approximation to confirm with a test), and cycling LT1 is then 7 bpm lower.
 - **Resting heart rate on D.** The mean of Garmin's daily resting heart rate over the 28 days before D (D − 28 to D − 1), to 0.1 bpm, when at least 14 of those days have a value; else the `rhr` row; else 50 bpm with a note.
-- **HRmax.** From the history only (Garmin profile or `set_threshold`). Without a row, `hrmax` has a note and no value: no age formula or activity maximum is guessed. The metrics on this page do not use HRmax.
+- **HRmax.** From the history only (Garmin profile or `set_threshold`). Without a row, `hrmax` has a note and no value: no age formula or activity maximum is guessed. HRmax is used only for the LTHR estimate above.
 
 Each activity is computed with the thresholds that applied on its own date. A new test result therefore changes the metrics from its date on and leaves older activities as they were: hrTSS of different periods describes the load relative to the fitness of that time. Progress shows in CTL, efficiency and the tests themselves, not in hrTSS of the same session repeated months apart.
+
+A row recorded with a past date (`set_threshold` with the day of an earlier test) recomputes every activity from that date on at the next read. The first `garmin-auto` row holds the profile as it was on the day it was first downloaded (usually the first analytics read) and is carried back before that day, so older activities use those values until an older test row is recorded.
 
 ## Sport groups
 
@@ -159,7 +161,7 @@ The HRV rules follow day-to-day HRV-guided training, which compares the night wi
 ## Limits
 
 - Only heart-rate stress is modelled: no power-based TSS for cycling, no session RPE for strength, no aerobic decoupling. `np_w` and `rpe` are returned per activity but not summed.
-- Thresholds that were never tested fall back to defaults or approximations (LTHR 170, resting heart rate 50, LT1 = 0.90 × LTHR); the answer then carries a note. Record real values with `set_threshold`.
+- Thresholds that were never tested fall back to defaults or approximations (LTHR 0.89 × HRmax, or 170 without HRmax; resting heart rate 50; LT1 = 0.90 × LTHR); the answer then carries a note. Record real values with `set_threshold`.
 - Activities without heart rate add no hrTSS.
 - The analytics read the local database only. Missing days and a missing Garmin profile are downloaded as for the other tools (or reported in `meta.sync_hint` with `GARMIN_AUTO_FETCH=false`); the CLI commands never download and print the `garmin sync` command instead.
 
