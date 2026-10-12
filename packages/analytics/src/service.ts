@@ -30,12 +30,16 @@ import {
 import { DEFAULT_READINESS_RULES, readiness, READINESS_WINDOW_DAYS, type Readiness } from './readiness.js';
 import { buildSessions, sessionFromActivity, sessionFromImported, type Session, type SessionInput } from './session.js';
 import {
+  hrmaxOn,
   lt1For,
   lthrFor,
   recordProfileThresholds,
   restingHrOn,
   RHR_MIN_SAMPLES,
   RHR_WINDOW_DAYS,
+  thresholdsBySport,
+  type SportThresholds,
+  type ThresholdSport,
 } from './thresholds.js';
 
 /** Default `get_load` range: the last 28 days. */
@@ -124,8 +128,10 @@ export interface ThresholdsData {
   date: IsoDate;
   effective: Partial<Record<ThresholdParam, EffectiveThreshold>>;
   history?: ThresholdHistoryRow[];
-  /** Set when LT1 has no `lt1_hr` row and is approximated from the running LTHR. */
-  lt1_note?: string;
+  /** LTHR and LT1 per sport on `date` (`lthrFor`/`lt1For`), the contract plan-v2 builds its zones from. */
+  by_sport: Record<ThresholdSport, SportThresholds>;
+  /** HRmax on `date`; without any `hrmax` row only a note. */
+  hrmax: { value?: number; note?: string };
   /** Resting HR the load model uses on `date`: mean of the 28 days before, else the `rhr` row, else 50. */
   rhr_28d: { value: number; samples: number; note?: string };
 }
@@ -387,12 +393,12 @@ export class AnalyticsService {
     const rhr = restingHrOn(daily, rows, date);
     const rhrNote =
       rhr.note ?? (samples < RHR_MIN_SAMPLES ? `Fewer than ${RHR_MIN_SAMPLES} days with a resting HR in the 28 before ${date}; the rhr threshold is used.` : undefined);
-    const lt1 = lt1For(rows, 'run', date);
     const data: ThresholdsData = {
       date,
       effective,
       history: q.history ? rows.filter((r) => !param || r.param === param).map(historyOf) : undefined,
-      lt1_note: rows.some((r) => r.param === 'lt1_hr') ? undefined : `${lt1.note} Running LT1 used on ${date}: ${lt1.value} bpm.`,
+      by_sport: thresholdsBySport(rows, date),
+      hrmax: hrmaxOn(rows, date),
       rhr_28d: { value: rhr.value, samples, note: rhrNote },
     };
     return { data: compact(data), meta: readMeta([ensured], this.garmin.coverage('daily', window.from, window.to, ['daily_summary'])) };
