@@ -19,6 +19,9 @@
       "path": "../mcp-server/tsconfig.lib.json"
     },
     {
+      "path": "../../packages/analytics/tsconfig.lib.json"
+    },
+    {
       "path": "../../packages/domain/tsconfig.lib.json"
     },
     {

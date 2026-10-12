@@ -1,0 +1,24 @@
+{
+  "$schema": "../../node_modules/oxlint/configuration_schema.json",
+  "extends": [
+    "../../.oxlintrc.json"
+  ],
+  "rules": {
+    "no-restricted-imports": [
+      "error",
+      {
+        "patterns": [
+          {
+            "group": [
+              "garmin-mcp-server",
+              "garmin-mcp-server/*",
+              "garmin-mcp-cli",
+              "garmin-mcp-cli/*"
+            ],
+            "message": "Layer violation: garmin-mcp-analytics may only import garmin-mcp-domain, garmin-mcp-store, garmin-mcp-config."
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -47,6 +47,9 @@ importers:
       commander:
         specifier: ^15.0.0
         version: 15.0.0
+      garmin-mcp-analytics:
+        specifier: workspace:*
+        version: link:../../packages/analytics
       garmin-mcp-auth:
         specifier: workspace:*
         version: link:../../packages/auth
@@ -74,6 +77,9 @@ importers:
       '@modelcontextprotocol/server':
         specifier: ^2.3.1
         version: 2.3.1
+      garmin-mcp-analytics:
+        specifier: workspace:*
+        version: link:../../packages/analytics
       garmin-mcp-auth:
         specifier: workspace:*
         version: link:../../packages/auth
@@ -99,6 +105,18 @@ importers:
       '@modelcontextprotocol/sdk':
         specifier: ^1.32.1
         version: 1.32.1(zod@4.6.5)
+
+  packages/analytics:
+    dependencies:
+      garmin-mcp-config:
+        specifier: workspace:*
+        version: link:../config
+      garmin-mcp-domain:
+        specifier: workspace:*
+        version: link:../domain
+      garmin-mcp-store:
+        specifier: workspace:*
+        version: link:../store
 
   packages/auth:
     dependencies:

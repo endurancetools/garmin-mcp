@@ -30,6 +30,7 @@
   ],
   "dependencies": {
     "garmin-mcp-server": "workspace:*",
+    "garmin-mcp-analytics": "workspace:*",
     "garmin-mcp-domain": "workspace:*",
     "garmin-mcp-store": "workspace:*",
     "garmin-mcp-client": "workspace:*",

@@ -13,7 +13,7 @@
               "garmin-mcp-cli",
               "garmin-mcp-cli/*"
             ],
-            "message": "Layer violation: garmin-mcp-server may only import garmin-mcp-domain, garmin-mcp-store, garmin-mcp-client, garmin-mcp-auth, garmin-mcp-config."
+            "message": "Layer violation: garmin-mcp-server may only import garmin-mcp-analytics, garmin-mcp-domain, garmin-mcp-store, garmin-mcp-client, garmin-mcp-auth, garmin-mcp-config."
           }
         ]
       }

@@ -2,7 +2,7 @@
 import nx from '@nx/eslint-plugin';
 import tsParser from '@typescript-eslint/parser';
 
-const libs = ['config', 'auth', 'client', 'store', 'domain'];
+const libs = ['config', 'auth', 'client', 'store', 'domain', 'analytics'];
 const below = (scope) => libs.slice(0, libs.indexOf(scope)).map((s) => `scope:${s}`);
 
 export default [
