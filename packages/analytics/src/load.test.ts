@@ -181,7 +181,7 @@ describe('loadFlags', () => {
     expect(codes(day({ tsb: 25, warming_up: true }))).toEqual([]);
     expect(codes(day({ tsb: -45, acwr: 1.6, monotony: 2.5, warming_up: true }))).toEqual(['acwr_high', 'monotony_high']);
     const sessions = [sess('2026-04-28'), sess('2026-05-04', { duration_s: 4500 })];
-    expect(loadFlags(day({ date: '2026-05-04', tsb: -45, warming_up: true }), sessions).map((f) => f.code)).toEqual(['week_jump']);
+    expect(loadFlags(day({ date: '2026-05-05', tsb: -45, warming_up: true }), sessions).map((f) => f.code)).toEqual(['week_jump']);
   });
 
   it('custom thresholds override the defaults', () => {
@@ -193,34 +193,53 @@ describe('loadFlags', () => {
   });
 
   it('adds the week jump of the day', () => {
-    // 2026-05-04 is a Monday (W19); W18 is 2026-04-27..2026-05-03
+    // last 7 days of 2026-05-05: 2026-04-29..2026-05-05; the 7 before: 2026-04-22..2026-04-28
     const sessions = [sess('2026-04-28'), sess('2026-05-04', { duration_s: 4500 })];
-    expect(loadFlags(day({ date: '2026-05-04' }), sessions).map((f) => f.code)).toEqual(['week_jump']);
+    expect(loadFlags(day({ date: '2026-05-05' }), sessions).map((f) => f.code)).toEqual(['week_jump']);
   });
 });
 
 describe('weekJump', () => {
+  // asOf 2026-05-07: last 7 days 2026-05-01..2026-05-07, the 7 before 2026-04-24..2026-04-30
   const prev = [sess('2026-04-28'), sess('2026-04-30', { sport: 'bike', distance_m: 40_000 })];
 
   it('flags growth of total hours above the limit', () => {
     const cur = [sess('2026-05-05', { sport: 'bike', duration_s: 7200 }), sess('2026-05-06', { sport: 'bike', duration_s: 2000 })];
-    const f = weekJump([...prev, ...cur], '2026-05-06', 15);
+    const f = weekJump([...prev, ...cur], '2026-05-07', 15);
     expect(f?.code).toBe('week_jump');
-    expect(f?.text).toMatch(/2026-W19 vs 2026-W18: hours \+28% \(2 → 2\.6 h\)/);
+    expect(f?.text).toBe('hours +28% (2 → 2.6 h, last 7 days vs the 7 before); above the 15% rule of thumb.');
     expect(f?.text).not.toContain('running km');
   });
 
   it('flags growth of running km even with fewer hours', () => {
     const cur = [sess('2026-05-05', { distance_m: 12_000 })];
-    const f = weekJump([...prev, ...cur], '2026-05-06', 15);
-    expect(f?.text).toMatch(/running km \+20% \(10 → 12 km\)/);
+    const f = weekJump([...prev, ...cur], '2026-05-07', 15);
+    expect(f?.text).toMatch(/^running km \+20% \(10 → 12 km, last 7 days vs the 7 before\)/);
     expect(f?.text).not.toContain('hours');
   });
 
-  it('no flag at or below the limit, after `asOf`, or with an empty previous week', () => {
-    expect(weekJump([...prev, sess('2026-05-05', { duration_s: 8100, distance_m: 11_000 })], '2026-05-06', 15)).toBeUndefined();
-    expect(weekJump([...prev, sess('2026-05-08', { duration_s: 20_000 })], '2026-05-06', 15)).toBeUndefined();
-    expect(weekJump([sess('2026-05-05')], '2026-05-06', 15)).toBeUndefined();
+  it('no flag at or below the limit, after `asOf`, or with an empty reference window', () => {
+    expect(weekJump([...prev, sess('2026-05-05', { duration_s: 8100, distance_m: 11_000 })], '2026-05-07', 15)).toBeUndefined();
+    expect(weekJump([...prev, sess('2026-05-08', { duration_s: 20_000 })], '2026-05-07', 15)).toBeUndefined();
+    expect(weekJump([sess('2026-05-05')], '2026-05-07', 15)).toBeUndefined();
+  });
+
+  it('no flag with less than 1 h in the reference window', () => {
+    const cur = [sess('2026-05-05', { duration_s: 10_800, distance_m: 30_000 })];
+    expect(weekJump([sess('2026-04-28', { duration_s: 3000 }), ...cur], '2026-05-07', 15)).toBeUndefined();
+    expect(weekJump([sess('2026-04-28', { duration_s: 3600 }), ...cur], '2026-05-07', 15)?.code).toBe('week_jump');
+  });
+
+  it('a Tuesday after a heavy week sees the jump that ISO weeks lost', () => {
+    // 2026-05-12 is a Tuesday: its ISO week (W20) has no sessions yet against a heavy W19,
+    // but the last 7 days (2026-05-06..2026-05-12) hold the heavy days against a light 7 before
+    const light = [sess('2026-04-29'), sess('2026-05-01'), sess('2026-05-03')];
+    const heavy = ['2026-05-06', '2026-05-07', '2026-05-08', '2026-05-09', '2026-05-10'].map((d) => sess(d));
+    const tooOld = sess('2026-04-28', { duration_s: 36_000, distance_m: 100_000 });
+    const f = weekJump([tooOld, ...light, ...heavy], '2026-05-12', 15);
+    expect(f?.text).toBe(
+      'hours +67% (3 → 5 h, last 7 days vs the 7 before), running km +67% (30 → 50 km, last 7 days vs the 7 before); above the 15% rule of thumb.',
+    );
   });
 });
 

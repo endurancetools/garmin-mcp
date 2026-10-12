@@ -94,7 +94,7 @@ Rough hrTSS orientation: an hour in zone 1 is about 40-55, an hour in zone 2 abo
 | `monotony_high` | 2.0 | `monotony_high`: 7-day monotony above it |
 | `tsb_low` | −30 | `tsb_low`: TSB below it, deep fatigue |
 | `tsb_fresh` | 15 | `tsb_fresh`: TSB above it, fresh (taper or rest) |
-| `week_jump_pct` | 15 | `week_jump`: total hours or running km of the ISO week of `to` grew by more than this percentage against the week before |
+| `week_jump_pct` | 15 | `week_jump`: total hours or running km of the last 7 days ending on `to` grew by more than this percentage against the 7 days before (rolling windows, not ISO weeks, so a heavy week still shows on the Monday or Tuesday after it); not raised when the 7 days before hold less than 1 h |
 | `z1_min_pct` | 75 | `z1_below_target`: Z1 share of run and bike time below this percentage (see intensity) |
 
 At most one of the three ACWR flags is raised. While `warming_up` is true, `tsb_low` and `tsb_fresh` are not raised: CTL still reads low, so TSB is deeply negative after a few ordinary days. The ACWR, monotony and week-jump flags work as usual.
