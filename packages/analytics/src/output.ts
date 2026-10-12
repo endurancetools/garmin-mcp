@@ -62,6 +62,10 @@ const session = z.looseObject({
   source: str,
 });
 
+const sportThresholds = obj({ lthr: num, lt1: num, lthr_note: str, lt1_note: str });
+/** `by_sport` of `get_thresholds`, also `thresholds_used.by_sport` of `get_load`. */
+const bySport = obj({ run: sportThresholds, bike: sportThresholds, swim: sportThresholds });
+
 export const loadOutput = envelope({
   from: str,
   to: str,
@@ -98,7 +102,7 @@ export const loadOutput = envelope({
     z1_min_pct: num,
     z1_below_target: bool,
   }),
-  thresholds_used: obj({ date: str, lthr_run: num, lthr_bike: num, lthr_swim: num, lt1_run: num, lt1_bike: num, rhr: num }),
+  thresholds_used: obj({ date: str, by_sport: bySport, rhr: num }),
   series: list(z.looseObject(loadDay)),
   activities: list(session),
   efficiency: list(z.looseObject({ period: str, sport: str, n: num, ef_avg: num, ef_max: num, ef_gap_avg: num })),
@@ -125,13 +129,12 @@ export const readinessOutput = envelope({
 
 const effective = { value: num, since: str, source: str, note: str };
 const thresholdRow = z.looseObject({ date: str, param: str, value: num, source: str, note: str });
-const sportThresholds = obj({ lthr: num, lt1: num, lthr_note: str, lt1_note: str });
 
 export const thresholdsOutput = envelope({
   date: str,
   effective: z.record(z.string(), z.looseObject(effective)).optional(),
   history: list(thresholdRow),
-  by_sport: obj({ run: sportThresholds, bike: sportThresholds, swim: sportThresholds }),
+  by_sport: bySport,
   hrmax: obj({ value: num, note: str }),
   rhr_28d: obj({ value: num, samples: num, note: str }),
 });
