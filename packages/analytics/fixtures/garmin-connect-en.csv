@@ -1,0 +1,9 @@
+Activity Type,Date,Favorite,Title,Distance,Calories,Time,Avg HR,Max HR,Aerobic TE,Avg Run Cadence,Avg Run Cadence,Avg Bike Cadence,Avg Bike Cadence,Avg Cadence,Max Cadence,Avg Cadence,Max Cadence,Total Ascent,Total Descent,Avg GAP,Normalized Power® (NP®),Training Stress Score®,Avg Power,Moving Time,Elapsed Time
+Trail Running,2025-03-01 08:15:00,false,Morning trail,15.42,"1,234",01:45:30,148,172,3.4,168,999,--,--,168,190,999,999,"1,050","1,020",6:10,--,--,280,01:40:00,01:50:00
+Pool Swim,2025-03-02 18:00:00,false,Pool,"1,225",350,00:35:10,130,150,2.1,--,--,--,--,--,--,--,--,--,--,--,--,--,--,00:30:00,00:40:00
+Indoor Cycling,2025-03-03 06:30:00,false,Trainer,30.00,600,1:00:00,140,160,3.0,--,--,88,77,88,100,77,100,0,0,--,210,65.2,200,1:00:00,1:00:00
+Strength Training,2025-03-04 19:00:00,false,Gym,--,250,45:00,110,140,1.5,--,--,--,--,--,--,--,--,--,--,--,--,--,--,40:00,50:00
+Incident Detected,2025-03-05 10:00:00,false,Incident,0.00,0,00:00:01,--,--,--,--,--,--,--,--,--,--,--,--,--,--,--,--,--,00:00:01,00:00:01
+Gravel Cycling,2025-03-06 09:00:00,false,Gravel ride, with friends,45.10,"1,100",2:30:00,132,165,3.2,--,--,80,80,80,95,80,95,620,615,--,180,120.4,170,2:20:00,2:45:00
+Running,2025-03-07 07:00:00,false,"Easy, recovery",10.00,650,0:55:00,138,150,2.5,172,172,--,--,172,180,172,180,40,41,5:28,--,--,240,0:54:30,0:56:00
+

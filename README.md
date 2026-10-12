@@ -93,10 +93,19 @@ garmin status [--json]
 garmin sync [--scope ...] [--from --to] [--force] [--pause <s>]   # default: last 7 days
 garmin activities [--from --to --type --limit --json]
 garmin health <metric> [--from --to --week --json]
+garmin load [--from --to] [--source hrtss|garmin_load] [--flags <file.json>] [--series] [--activities] [--efficiency] [--json]
+garmin readiness [date] [--rules <file.json>] [--json]          # GO / MODIFY / REST for the morning
+garmin thresholds [--date --param --history --json]             # LTHR, LT1, HRmax ... in effect, per sport
+garmin thresholds add <date> <param> <value> [--source test|manual] [--note]
+garmin thresholds export [--out <file.csv>]                     # date,param,value,source,note
+garmin thresholds import <file.csv>
+garmin import-activities <file.csv...>                          # Garmin Connect "Activities" CSV exports
 garmin doctor                        # TLS strategy, hosts, permissions, tokens, SQLite driver
 garmin serve [--transport stdio|streamable-http] [--port]
 garmin logout
 ```
+
+`load`, `readiness` and `thresholds` print the same results as the `get_load`, `get_readiness` and `get_thresholds` tools: markdown tables by default, the tool's `{ data, meta }` envelope with `--json`. They read the local database only and never download; missing days come back as a note with the `garmin sync` command that fills them. `import-activities` adds activities from Garmin Connect CSV exports (English or Polish headers) for dates the synced activities do not cover, and `thresholds export`/`import` keep a copy of the threshold history in a CSV file.
 
 Run it with `npx -y garmin-mcp-cli <command>` or install it globally (`npm i -g garmin-mcp-cli`).
 
