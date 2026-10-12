@@ -49,8 +49,15 @@ const ALIASES: Record<Field, readonly string[]> = {
 /** Activity types of the export that are not training (fall detection entries). */
 const SKIPPED_TYPES = new Set(['incident detected', 'wykryto incydent']);
 
-// Polish labels of the export mapped to an English word `sportGroup` knows; first match wins.
+// Polish labels of the export mapped to an English type key `sportGroup` knows; first match wins.
+// Nordic skiing, snowshoeing and rowing come first: `Narciarstwo biegowe` would otherwise hit
+// `bieg` (running) and `Skitury` would stay a `ski…` key of the `hike` group.
 const POLISH_TYPES: readonly (readonly [RegExp, string])[] = [
+  [/skitur|(?:narciarstwo|narty).*(?:turow|poza tras|backcountry)/, 'backcountry_skiing'],
+  [/rakiet\S* śnieżn/, 'snowshoeing'],
+  [/(?:narciarstwo|narty).*łyżw/, 'skate_skiing'],
+  [/(?:narciarstwo|narty).*(?:biegow|klasyczn)|biegówk|bieg narciarsk/, 'cross_country_skiing'],
+  [/wioślar/, 'rowing'],
   [/bieg/, 'running'],
   [/kolarstwo|rower/, 'cycling'],
   [/pływanie/, 'swimming'],
@@ -88,12 +95,15 @@ export function csvDuration(v: string | undefined): number | null {
   return Math.round(s * 10) / 10;
 }
 
-/** Type key from the export's label: `Trail Running` → `trail_running`, Polish labels → the English sport word. */
+/**
+ * Type key from the export's label: Polish labels → an English type key (checked first, so
+ * `Narciarstwo skiturowe` is not read as a `ski…` key), other labels in snake case (`Trail Running` → `trail_running`).
+ */
 export function activityTypeKey(label: string): string {
   const l = label.trim().toLowerCase();
-  const key = l.replaceAll(/[^\p{L}\p{N}]+/gu, '_').replaceAll(/^_|_$/g, '');
-  if (sportGroup(key) !== 'other') return key;
-  return POLISH_TYPES.find(([re]) => re.test(l))?.[1] ?? key;
+  const polish = POLISH_TYPES.find(([re]) => re.test(l))?.[1];
+  if (polish) return polish;
+  return l.replaceAll(/[^\p{L}\p{N}]+/gu, '_').replaceAll(/^_|_$/g, '');
 }
 
 /** `csv-` + the first 10 hex digits of SHA-1 over start, type, distance and duration: a re-import keeps the id. */
