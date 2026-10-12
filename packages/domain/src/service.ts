@@ -10,7 +10,7 @@ import {
   type IsoDate,
   type Logger,
 } from 'garmin-mcp-config';
-import { errInfo, isFresh, TTL, type DailyKind, type DetailKind, type EnsureResult, type ReferenceKind, type Store, type SyncJobProgress, type SyncJobReport, type SyncJobRunner, type SyncScope, type Syncer } from 'garmin-mcp-store';
+import { errInfo, isFresh, SCOPE_DAILY, TTL, type DailyKind, type DetailKind, type EnsureResult, type ReferenceKind, type Store, type SyncJobProgress, type SyncJobReport, type SyncJobRunner, type SyncScope, type Syncer } from 'garmin-mcp-store';
 import fs from 'node:fs';
 import path from 'node:path';
 import { activityBrief, periodActivitySummary } from './activities.js';
@@ -132,6 +132,13 @@ function mergeSource(results: readonly EnsureResult[]): ResponseMeta['source'] {
 }
 
 /** Adds a note after any note the response already carries (sync gap, partial data). */
+/** The narrowest sync scope that fills these daily tables. */
+function dailyScope(kinds: readonly DailyKind[]): SyncScope {
+  const training = kinds.includes('training_status');
+  if (!training) return 'health';
+  return kinds.every((k) => k === 'training_status') ? 'training' : 'all';
+}
+
 function withNote(meta: ResponseMeta, note: string): ResponseMeta {
   return { ...meta, note: meta.note ? `${meta.note} ${note}` : note };
 }
@@ -256,11 +263,25 @@ export class GarminService {
     return this.#gap('activities', first[0], last[1], `activities in ${gaps.map(([a, b]) => (a === b ? a : `${a}..${b}`)).join(', ')}`);
   }
 
-  #periodGap(from: IsoDate, to: IsoDate): Partial<ResponseMeta> {
-    const daily = this.#dailyGap('health', ['daily_summary', 'sleep', 'hrv'], from, to);
+  #periodGap(from: IsoDate, to: IsoDate, kinds: readonly DailyKind[] = SCOPE_DAILY.health): Partial<ResponseMeta> {
+    const daily = this.#dailyGap(dailyScope(kinds), kinds, from, to);
     const acts = this.#activityGap(from, to);
     if (daily.sync_hint && acts.sync_hint) return { ...daily, sync_hint: { scope: 'all', from, to }, note: `${daily.note} Activities are missing too.` };
     return daily.sync_hint ? daily : acts;
+  }
+
+  /**
+   * What the cache lacks for [from, to], as the `meta` fields a read puts in its envelope:
+   * `note` and `sync_hint` when something was never synced and auto fetch is off, nothing
+   * otherwise. The same result `queryHealth` ("daily"), `getActivities` ("activities") and
+   * `getPeriodSummary` ("period") return, for computations that build their own envelope on
+   * top of the service and pass it through `withAutoSync`. `kinds` are the daily tables
+   * checked by "daily" and "period" (default: the health scope); the hint's scope follows them.
+   */
+  coverage(kind: 'daily' | 'activities' | 'period', from: IsoDate, to: IsoDate, kinds: readonly DailyKind[] = SCOPE_DAILY.health): Partial<ResponseMeta> {
+    if (kind === 'activities') return this.#activityGap(from, to);
+    if (kind === 'period') return this.#periodGap(from, to, kinds);
+    return this.#dailyGap(dailyScope(kinds), kinds, from, to);
   }
 
   #referenceGap(kind: ReferenceKind): Partial<ResponseMeta> {
