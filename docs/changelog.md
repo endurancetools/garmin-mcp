@@ -31,7 +31,6 @@ A new package, `garmin-mcp-analytics`, computes training metrics on your machine
 
 ### Release
 
-- Each release also publishes a Docker image, `ghcr.io/endurancetools/garmin-mcp:<version>` and `:latest`, for linux/amd64 and linux/arm64.
 - The Claude Desktop extension `garmin-mcp-<version>.mcpb` is attached to every GitHub release.
 
 ## 0.1.1 (2026-10-12)

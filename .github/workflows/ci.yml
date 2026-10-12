@@ -59,7 +59,6 @@ jobs:
     permissions:
       contents: write
       id-token: write
-      packages: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -71,11 +70,11 @@ jobs:
           registry-url: https://registry.npmjs.org
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      # nx release commits the version bump and changelog; the runner has no git identity of its own.
+      # nx release commits the version bump; the runner has no git identity of its own.
       - run: |
           git config user.name "Marcin Milewicz"
           git config user.email "marcinmilewicz87@gmail.com"
-      # nx release: version bump (conventional commits, or the explicit input), changelog, commit,
+      # nx release: version bump (conventional commits, or the explicit input), commit,
       # tag and GitHub release; --skip-publish because npm is published by hand (below).
       - if: ${{ !inputs.registry_only }}
         run: pnpm nx release ${{ inputs.version }} --skip-publish
@@ -94,32 +93,6 @@ jobs:
           ./scripts/build-mcpb.sh
           gh release edit "v$version" --notes-file release-notes.md
           gh release upload "v$version" "dist/garmin-mcp-$version.mcpb" --clobber
-      # Docker image on GHCR, tagged with the released version (all packages share it: fixed release group)
-      # and latest. Built from the release commit, before the MCP registry steps, so a registry_only re-run
-      # rebuilds and re-pushes the same tag. arm64 runs under QEMU: the image needs no compiler (Dockerfile).
-      - name: Read released version
-        id: version
-        run: echo "version=$(node -p 'require("./apps/cli/package.json").version')" >> "$GITHUB_OUTPUT"
-      - uses: docker/setup-qemu-action@v4
-      - uses: docker/setup-buildx-action@v4
-      - uses: docker/login-action@v4
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: |
-            ghcr.io/${{ github.repository }}:${{ steps.version.outputs.version }}
-            ghcr.io/${{ github.repository }}:latest
-          labels: |
-            org.opencontainers.image.source=https://github.com/${{ github.repository }}
-            org.opencontainers.image.version=${{ steps.version.outputs.version }}
-            org.opencontainers.image.licenses=MIT
       # npm is not published from here: npm creates new packages only through a staged publish
       # approved with 2FA, and granular tokens lose direct publish in 2027, so the maintainer runs
       # `pnpm -r publish` locally (DEVELOPMENT.md, Release). The MCP registry accepts GitHub OIDC, so that
