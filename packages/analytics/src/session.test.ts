@@ -97,6 +97,14 @@ describe('thresholds of the session date and sport', () => {
     expect(sessionMetrics(input({ type: 'strength_training' }), CTX).lthr_used).toBe(170);
   });
 
+  it('nordic and row use the running LTHR and LT1', () => {
+    for (const type of ['cross_country_skiing', 'snowshoeing', 'indoor_rowing']) {
+      expect(sessionMetrics(input({ type }), CTX)).toMatchObject({ lthr_used: 170, lt1_used: 153 });
+    }
+    expect(sessionMetrics(input({ type: 'skate_skiing' }), CTX).sport).toBe('nordic');
+    expect(sessionMetrics(input({ type: 'rowing' }), CTX).sport).toBe('row');
+  });
+
   it('reports the LT1 of the sport next to the LTHR', () => {
     expect(sessionMetrics(input(), CTX).lt1_used).toBe(153);
     expect(sessionMetrics(input({ type: 'road_biking' }), CTX).lt1_used).toBe(144);
@@ -206,6 +214,8 @@ describe('efficiency factors', () => {
 
   it('undefined for other sports and for missing inputs', () => {
     expect(efficiencyFactor('swim', { avg_hr: 140, duration_s: 1800, distance_m: 2000 })).toBeUndefined();
+    expect(efficiencyFactor('nordic', { avg_hr: 140, duration_s: 3600, distance_m: 12_000 })).toBeUndefined();
+    expect(efficiencyFactor('row', { avg_hr: 140, duration_s: 3600, distance_m: 12_000 })).toBeUndefined();
     expect(efficiencyFactor('run', { duration_s: 3000, distance_m: 10_000 })).toBeUndefined();
     expect(efficiencyFactor('run', { avg_hr: 150, duration_s: 3000 })).toBeUndefined();
     expect(efficiencyFactor('run', { avg_hr: 150, distance_m: 10_000 })).toBeUndefined();

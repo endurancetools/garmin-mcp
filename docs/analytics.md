@@ -55,10 +55,12 @@ Thresholds, zones and weekly volume use a coarse sport group from the Garmin act
 | `bike` | `cycling`, `biking`, `bike`, `ride`, `bmx`, `gravel`, `cyclocross` |
 | `swim` | `swim` |
 | `strength` | `strength`, `cardio`, `hiit`, `yoga`, `pilates`, `stretch`, `mobility`, `breath` |
-| `hike` | `hik`, `walk`, `mountaineer`, `climb`, `ski`, `snowshoe` |
+| `nordic` | `cross_country`, `skate_ski`, `classic_ski`, `backcountry_ski`, `snowshoe` |
+| `row` | `rowing` |
+| `hike` | `hik`, `walk`, `mountaineer`, `climb`, `ski` |
 | `other` | everything else, and activities without a type |
 
-So `trail_running` is `run`, `e_bike_fitness` is `bike` and `skate_skiing` is `hike`.
+So `trail_running` is `run`, `e_bike_fitness` is `bike`, `skate_skiing` and `snowshoeing` are `nordic`, `indoor_rowing` is `row`, and `resort_skiing` (downhill) is `hike`. `nordic` and `row` have no threshold of their own: they use the running LTHR and LT1.
 
 ## Per-activity metrics
 
@@ -115,16 +117,16 @@ Each activity gets one training stress `tss` from the first candidate that gives
 | `tsb_low` | −30 | `tsb_low`: TSB below it, deep fatigue |
 | `tsb_fresh` | 15 | `tsb_fresh`: TSB above it, fresh (taper or rest) |
 | `week_jump_pct` | 15 | `week_jump`: total hours or running km of the last 7 days ending on `to` grew by more than this percentage against the 7 days before (rolling windows, not ISO weeks, so a heavy week still shows on the Monday or Tuesday after it); not raised when the 7 days before hold less than 1 h |
-| `z1_min_pct` | 75 | `z1_below_target`: Z1 share of run and bike time below this percentage (see intensity) |
+| `z1_min_pct` | 75 | `z1_below_target`: Z1 share of run, bike, nordic and row time below this percentage (see intensity) |
 | `rpe_calibration` | 0.23 | no flag: the multiplier of session RPE × minutes for activities with `load_source: "rpe"` (load sources above) |
 
 At most one of the three ACWR flags is raised. While `warming_up` is true, `tsb_low` and `tsb_fresh` are not raised: CTL still reads low, so TSB is deeply negative after a few ordinary days. The ACWR, monotony and week-jump flags work as usual.
 
 ## Intensity distribution
 
-`intensity` splits run and bike time of the last 28 days of the range (the whole range when shorter) into three zones (Seiler 2010): Z1 below LT1, Z2 between LT1 and LTHR, Z3 above LTHR.
+`intensity` splits the time of the endurance groups `run`, `bike`, `nordic` and `row` in the last 28 days of the range (the whole range when shorter) into three zones (Seiler 2010): Z1 below LT1, Z2 between LT1 and LTHR, Z3 above LTHR. Nordic skiing and rowing are judged against the running LT1 and LTHR, which suits whole-body sports with a similar heart rate response; their efficiency factor is not computed (EF stays running and cycling only). Swimming, strength, hiking and other activities are left out.
 
-- An activity with Garmin's time in HR zones: each Garmin zone goes to Z1, Z2 or Z3 by its heart rate range in the Garmin profile (`heartRateZones`: the zone floors, zone 5 up to the HRmax Garmin uses; cycling uses the CYCLING zones when the profile has them, else the default ones) against LT1 and LTHR of the activity's sport and date. A zone whose ceiling is at or below LT1 is Z1, a zone whose floor is at or above LTHR is Z3, the one in between is Z2, and a zone that crosses a threshold is split in proportion to its width in bpm. Example: floors 94/134/154/163/174, HRmax 185, LT1 151, LTHR 168: zone 2 (134-154) is 17/20 Z1 and 3/20 Z2, zone 3 is Z2, zone 4 (163-174) is 5/11 Z2 and 6/11 Z3, zone 5 is Z3.
+- An activity with Garmin's time in HR zones: each Garmin zone goes to Z1, Z2 or Z3 by its heart rate range in the Garmin profile (`heartRateZones`: the zone floors, zone 5 up to the HRmax Garmin uses; cycling uses the CYCLING zones when the profile has them, every other group the default ones) against LT1 and LTHR of the activity's sport and date. A zone whose ceiling is at or below LT1 is Z1, a zone whose floor is at or above LTHR is Z3, the one in between is Z2, and a zone that crosses a threshold is split in proportion to its width in bpm. Example: floors 94/134/154/163/174, HRmax 185, LT1 151, LTHR 168: zone 2 (134-154) is 17/20 Z1 and 3/20 Z2, zone 3 is Z2, zone 4 (163-174) is 5/11 Z2 and 6/11 Z3, zone 5 is Z3.
 - Without zone bounds in the profile (no profile yet, or a profile without them), Z1 = zones 1-2, Z2 = zone 3, Z3 = zones 4-5, and `meta.note` says so.
 - An activity without zones: its whole duration goes to the zone of its average heart rate (below LT1, below LTHR, else Z3), with LT1 and LTHR of its sport and date.
 - Activities with neither are skipped.

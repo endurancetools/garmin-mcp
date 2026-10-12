@@ -64,7 +64,7 @@ export interface LoadFlags {
   tsb_fresh: number;
   /** Week-to-week growth of total hours or running km above this percentage. */
   week_jump_pct: number;
-  /** Share of Z1 (below LT1) in run and bike time under this percentage (spec 5.5). */
+  /** Share of Z1 (below LT1) in run, bike, nordic and row time under this percentage (spec 5.5). */
   z1_min_pct: number;
   /** Multiplier of session RPE × minutes (`load_source: "rpe"`); not a flag threshold, but overridden the same way. */
   rpe_calibration: number;

@@ -295,7 +295,7 @@ describe('garmin load', () => {
     expect(stdout).toContain('| date | tss | ctl | atl | tsb | acwr | monotony | strain |');
     expect(stdout).toMatch(/\| 2026-10-08 \| 69\.4 \| \d+(\.\d)? \|/);
     expect(stdout).toContain('| 2026-W41 | run | 4 | 4 | 40 |');
-    expect(stdout).toContain('## Intensity 2026-09-11..2026-10-08 (run and bike)');
+    expect(stdout).toContain('## Intensity 2026-09-11..2026-10-08 (run, bike, nordic, row)');
     expect(stdout).toContain('| bike | 170 | 146 |  |  | No lthr_bike in the threshold history; the running LTHR is used. LT1 approximated');
     expect(stdout).toContain('\n> ');
     expect(stdout).not.toContain('## Series');

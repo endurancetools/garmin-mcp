@@ -130,10 +130,22 @@ describe('intensityDistribution', () => {
     expect(d.z1_min).toBe(60);
   });
 
-  it('only run and bike inside the range; skips sessions with neither zones nor HR', () => {
+  it('counts nordic and row with the DEFAULT zone bounds and the running LT1 and LTHR', () => {
+    // zone 4 (163–174) crosses LTHR 168: 5/11 Z2, 6/11 Z3, as for running
+    const nordic = sess('2026-05-04', { sport: 'nordic', lthr_used: 168, ...zones(0, 0, 0, 660, 0) });
+    // avg HR 148: below the running LT1 151 (cycling would use 144 and give Z2)
+    const row = sess('2026-05-05', { sport: 'row', lthr_used: 168, avg_hr: 148, duration_s: 1800 });
+    const d = intensityDistribution([nordic, row], THR_P, '2026-05-01', '2026-05-31', 75, FLOORS);
+    expect(minutes(d)).toEqual([30, 5, 6]);
+    expect(d).toMatchObject({ sessions_with_zones: 1, sessions_by_avg_hr: 1 });
+  });
+
+  it('only run, bike, nordic and row inside the range; skips sessions with neither zones nor HR', () => {
     const d = intensityDistribution(
       [
         sess('2026-05-04', { sport: 'swim', avg_hr: 120 }),
+        sess('2026-05-04', { sport: 'hike', avg_hr: 120 }),
+        sess('2026-05-04', { sport: 'other', avg_hr: 120 }),
         sess('2026-05-04', { sport: 'strength', ...zones(600, 0, 0, 0, 0) }),
         sess('2026-04-30', { avg_hr: 120 }),
         sess('2026-06-01', { avg_hr: 120 }),

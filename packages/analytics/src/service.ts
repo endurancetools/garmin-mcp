@@ -81,7 +81,7 @@ export interface LoadData {
   flags: LoadFlag[];
   flags_used: LoadFlags;
   weeks: WeekSport[];
-  /** Run and bike intensity of the last 28 days of the range. */
+  /** Run, bike, nordic and row intensity of the last 28 days of the range. */
   intensity: IntensityDistribution;
   thresholds_used: ThresholdsUsed;
   series?: LoadDay[];
@@ -297,7 +297,7 @@ export class AnalyticsService {
     if (intensity.z1_below_target) {
       flagList.push({
         code: 'z1_below_target',
-        text: `Z1 is ${intensity.z1_pct}% of run and bike time (${intensity.from}..${intensity.to}), below ${flags.z1_min_pct}%: more easy volume below LT1 is needed for a polarized or pyramidal distribution.`,
+        text: `Z1 is ${intensity.z1_pct}% of run, bike, nordic and row time (${intensity.from}..${intensity.to}), below ${flags.z1_min_pct}%: more easy volume below LT1 is needed for a polarized or pyramidal distribution.`,
       });
     }
 
