@@ -1,5 +1,6 @@
 import { addDays, eachDay } from 'garmin-mcp-config';
 import { describe, expect, it } from 'vitest';
+import { loadOn, loadSeries } from './load.js';
 import {
   DEFAULT_READINESS_RULES,
   READINESS_SIGNALS,
@@ -68,7 +69,7 @@ function input(over: {
     hrv: [...history.map((d) => hrvRow(d)), hrvRow(D, over.hrv)],
     sleep: [sleepRow(over.sleep)],
     training: [over.training ?? trainingRow(70)],
-    load: over.load === null ? undefined : (over.load ?? { date: D, tsb: 0, acwr: 1, monotony: 1 }),
+    load: over.load === null ? undefined : (over.load ?? { date: D, tsb: 0, acwr: 1, monotony: 1, warming_up: false }),
     rules: over.rules,
   };
 }
@@ -203,7 +204,7 @@ describe('readiness', () => {
 
   describe('load', () => {
     it('red above acwr_red or below tsb_red, yellow above acwr_yellow or below tsb_yellow', () => {
-      const at = (acwr: number, tsb: number) => rating(input({ load: { date: D, acwr, tsb, monotony: 1 } }), 'load');
+      const at = (acwr: number, tsb: number) => rating(input({ load: { date: D, acwr, tsb, monotony: 1, warming_up: false } }), 'load');
       expect(at(1.51, 0)).toBe('red');
       expect(at(1, -31)).toBe('red');
       expect(at(1.31, 0)).toBe('yellow');
@@ -212,6 +213,28 @@ describe('readiness', () => {
     });
     it('unknown without a load point', () => {
       expect(rating(input({ load: null }), 'load')).toBe('unknown');
+    });
+    it('unknown while the model warms up: 7 days of 60 a day is not yellow or red, 43 days is rated', () => {
+      const at = (days: number) => {
+        const start = addDays(D, -(days - 1));
+        const sessions = eachDay(start, D).map((date) => ({ date, hrtss: 60 }));
+        const point = loadOn(loadSeries(sessions, 'hrtss', D), D)!;
+        return { point, signal: signal({ ...input({ load: point }), load_start: start }, 'load') };
+      };
+      const week = at(7);
+      expect(week.point.warming_up).toBe(true);
+      // without the guard the unsettled TSB would rate it
+      expect(week.point.tsb).toBeLessThan(DEFAULT_READINESS_RULES.tsb_yellow);
+      expect(week.signal).toEqual({ name: 'load', rating: 'unknown', value: {}, detail: 'load model warming up (6 of 42 days)' });
+      expect(readiness({ ...input({ load: week.point }), load_start: addDays(D, -6) }).decision).toBe('GO');
+      const settled = at(43);
+      expect(settled.point.warming_up).toBe(false);
+      expect(settled.signal.rating).not.toBe('unknown');
+      expect(settled.signal.value).toMatchObject({ date: D });
+    });
+    it('warming up without the series start: no day count in the detail', () => {
+      const s = signal(input({ load: { date: D, tsb: -40, acwr: 1, monotony: 1, warming_up: true } }), 'load');
+      expect(s).toMatchObject({ rating: 'unknown', detail: 'load model warming up (fewer than 42 days)' });
     });
   });
 

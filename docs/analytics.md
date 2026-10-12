@@ -75,7 +75,7 @@ Rough hrTSS orientation: an hour in zone 1 is about 40-55, an hour in zone 2 abo
 ## Load model
 
 - **Daily stress.** `source: "hrtss"` (default) sums the hrTSS of the day's activities; `source: "garmin_load"` sums Garmin's per-activity training load (activities without one, including imported ones, count 0). The series runs from the first stored activity to the later of `to` and today; days without activities are 0. The full history is always used, whatever `from` is.
-- **CTL, ATL, TSB.** Exponentially weighted averages of the daily stress over 42 days (CTL, fitness) and 7 days (ATL, fatigue), with `k = 1 − e^(−1/N)`; TSB (form) is CTL − ATL at the start of the day (Banister 1991; Allen, Coggan, McGregor 2019). CTL needs about 42 days of history before `from` to settle; with less, the answer says so.
+- **CTL, ATL, TSB.** Exponentially weighted averages of the daily stress over 42 days (CTL, fitness) and 7 days (ATL, fatigue), with `k = 1 − e^(−1/N)`; TSB (form) is CTL − ATL at the start of the day (Banister 1991; Allen, Coggan, McGregor 2019). CTL needs about 42 days of history before `from` to settle; with less, the answer says so. Every day of the series, `latest` included, carries `warming_up`: true while fewer than 42 days have passed since the first activity.
 - **ACWR.** Mean daily stress of the last 7 days divided by the mean of the last 28 days, both rolling averages ending on the day, windows cut at the start of the series; 0 when the 28-day mean is 0. 2 places.
 - **Monotony and strain.** Monotony = mean / sample standard deviation of the last 7 days (0 when the deviation is 0 or there are fewer than 2 days); strain = sum of the last 7 days × monotony (Foster 1998). 2 and 0 places.
 - **Weeks.** Per ISO week and sport group: sessions, hours, km, elevation gain, hrTSS, Garmin load, and hours in Garmin's HR zones 1-2, 3 and 4-5 (activities with zones only).
@@ -95,7 +95,7 @@ Rough hrTSS orientation: an hour in zone 1 is about 40-55, an hour in zone 2 abo
 | `week_jump_pct` | 15 | `week_jump`: total hours or running km of the ISO week of `to` grew by more than this percentage against the week before |
 | `z1_min_pct` | 75 | `z1_below_target`: Z1 share of run and bike time below this percentage (see intensity) |
 
-At most one of the three ACWR flags is raised.
+At most one of the three ACWR flags is raised. While `warming_up` is true, `tsb_low` and `tsb_fresh` are not raised: CTL still reads low, so TSB is deeply negative after a few ordinary days. The ACWR, monotony and week-jump flags work as usual.
 
 ## Intensity distribution
 
@@ -125,7 +125,7 @@ A rising EF at the same heart rate means more speed or power per beat, i.e. bett
 | `body_battery` | Body Battery high of D | | below `bb_red` | below `bb_yellow` |
 | `training_readiness` | Garmin Training Readiness of D: the newest morning (after wake-up) value, else the newest of the day; with level and recovery time | | below `readiness_red` | below `readiness_yellow` |
 | `stress` | average stress of D − 1 (D itself is still running) | | never | above `stress_yellow` |
-| `load` | TSB and ACWR of the load model on D | | ACWR above `acwr_red` or TSB below `tsb_red` | ACWR above `acwr_yellow` or TSB below `tsb_yellow` |
+| `load` | TSB and ACWR of the load model on D; `unknown` while the model warms up (fewer than 42 days since the first activity, detail "load model warming up (N of 42 days)") | | ACWR above `acwr_red` or TSB below `tsb_red` | ACWR above `acwr_yellow` or TSB below `tsb_yellow` |
 
 Decision: at least `decision_red_min` red signals is **REST**; else at least `decision_yellow_min` yellow signals is **MODIFY**; else **GO**. `partial` is true when D is today or later, or when a row of D was downloaded before the day had ended, so a later sync may change the answer. `recommendation` gives short advice for the decision.
 
@@ -153,7 +153,8 @@ The HRV rules follow day-to-day HRV-guided training, which compares the night wi
 - **ACWR** detects a sudden jump in load against what you are used to; it does not predict injuries (Gabbett 2016; Hulin et al. 2016; Impellizzeri et al. 2020). After a break of more than 10 days the chronic mean is low and the ratio rises artificially on the first sessions back.
 - **hrTSS** comes from heart rate, so it under-rates strength work and short intervals (heart rate lags behind), and over-rates sessions in the heat (cardiac drift). Load measured internally and externally answer different questions (Impellizzeri, Marcora, Coutts 2019).
 - **Monotony**: a rest day with stress 0 lowers it strongly, which is intended: varying hard and easy days is the point. Read **strain** as a trend; a jump of more than 30 % week to week deserves attention.
-- **Readiness**: in the first four weeks without a 28-day history, the resting heart rate and HRV comparisons are weaker. On a race day, the decision does not change the race plan.
+- **TSB in the first 42 days** of the history (`warming_up`) is not fatigue: CTL starts at 0 and climbs slowly, so a week of ordinary training already gives a TSB of −25 or lower. The TSB flags and the `load` signal of the readiness stay off until the model has settled.
+- **Readiness**: in the first four weeks without a 28-day history, the resting heart rate and HRV comparisons are weaker; in the first 42 days the `load` signal is `unknown`. On a race day, the decision does not change the race plan.
 
 ## Limits
 
