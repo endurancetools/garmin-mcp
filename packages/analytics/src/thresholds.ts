@@ -36,7 +36,24 @@ export const PROFILE_THRESHOLD_PARAMS = [
   'ftp_w',
   'run_ftp_w',
   'vo2max_run',
+  'run_threshold_pace_s_per_km',
 ] as const satisfies readonly ThresholdParam[];
+
+/** Plausible running threshold pace (s/km): 2:00 to 15:00 per km; a profile value outside is not recorded. */
+export const THRESHOLD_PACE_RANGE_S_PER_KM = [120, 900] as const;
+
+/**
+ * Running threshold pace (s/km, whole seconds) from Garmin's `userData.lactateThresholdSpeed`.
+ * Garmin keeps it in units of 10 m/s (0.3806 is 3.806 m/s, 4:23 per km), so a value below 1 is
+ * scaled by 10 and a value of 1 or more is taken as m/s; a pace outside
+ * {@link THRESHOLD_PACE_RANGE_S_PER_KM} gives `undefined`.
+ */
+export function thresholdPaceFromSpeed(speed: number | undefined): number | undefined {
+  if (speed === undefined || !(speed > 0)) return undefined;
+  const pace = Math.round(1000 / (speed < 1 ? speed * 10 : speed));
+  const [min, max] = THRESHOLD_PACE_RANGE_S_PER_KM;
+  return pace >= min && pace <= max ? pace : undefined;
+}
 
 type Obj = Record<string, unknown>;
 
@@ -47,8 +64,8 @@ const bySport = (list: unknown, sport: string): Obj | undefined =>
 
 /**
  * Threshold values in a stored Garmin profile (`profile.raw`): HR zones of the DEFAULT and
- * CYCLING sport, power zones of CYCLING and RUNNING, and `settings.userData`. Missing or
- * non-numeric values are left out.
+ * CYCLING sport, power zones of CYCLING and RUNNING, and `settings.userData` (VO2max, running
+ * threshold pace). Missing or non-numeric values are left out.
  */
 export function profileThresholds(profileRaw: unknown): { param: ThresholdParam; value: number }[] {
   const p = obj(profileRaw);
@@ -65,6 +82,7 @@ export function profileThresholds(profileRaw: unknown): { param: ThresholdParam;
     ftp_w: num(pzBike?.['functionalThresholdPower']),
     run_ftp_w: num(pzRun?.['functionalThresholdPower']),
     vo2max_run: num(user?.['vo2MaxRunning']),
+    run_threshold_pace_s_per_km: thresholdPaceFromSpeed(num(user?.['lactateThresholdSpeed'])),
   };
   return PROFILE_THRESHOLD_PARAMS.flatMap((param) => {
     const value = values[param];
@@ -219,6 +237,10 @@ export interface SportThresholds {
   lt1: number;
   lthr_note?: string;
   lt1_note?: string;
+  /** `thresholds_used` of `get_load` only: cycling FTP (W) of the power candidate, when in the history. */
+  ftp?: number;
+  /** `thresholds_used` of `get_load` only: running threshold pace (s/km) of the pace candidate, when in the history. */
+  threshold_pace?: number;
 }
 
 /**

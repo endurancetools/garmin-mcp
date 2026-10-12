@@ -131,7 +131,7 @@ export interface SyncLogRow {
   stats: Record<string, number> | null;
 }
 
-/** Threshold parameters kept in `thresholds` (heart rates in bpm, power in W, CSS in s/100 m). */
+/** Threshold parameters kept in `thresholds` (heart rates in bpm, power in W, CSS in s/100 m, running threshold pace in s/km). */
 export const THRESHOLD_PARAMS = [
   'hrmax',
   'rhr',
@@ -143,6 +143,7 @@ export const THRESHOLD_PARAMS = [
   'run_ftp_w',
   'vo2max_run',
   'css_s_per_100m',
+  'run_threshold_pace_s_per_km',
 ] as const;
 export type ThresholdParam = (typeof THRESHOLD_PARAMS)[number];
 export const THRESHOLD_SOURCES = ['garmin-auto', 'test', 'manual', 'import'] as const;

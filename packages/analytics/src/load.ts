@@ -3,10 +3,12 @@ import { round, trainingLoadSeries } from 'garmin-mcp-domain';
 import type { Session } from './session.js';
 import type { SportGroup } from './sport.js';
 
-/** Daily stress source: own hrTSS, or Garmin's per-activity training load (EPOC). */
-export type LoadSource = 'hrtss' | 'garmin_load';
-
-export const LOAD_SOURCES: readonly LoadSource[] = ['hrtss', 'garmin_load'];
+/**
+ * Daily stress source: `auto` the per-session hierarchy (power → pace → heart rate, `tss`),
+ * `hrtss` heart rate only, or Garmin's per-activity training load (EPOC).
+ */
+export const LOAD_SOURCES = ['auto', 'hrtss', 'garmin_load'] as const;
+export type LoadSource = (typeof LOAD_SOURCES)[number];
 
 /**
  * Warm-up of the load model: CTL (EWMA 42 days) needs about this many days of history to
@@ -24,7 +26,7 @@ export const ACWR_LOW_MIN_CTL = 20;
 /** One day of the load model. */
 export interface LoadDay {
   date: IsoDate;
-  /** Daily stress (sum of hrTSS or Garmin load), 1 place. */
+  /** Daily stress (sum of TSS, hrTSS or Garmin load), 1 place. */
   tss: number;
   ctl: number;
   atl: number;
@@ -96,11 +98,14 @@ export function resolveLoadFlags(overrides?: Partial<Record<keyof LoadFlags, num
   return out;
 }
 
-/** Daily stress per date: Σ hrTSS, or Σ Garmin load (sessions without one count 0). */
-export function dailyTss(sessions: readonly Pick<Session, 'date' | 'hrtss' | 'g_load'>[], source: LoadSource): Map<IsoDate, number> {
+/** The fields of a session the load model reads. */
+export type LoadSession = Pick<Session, 'date' | 'tss' | 'hrtss' | 'g_load'>;
+
+/** Daily stress per date: Σ TSS (`auto`), Σ hrTSS, or Σ Garmin load; a session without that value counts 0. */
+export function dailyTss(sessions: readonly LoadSession[], source: LoadSource): Map<IsoDate, number> {
   const out = new Map<IsoDate, number>();
   for (const s of sessions) {
-    const v = source === 'hrtss' ? s.hrtss : (s.g_load ?? 0);
+    const v = source === 'auto' ? (s.tss ?? 0) : source === 'hrtss' ? s.hrtss : (s.g_load ?? 0);
     out.set(s.date, (out.get(s.date) ?? 0) + v);
   }
   return out;
@@ -125,7 +130,7 @@ const SD_EPSILON = 1e-9;
  * same daily stress. `warming_up` marks the first `CTL_WARMUP_DAYS` days. Empty without sessions.
  */
 export function loadSeries(
-  sessions: readonly Pick<Session, 'date' | 'hrtss' | 'g_load'>[],
+  sessions: readonly LoadSession[],
   source: LoadSource,
   to: IsoDate,
 ): LoadDay[] {
@@ -176,6 +181,8 @@ export interface WeekSport {
   hours: number;
   km: number;
   elev_m: number;
+  /** Σ session TSS of the hierarchy (`tss`; sessions without load count 0). */
+  tss: number;
   hrtss: number;
   g_load: number;
   /** Hours in HR zones 1–2, 3 and 4–5 (sessions with Garmin zones only). */
@@ -196,6 +203,7 @@ export function weeklyBySport(sessions: readonly Session[]): WeekSport[] {
       hours: 0,
       km: 0,
       elev_m: 0,
+      tss: 0,
       hrtss: 0,
       g_load: 0,
       z12_h: 0,
@@ -206,6 +214,7 @@ export function weeklyBySport(sessions: readonly Session[]): WeekSport[] {
     w.hours += (s.duration_s ?? 0) / 3600;
     w.km += (s.distance_m ?? 0) / 1000;
     w.elev_m += s.elev_gain_m ?? 0;
+    w.tss += s.tss ?? 0;
     w.hrtss += s.hrtss;
     w.g_load += s.g_load ?? 0;
     w.z12_h += ((s.z1_s ?? 0) + (s.z2_s ?? 0)) / 3600;
@@ -219,6 +228,7 @@ export function weeklyBySport(sessions: readonly Session[]): WeekSport[] {
       hours: round(w.hours, 2) ?? 0,
       km: round(w.km, 1) ?? 0,
       elev_m: round(w.elev_m, 0) ?? 0,
+      tss: round(w.tss, 0) ?? 0,
       hrtss: round(w.hrtss, 0) ?? 0,
       g_load: round(w.g_load, 0) ?? 0,
       z12_h: round(w.z12_h, 2) ?? 0,

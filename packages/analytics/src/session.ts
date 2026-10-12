@@ -2,7 +2,10 @@ import { isoWeek, type IsoDate } from 'garmin-mcp-config';
 import { round } from 'garmin-mcp-domain';
 import type { ActivityRow, ImportedActivityRow } from 'garmin-mcp-store';
 import { sportGroup, type SportGroup } from './sport.js';
-import { lt1For, lthrFor, restingHrOn, type ThresholdPoint } from './thresholds.js';
+import { lt1For, lthrFor, restingHrOn, thresholdOn, type ThresholdPoint } from './thresholds.js';
+
+/** Where the training stress of a session comes from (first positive candidate wins); `none` = no load. */
+export type SessionLoadSource = 'power' | 'pace' | 'hr' | 'none';
 
 /** One activity, normalized from an `activities` row or an `imported_activities` row. */
 export interface SessionInput {
@@ -62,7 +65,12 @@ export interface Session {
   anaerobic_te?: number;
   rpe?: number;
   feel?: number;
-  if: number;
+  /** Training stress of the session from `load_source`, 1 place; absent (never 0) when no candidate is positive. */
+  tss?: number;
+  /** Intensity factor of `load_source` (NP/FTP, GAP/threshold speed or HR reserve), 3 places; absent with `none`. */
+  if?: number;
+  load_source: SessionLoadSource;
+  /** The heart-rate candidate (0 without heart rate); `get_load` with `source: "hrtss"` sums it. */
   hrtss: number;
   ef?: number;
   ef_gap?: number;
@@ -169,6 +177,56 @@ export function hrTss(durationS: number | undefined, ifValue: number): number {
   return ((durationS ?? 0) / 3600) * ifValue * ifValue * 100;
 }
 
+/** One load candidate: stress in the scale where an hour at threshold is 100, and its intensity factor (both unrounded). */
+export interface LoadCandidate {
+  source: Exclude<SessionLoadSource, 'none'>;
+  tss: number;
+  if: number;
+}
+
+/** Stress of a session at a constant intensity factor: hours × IF² × 100 (TSS, rTSS and hrTSS alike). */
+const stress = (durationS: number, ifValue: number): number => (durationS / 3600) * ifValue * ifValue * 100;
+
+/** Power candidate (Coggan): IF = NP / FTP, TSS = h × IF² × 100; `undefined` without NP, FTP or duration. */
+export function powerCandidate(npW: number | undefined, ftpW: number | undefined, durationS: number | undefined): LoadCandidate | undefined {
+  if (!(npW !== undefined && npW > 0 && ftpW !== undefined && ftpW > 0 && durationS !== undefined && durationS > 0)) return undefined;
+  const ifValue = npW / ftpW;
+  return { source: 'power', tss: stress(durationS, ifValue), if: ifValue };
+}
+
+/**
+ * Pace candidate (McGregor's rTSS on Garmin's average grade adjusted speed, not a normalized
+ * graded pace): IF = GAP / (1000 / threshold pace), rTSS = h × IF² × 100; `undefined` without
+ * GAP, threshold pace or duration.
+ */
+export function paceCandidate(gapMps: number | undefined, thresholdPaceSPerKm: number | undefined, durationS: number | undefined): LoadCandidate | undefined {
+  if (!(gapMps !== undefined && gapMps > 0 && thresholdPaceSPerKm !== undefined && thresholdPaceSPerKm > 0 && durationS !== undefined && durationS > 0)) {
+    return undefined;
+  }
+  const ifValue = gapMps / (1000 / thresholdPaceSPerKm);
+  return { source: 'pace', tss: stress(durationS, ifValue), if: ifValue };
+}
+
+/** The resolved load of a session: rounded `tss` and `if` of the winning candidate, or `none`. */
+export interface ResolvedLoad {
+  tss?: number;
+  if?: number;
+  load_source: SessionLoadSource;
+}
+
+/**
+ * The first candidate whose stress, rounded to 0.1, is a positive finite number: TSS 1 place,
+ * IF 3 places. Zero, negative and NaN are no load, so a power meter that read 0 does not hide
+ * the heart-rate stress of the ride; with no candidate left the load is absent, never 0.
+ */
+export function resolveLoad(candidates: readonly (LoadCandidate | undefined)[]): ResolvedLoad {
+  for (const c of candidates) {
+    const tss = c && Number.isFinite(c.tss) ? round(c.tss, 1) : undefined;
+    if (c && tss !== undefined && tss > 0) return { tss, if: round(c.if, 3), load_source: c.source };
+  }
+  return { load_source: 'none' };
+}
+
 /**
  * Efficiency factor: running speed in m/min per beat, cycling normalized power per beat;
  * `undefined` for other sports or missing inputs.
@@ -211,10 +269,17 @@ export interface SessionContext {
 /** Optional note sink: each default or approximation used is reported once. */
 export type NoteSink = (note: string) => void;
 
+export const NO_FTP_NOTE = 'Cycling activities with normalized power but no ftp_w in the threshold history use hrTSS; record FTP with set_threshold.';
+export const NO_THRESHOLD_PACE_NOTE =
+  'Running activities with a grade adjusted speed but no run_threshold_pace_s_per_km in the threshold history use hrTSS; record the threshold pace with set_threshold.';
+
 /**
- * Metrics of one session with the thresholds valid on its date (LTHR and LT1 of its sport,
- * rolling resting HR). LT1 notes are not reported: `get_load` takes them from `thresholds_used`. Rounding: IF, EF, EF-GAP, GAP 3 places; hrTSS, Garmin load, TE, RHR 1 place;
- * durations, distances, HR, power, cadence, calories whole numbers.
+ * Metrics of one session with the thresholds valid on its date (LTHR, LT1, FTP and threshold
+ * pace of its sport, rolling resting HR). Load candidates in order: `power` (bike with NP and
+ * `ftp_w`), `pace` (run with GAP and `run_threshold_pace_s_per_km`), `hr` (hrTSS); the first
+ * positive one gives `tss`, `if` and `load_source`. LT1 notes are not reported: `get_load`
+ * takes them from `thresholds_used`. Rounding: IF, EF, EF-GAP, GAP 3 places; TSS, hrTSS,
+ * Garmin load, TE, RHR 1 place; durations, distances, HR, power, cadence, calories whole numbers.
  */
 export function sessionMetrics(input: SessionInput, ctx: SessionContext, onNote?: NoteSink): Session {
   const sport = sportGroup(input.type);
@@ -223,7 +288,17 @@ export function sessionMetrics(input: SessionInput, ctx: SessionContext, onNote?
   const rhr = restingHrOn(ctx.daily, ctx.thresholds, input.date);
   if (lthr.note) onNote?.(lthr.note);
   if (rhr.note) onNote?.(rhr.note);
-  const ifValue = intensityFactor(input.avg_hr, rhr.value, lthr.value);
+  const hrIf = intensityFactor(input.avg_hr, rhr.value, lthr.value);
+  const hrStress = hrTss(input.duration_s, hrIf);
+  const ftp = sport === 'bike' ? thresholdOn(ctx.thresholds, 'ftp_w', input.date) : undefined;
+  const pace = sport === 'run' ? thresholdOn(ctx.thresholds, 'run_threshold_pace_s_per_km', input.date) : undefined;
+  if (sport === 'bike' && ftp === undefined && input.np_w !== undefined && input.np_w > 0) onNote?.(NO_FTP_NOTE);
+  if (sport === 'run' && pace === undefined && input.gap_mps !== undefined && input.gap_mps > 0) onNote?.(NO_THRESHOLD_PACE_NOTE);
+  const load = resolveLoad([
+    sport === 'bike' ? powerCandidate(input.np_w, ftp, input.duration_s) : undefined,
+    sport === 'run' ? paceCandidate(input.gap_mps, pace, input.duration_s) : undefined,
+    { source: 'hr', tss: hrStress, if: hrIf },
+  ]);
   const z = input.zones_s;
   return {
     id: input.id,
@@ -250,8 +325,10 @@ export function sessionMetrics(input: SessionInput, ctx: SessionContext, onNote?
     anaerobic_te: round(input.anaerobic_te, 1),
     rpe: input.rpe,
     feel: input.feel,
-    if: round(ifValue, 3) ?? 0,
-    hrtss: round(hrTss(input.duration_s, ifValue), 1) ?? 0,
+    tss: load.tss,
+    if: load.if,
+    load_source: load.load_source,
+    hrtss: round(hrStress, 1) ?? 0,
     ef: round(efficiencyFactor(sport, input), 3),
     ef_gap: round(efficiencyFactorGap(sport, input.avg_hr, input.gap_mps), 3),
     gap_mps: round(input.gap_mps, 3),

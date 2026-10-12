@@ -6,6 +6,11 @@ import {
   efficiencyFactorGap,
   hrTss,
   intensityFactor,
+  NO_FTP_NOTE,
+  NO_THRESHOLD_PACE_NOTE,
+  paceCandidate,
+  powerCandidate,
+  resolveLoad,
   seilerZoneByHr,
   sessionFromActivity,
   sessionFromImported,
@@ -79,7 +84,7 @@ describe('intensityFactor and hrTss', () => {
     expect(s.lthr_used).toBe(170);
     expect(s.rhr_used).toBe(50);
     const none = sessionMetrics(input({ avg_hr: undefined }), CTX);
-    expect([none.if, none.hrtss]).toEqual([0, 0]);
+    expect([none.tss, none.if, none.load_source, none.hrtss]).toEqual([undefined, undefined, 'none', 0]);
   });
 });
 
@@ -122,6 +127,68 @@ describe('thresholds of the session date and sport', () => {
 });
 
 const round3 = (v: number) => Math.round(v * 1000) / 1000;
+
+describe('load sources: power, then pace, then heart rate', () => {
+  const FULL: SessionContext = {
+    ...CTX,
+    thresholds: [...CTX.thresholds, row('2026-01-01', 'ftp_w', 250), row('2026-01-01', 'run_threshold_pace_s_per_km', 250)],
+  };
+  const ride = (extra: Partial<SessionInput> = {}) => input({ type: 'road_biking', np_w: 200, ...extra });
+  const run = (extra: Partial<SessionInput> = {}) => input({ gap_mps: 3.5, ...extra });
+
+  it('power: IF = NP / FTP, TSS = h × IF² × 100 (Coggan)', () => {
+    expect(powerCandidate(200, 250, 3600)).toEqual({ source: 'power', tss: 64.00000000000001, if: 0.8 });
+    const s = sessionMetrics(ride(), FULL);
+    expect(s).toMatchObject({ tss: 64, if: 0.8, load_source: 'power', hrtss: 82.6 });
+  });
+
+  it('pace: IF = GAP / threshold speed, rTSS = h × IF² × 100', () => {
+    const c = paceCandidate(3.5, 250, 3600);
+    expect(c?.if).toBeCloseTo(0.875, 10);
+    expect(c?.tss).toBeCloseTo(76.5625, 10);
+    const s = sessionMetrics(run(), FULL);
+    expect(s).toMatchObject({ tss: 76.6, if: 0.875, load_source: 'pace', hrtss: 69.4 });
+  });
+
+  it('heart rate: hrTSS when the sport has no power or pace candidate', () => {
+    expect(sessionMetrics(input(), FULL)).toMatchObject({ tss: 69.4, if: 0.833, load_source: 'hr', hrtss: 69.4 });
+    // power counts for cycling only, pace for running only
+    expect(sessionMetrics(run({ np_w: 300 }), { ...FULL, thresholds: [...CTX.thresholds, row('2026-01-01', 'ftp_w', 250)] }).load_source).toBe('hr');
+    expect(sessionMetrics(ride({ np_w: undefined, gap_mps: 8 }), FULL).load_source).toBe('hr');
+    expect(sessionMetrics(input({ type: 'lap_swimming' }), FULL).load_source).toBe('hr');
+  });
+
+  it('a missing threshold falls through to heart rate, with a note', () => {
+    const notes: string[] = [];
+    expect(sessionMetrics(ride(), CTX, (n) => notes.push(n))).toMatchObject({ tss: 82.6, load_source: 'hr' });
+    expect(sessionMetrics(run(), CTX, (n) => notes.push(n))).toMatchObject({ tss: 69.4, load_source: 'hr' });
+    expect(notes).toEqual([NO_FTP_NOTE, NO_THRESHOLD_PACE_NOTE]);
+    const quiet: string[] = [];
+    sessionMetrics(input(), CTX, (n) => quiet.push(n));
+    expect(quiet).toEqual([]);
+  });
+
+  it('zero is no load: NP 0, GAP 0 or a stress rounding to 0 fall through; nothing left is absent, never 0', () => {
+    expect(sessionMetrics(ride({ np_w: 0 }), FULL).load_source).toBe('hr');
+    expect(sessionMetrics(run({ gap_mps: 0 }), FULL).load_source).toBe('hr');
+    expect(powerCandidate(200, 0, 3600)).toBeUndefined();
+    expect(paceCandidate(3.5, 250, 0)).toBeUndefined();
+    expect(resolveLoad([{ source: 'power', tss: 0.04, if: 0.1 }, { source: 'hr', tss: 50, if: 0.7 }])).toEqual({ tss: 50, if: 0.7, load_source: 'hr' });
+    expect(resolveLoad([{ source: 'power', tss: Number.NaN, if: 1 }, { source: 'hr', tss: -3, if: 1 }])).toEqual({ load_source: 'none' });
+    expect(resolveLoad([undefined])).toEqual({ load_source: 'none' });
+    const none = sessionMetrics(ride({ np_w: undefined, avg_hr: undefined }), FULL);
+    expect(none).toMatchObject({ load_source: 'none', hrtss: 0 });
+    expect(none.tss).toBeUndefined();
+    expect(none.if).toBeUndefined();
+  });
+
+  it('takes FTP and threshold pace valid on the session date', () => {
+    const ctx = { ...FULL, thresholds: [...FULL.thresholds, row('2026-06-01', 'ftp_w', 200), row('2026-06-01', 'run_threshold_pace_s_per_km', 1000 / 3.5)] };
+    expect(sessionMetrics(ride({ date: '2026-05-31' }), ctx).tss).toBe(64);
+    expect(sessionMetrics(ride({ date: '2026-06-01' }), ctx)).toMatchObject({ tss: 100, if: 1 });
+    expect(sessionMetrics(run({ date: '2026-06-01' }), ctx)).toMatchObject({ tss: 100, if: 1 });
+  });
+});
 
 describe('efficiency factors', () => {
   it('running: speed in m/min per beat; GAP variant from the grade adjusted speed', () => {

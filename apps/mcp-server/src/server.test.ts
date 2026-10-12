@@ -123,11 +123,11 @@ describe('MCP server', () => {
     const create = tools.find((t) => t.name === 'create_workout')?.inputSchema;
     const preview = tools.find((t) => t.name === 'preview_workout')?.inputSchema;
     const overwrite = all.find((t) => t.name === 'create_workout')?.inputSchema;
-    expect(context(tools)).toBeLessThanOrEqual(42_304);
+    expect(context(tools)).toBeLessThanOrEqual(42_484);
     expect(size(create)).toBeLessThanOrEqual(11_500);
-    expect(context(all)).toBeLessThanOrEqual(43_870);
-    expect(size(tools)).toBeLessThanOrEqual(77_412);
-    expect(size(all)).toBeLessThanOrEqual(81_119);
+    expect(context(all)).toBeLessThanOrEqual(44_050);
+    expect(size(tools)).toBeLessThanOrEqual(78_055);
+    expect(size(all)).toBeLessThanOrEqual(81_762);
     // The preview is create_workout without `workout_id`. Without destructive tools create_workout
     // is a strict object (a stray workout_id fails loudly); the preview stays lenient.
     const { workout_id: _overwrite, ...properties } = overwrite?.properties ?? {};
@@ -197,7 +197,7 @@ describe('MCP server', () => {
     expect(thresholds.data).toMatchObject({ date: '2026-10-08', effective: { lthr_run: { value: 171, since: '2026-10-01', source: 'test' } } });
     expect(thresholds.data['history']).toHaveLength(1);
     const load = await call('get_load', { include_activities: true, include_series: true, include_efficiency: true, flags: { tsb_fresh: 5 } });
-    expect(load.data).toMatchObject({ to: '2026-10-08', source: 'hrtss', flags_used: { tsb_fresh: 5 }, thresholds_used: { by_sport: { run: { lthr: 171 }, bike: { lthr: 171 } } } });
+    expect(load.data).toMatchObject({ to: '2026-10-08', source: 'auto', flags_used: { tsb_fresh: 5 }, thresholds_used: { by_sport: { run: { lthr: 171 }, bike: { lthr: 171 } } } });
     expect(load.data['activities']).toHaveLength(3);
     const readiness = await call('get_readiness', { date: '2026-10-08', rules: { sleep_h_red: 5 } });
     expect(readiness.data).toMatchObject({ date: '2026-10-08', rules_used: { sleep_h_red: 5 } });

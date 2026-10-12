@@ -47,7 +47,9 @@ const session = z.looseObject({
   anaerobic_te: num,
   rpe: num,
   feel: num,
+  tss: num,
   if: num,
+  load_source: str,
   hrtss: num,
   ef: num,
   ef_gap: num,
@@ -63,7 +65,7 @@ const session = z.looseObject({
   source: str,
 });
 
-const sportThresholds = obj({ lthr: num, lt1: num, lthr_note: str, lt1_note: str });
+const sportThresholds = obj({ lthr: num, lt1: num, lthr_note: str, lt1_note: str, ftp: num, threshold_pace: num });
 /** `by_sport` of `get_thresholds`, also `thresholds_used.by_sport` of `get_load`. */
 const bySport = obj({ run: sportThresholds, bike: sportThresholds, swim: sportThresholds });
 
@@ -82,6 +84,7 @@ export const loadOutput = envelope({
       hours: num,
       km: num,
       elev_m: num,
+      tss: num,
       hrtss: num,
       g_load: num,
       z12_h: num,

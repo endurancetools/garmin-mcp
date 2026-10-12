@@ -37,6 +37,7 @@ import {
   restingHrOn,
   RHR_MIN_SAMPLES,
   RHR_WINDOW_DAYS,
+  thresholdOn,
   thresholdsBySport,
   type SportThresholds,
   type ThresholdSport,
@@ -64,7 +65,7 @@ export interface LoadQuery {
   flags?: Record<string, unknown>;
 }
 
-/** Thresholds the load model used on `to`: `by_sport` as in `get_thresholds`, and the resting HR. */
+/** Thresholds the load model used on `to`: `by_sport` as in `get_thresholds` plus bike `ftp` and run `threshold_pace`, and the resting HR. */
 export interface ThresholdsUsed {
   date: IsoDate;
   by_sport: Record<ThresholdSport, SportThresholds>;
@@ -273,7 +274,7 @@ export class AnalyticsService {
 
   async #load(q: LoadQuery): Promise<Envelope<LoadData>> {
     const { from, to } = this.garmin.range(q.from, q.to, DEFAULT_LOAD_DAYS);
-    const source = q.source ?? 'hrtss';
+    const source = q.source ?? 'auto';
     if (!LOAD_SOURCES.includes(source)) throw new InputError(`Unknown load source "${String(source)}"`, `Use one of: ${LOAD_SOURCES.join(', ')}.`);
     const flagInput = overrides(q.flags, DEFAULT_LOAD_FLAGS, 'flags');
     const flags = resolveLoadFlags(flagInput.values);
@@ -301,6 +302,10 @@ export class AnalyticsService {
     }
 
     const bySport = thresholdsBySport(thresholds, to);
+    const ftp = thresholdOn(thresholds, 'ftp_w', to);
+    const thresholdPace = thresholdOn(thresholds, 'run_threshold_pace_s_per_km', to);
+    if (ftp !== undefined) bySport.bike.ftp = ftp;
+    if (thresholdPace !== undefined) bySport.run.threshold_pace = thresholdPace;
     const rhr = restingHrOn(daily, thresholds, to);
     const allNotes = new Set(notes);
     // The default-LTHR and LT1-approximation notes are the same for every sport, so the running
@@ -313,10 +318,15 @@ export class AnalyticsService {
     if (intensityNote) allNotes.add(intensityNote);
     if (flagInput.note) allNotes.add(flagInput.note);
 
+    const model =
+      'CTL/ATL are 42/7-day EWMAs, TSB = CTL - ATL at the start of the day, ACWR = 7-day / 28-day mean. ' +
+      "It differs from computed_load in get_training_status, which runs the same EWMA on Garmin's EPOC training load.";
     const note =
-      source === 'hrtss'
-        ? "Own load model: daily hrTSS from heart rate with the thresholds valid on each date (LTHR per sport, 28-day resting HR); CTL/ATL are 42/7-day EWMAs, TSB = CTL - ATL at the start of the day, ACWR = 7-day / 28-day mean. It differs from computed_load in get_training_status, which runs the same EWMA on Garmin's EPOC training load."
-        : "Daily load is the sum of Garmin's per-activity training load (EPOC), as in computed_load of get_training_status; imported activities have no Garmin load and count 0.";
+      source === 'auto'
+        ? `Own load model: daily TSS, per activity from power (cycling NP / FTP), else pace (running grade adjusted speed / threshold pace), else heart rate (hrTSS), with the thresholds valid on each date; load_source per activity says which. ${model}`
+        : source === 'hrtss'
+          ? `Own load model: daily hrTSS from heart rate only, with the thresholds valid on each date (LTHR per sport, 28-day resting HR). ${model}`
+          : "Daily load is the sum of Garmin's per-activity training load (EPOC), as in computed_load of get_training_status; imported activities have no Garmin load and count 0.";
 
     const data: LoadData = {
       from,
@@ -359,6 +369,7 @@ export class AnalyticsService {
 
     const store = this.#store;
     const { sessions, notes } = this.#sessions(date);
+    // The load signal keeps the heart-rate stress (hrTSS), not the power/pace hierarchy of get_load.
     const series = loadSeries(sessions, 'hrtss', date);
     const load = loadOn(series, date);
     const result = readiness({

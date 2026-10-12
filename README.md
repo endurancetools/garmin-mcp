@@ -73,7 +73,7 @@ Measured on a real account after a 90-day sync (433 requests in about an hour): 
 | `preview_workout`, `create_workout`, `schedule_workouts` | workouts from presets (run intervals, walk/run, easy Z2, strength circuit) or a typed definition (nestable repeats, HR/pace/power targets); `preview_workout` shows the steps and estimated duration without saving; `schedule_workouts` puts workouts on the calendar and takes them off again |
 | `get_gear`, `get_devices` | gear with distance, devices with last sync and settings |
 | `garmin_sync` | explicit download of a scope (all/activities/health/training/reference) and date range, with progress notifications |
-| `get_load` | own load model from heart rate (hrTSS with the thresholds valid on each date): CTL/ATL/TSB, ACWR 7:28, monotony and strain, flags with overridable thresholds, ISO weeks per sport, 3-zone intensity split; optional daily series, per-activity IF/hrTSS/EF, monthly EF trend |
+| `get_load` | own load model (TSS per activity from power, pace or heart rate, with the thresholds valid on each date): CTL/ATL/TSB, ACWR 7:28, monotony and strain, flags with overridable thresholds, ISO weeks per sport, 3-zone intensity split; optional daily series, per-activity TSS/IF/load source/EF, monthly EF trend |
 | `get_readiness` | morning GO / MODIFY / REST from HRV, resting HR, sleep, body battery, training readiness, stress and load; overridable `rules`, every signal with value, reference and rating |
 | `get_thresholds`, `set_threshold` | threshold history per date (LTHR per sport, LT1, HRmax, FTP, VO2max...; Garmin profile changes recorded automatically) and recording a test result, locally only |
 
@@ -96,7 +96,7 @@ garmin status [--json]
 garmin sync [--scope ...] [--from --to] [--force] [--pause <s>]   # default: last 7 days
 garmin activities [--from --to --type --limit --json]
 garmin health <metric> [--from --to --week --json]
-garmin load [--from --to] [--source hrtss|garmin_load] [--flags <file.json>] [--series] [--activities] [--efficiency] [--json]
+garmin load [--from --to] [--source auto|hrtss|garmin_load] [--flags <file.json>] [--series] [--activities] [--efficiency] [--json]
 garmin readiness [date] [--rules <file.json>] [--json]          # GO / MODIFY / REST for the morning
 garmin thresholds [--date --param --history --json]             # LTHR, LT1, HRmax ... in effect, per sport
 garmin thresholds add <date> <param> <value> [--source test|manual] [--note]
