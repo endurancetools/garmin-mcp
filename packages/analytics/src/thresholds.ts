@@ -3,13 +3,15 @@ import { round } from 'garmin-mcp-domain';
 import type { NewThreshold, Store, ThresholdParam, ThresholdRow } from 'garmin-mcp-store';
 import type { SportGroup } from './sport.js';
 
-/** Used when the history has no LTHR at all (bpm). */
+/** Used when the history has neither an LTHR nor an HRmax (bpm). */
 export const DEFAULT_LTHR = 170;
+/** LTHR estimate without an LTHR row: this share of HRmax (rounded). */
+export const LTHR_FROM_HRMAX = 0.89;
 /** Used when there is neither a rolling resting HR nor an `rhr` row (bpm). */
 export const DEFAULT_RHR = 50;
-/** LT1 approximation without an `lt1_hr` row: this share of the running LTHR. */
+/** LT1 approximation: this share of the sport's own LTHR, or of the running LTHR without an `lt1_hr` row. */
 export const LT1_FROM_LTHR = 0.9;
-/** Cycling LT1 sits this many bpm below the running one. */
+/** Cycling LT1 without an `lthr_bike` row sits this many bpm below the running one. */
 export const BIKE_LT1_OFFSET = 7;
 /** Rolling resting HR: mean over the days [D − 28, D − 1] … */
 export const RHR_WINDOW_DAYS = 28;
@@ -101,16 +103,42 @@ export function thresholdOn(rows: readonly ThresholdPoint[], param: ThresholdPar
   return (own.findLast((r) => r.date <= date) ?? own[0])?.value;
 }
 
-/** Lactate threshold HR for a sport on `date`: bike and swim fall back to the running LTHR, then to 170. */
+/** The sport's own LTHR parameter; other groups use `lthr_run`. */
+const ownLthrParam = (sport: SportGroup): 'lthr_bike' | 'lthr_swim' | undefined =>
+  sport === 'bike' ? 'lthr_bike' : sport === 'swim' ? 'lthr_swim' : undefined;
+
+/**
+ * Lactate threshold HR for a sport on `date`: bike and swim fall back to the running LTHR;
+ * without any LTHR, 0.89 × HRmax (rounded) when HRmax is in the history, else 170.
+ */
 export function lthrFor(rows: readonly ThresholdPoint[], sport: SportGroup, date: IsoDate): Resolved {
-  const own = sport === 'bike' ? 'lthr_bike' : sport === 'swim' ? 'lthr_swim' : undefined;
+  const own = ownLthrParam(sport);
   const value = (own && thresholdOn(rows, own, date)) ?? thresholdOn(rows, 'lthr_run', date);
   if (value !== undefined) return { value };
-  return { value: DEFAULT_LTHR, note: `No LTHR in the threshold history; default ${DEFAULT_LTHR} bpm used.` };
+  const hrmax = thresholdOn(rows, 'hrmax', date);
+  if (hrmax !== undefined) {
+    return {
+      value: Math.round(LTHR_FROM_HRMAX * hrmax),
+      note: `No LTHR in the threshold history; ${LTHR_FROM_HRMAX.toFixed(2)} × HRmax (${hrmax} bpm) used, estimated from HRmax; confirm with a test.`,
+    };
+  }
+  return { value: DEFAULT_LTHR, note: `No LTHR and no HRmax in the threshold history; default ${DEFAULT_LTHR} bpm used.` };
 }
 
-/** LT1 HR on `date`: the `lt1_hr` row, else 0.90 × running LTHR (rounded); cycling 7 bpm lower. */
+/**
+ * LT1 HR on `date`. Bike and swim with their own LTHR row: 0.90 × that LTHR (rounded). Otherwise
+ * the `lt1_hr` row, else 0.90 × running LTHR (rounded); cycling then 7 bpm lower.
+ */
 export function lt1For(rows: readonly ThresholdPoint[], sport: SportGroup, date: IsoDate): Resolved {
+  const own = ownLthrParam(sport);
+  const ownLthr = own ? thresholdOn(rows, own, date) : undefined;
+  if (ownLthr !== undefined) {
+    const label = own === 'lthr_bike' ? 'cycling' : 'swimming';
+    return {
+      value: Math.round(LT1_FROM_LTHR * ownLthr),
+      note: `LT1 approximated as ${LT1_FROM_LTHR.toFixed(2)} × ${label} LTHR; confirm with a test.`,
+    };
+  }
   const offset = sport === 'bike' ? BIKE_LT1_OFFSET : 0;
   const lt1 = thresholdOn(rows, 'lt1_hr', date);
   if (lt1 !== undefined) return { value: lt1 - offset };

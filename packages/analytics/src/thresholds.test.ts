@@ -121,23 +121,58 @@ describe('thresholdOn', () => {
 describe('lthrFor and lt1For', () => {
   const rows = [row('2026-06-01', 'lthr_run', 170), row('2026-06-01', 'lthr_bike', 160)];
 
-  it('picks the sport LTHR with fallback to running, then to the default', () => {
+  it('picks the sport LTHR with fallback to running, then to HRmax, then to the default', () => {
     expect(lthrFor(rows, 'run', '2026-07-01')).toEqual({ value: 170 });
     expect(lthrFor(rows, 'bike', '2026-07-01')).toEqual({ value: 160 });
     expect(lthrFor(rows, 'swim', '2026-07-01')).toEqual({ value: 170 });
     expect(lthrFor([...rows, row('2026-06-01', 'lthr_swim', 150)], 'swim', '2026-07-01')).toEqual({ value: 150 });
     expect(lthrFor(rows, 'hike', '2026-07-01')).toEqual({ value: 170 });
     expect(lthrFor([row('2026-06-01', 'lthr_bike', 160)], 'run', '2026-07-01')).toMatchObject({ value: 170, note: expect.stringMatching(/default 170/) });
+    expect(lthrFor([], 'run', '2026-07-01')).toMatchObject({ value: 170, note: expect.stringMatching(/no HRmax.*default 170/) });
   });
 
-  it('uses the lt1_hr row, else 0.90 × running LTHR; cycling 7 bpm lower', () => {
-    expect(lt1For([...rows, row('2026-06-01', 'lt1_hr', 150)], 'run', '2026-07-01')).toEqual({ value: 150 });
-    expect(lt1For([...rows, row('2026-06-01', 'lt1_hr', 150)], 'bike', '2026-07-01')).toEqual({ value: 143 });
-    expect(lt1For(rows, 'run', '2026-07-01')).toMatchObject({ value: 153, note: expect.stringMatching(/approximated/) });
-    expect(lt1For(rows, 'bike', '2026-07-01')).toMatchObject({ value: 146 });
+  it('estimates LTHR as 0.89 × HRmax when the history has HRmax but no LTHR', () => {
+    const hrmax = [row('2026-06-01', 'hrmax', 185)];
+    // 0.89 × 185 = 164.65.
+    expect(lthrFor(hrmax, 'run', '2026-07-01')).toEqual({
+      value: 165,
+      note: expect.stringMatching(/estimated from HRmax; confirm with a test/),
+    });
+    expect(lthrFor(hrmax, 'bike', '2026-07-01')).toMatchObject({ value: 165 });
+    // HRmax of the day: a later row applies from its date on; the first one is carried back.
+    const two = [...hrmax, row('2026-09-01', 'hrmax', 190)];
+    expect(lthrFor(two, 'run', '2026-05-01').value).toBe(165);
+    expect(lthrFor(two, 'run', '2026-09-01').value).toBe(169);
+    // An LTHR row wins over the estimate.
+    expect(lthrFor([...hrmax, row('2026-06-01', 'lthr_run', 172)], 'run', '2026-07-01')).toEqual({ value: 172 });
+    // LT1 follows the estimate.
+    expect(lt1For(hrmax, 'run', '2026-07-01')).toMatchObject({ value: 149, note: expect.stringMatching(/estimated from HRmax.*LT1 approximated/) });
+  });
+
+  it('uses the lt1_hr row, else 0.90 × running LTHR; cycling 7 bpm lower without its own LTHR', () => {
+    const runOnly = [row('2026-06-01', 'lthr_run', 170)];
+    expect(lt1For([...runOnly, row('2026-06-01', 'lt1_hr', 150)], 'run', '2026-07-01')).toEqual({ value: 150 });
+    expect(lt1For([...runOnly, row('2026-06-01', 'lt1_hr', 150)], 'bike', '2026-07-01')).toEqual({ value: 143 });
+    expect(lt1For(runOnly, 'run', '2026-07-01')).toMatchObject({ value: 153, note: expect.stringMatching(/approximated/) });
+    expect(lt1For(runOnly, 'bike', '2026-07-01')).toMatchObject({ value: 146, note: expect.stringMatching(/running LTHR/) });
+    expect(lt1For(runOnly, 'swim', '2026-07-01')).toMatchObject({ value: 153 });
     // 0.9 × 175 = 157.5 rounds half up, as `printf "%d", l*0.90+0.5` in plan-v2.
     expect(lt1For([row('2026-06-01', 'lthr_run', 175)], 'run', '2026-07-01').value).toBe(158);
     expect(lt1For([], 'run', '2026-07-01')).toMatchObject({ value: 153, note: expect.stringMatching(/default 170.*approximated/) });
+  });
+
+  it('takes 0.90 × the sport LTHR for cycling and swimming with their own LTHR', () => {
+    expect(lt1For(rows, 'bike', '2026-07-01')).toEqual({ value: 144, note: expect.stringMatching(/0\.90 × cycling LTHR/) });
+    // The own LTHR wins over a running lt1_hr row.
+    expect(lt1For([...rows, row('2026-06-01', 'lt1_hr', 150)], 'bike', '2026-07-01').value).toBe(144);
+    expect(lt1For([...rows, row('2026-06-01', 'lt1_hr', 150)], 'run', '2026-07-01').value).toBe(150);
+    // 0.9 × 155 = 139.5.
+    expect(lt1For([...rows, row('2026-06-01', 'lthr_swim', 155)], 'swim', '2026-07-01')).toEqual({
+      value: 140,
+      note: expect.stringMatching(/swimming LTHR/),
+    });
+    // Before the first lthr_bike row the row is carried back, like every threshold.
+    expect(lt1For(rows, 'bike', '2026-01-01').value).toBe(144);
   });
 });
 

@@ -439,6 +439,7 @@ export const TOOLS: ToolDef[] = [
     description:
       'Record a field test result (LTHR, LT1, HRmax, FTP…) effective from a date; ask the user before saving. ' +
       'Stored in the local database only, never sent to Garmin; a row with the same date, param and source stays as it is (added false). ' +
+      'A backdated row recomputes earlier activities from its date on (the first garmin-auto row is the Garmin profile as of its first download). ' +
       'Returns the row and the value in effect today. Example: {"date":"2026-10-11","param":"lthr_run","value":171,"note":"30 min TT"}.',
     input: {
       date: date.describe('Day of the test, not in the future'),
