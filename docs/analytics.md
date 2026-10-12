@@ -67,13 +67,20 @@ So `trail_running` is `run`, `e_bike_fitness` is `bike`, `skate_skiing`, `snowsh
 With `RHR` the resting heart rate and `LTHR` the threshold of the activity's sport, both on the activity's date:
 
 ```
+hr_method "zones" (time in Garmin's HR zones 1-5 and the profile's zone bounds):
+IF_z    = (midHR_z − RHR) / (LTHR − RHR)             midHR_z the middle of zone z, zone 5 up to HRmax; 0 at or below RHR
+hrTSS   = Σ_z (t_z / 3600) × IF_z² × 100              t_z the seconds in zone z                           1 place
+IF      = √(Σ_z t_z × IF_z² / Σ_z t_z)                                                                    3 places
+
+hr_method "avg" (no time in zones, no zone bounds in the profile, or flags.hr_method "avg"):
 IF      = (avg_hr − RHR) / (LTHR − RHR)              0 without avg_hr, when avg_hr ≤ RHR or LTHR ≤ RHR   3 places
 hrTSS   = duration_h × IF² × 100                                                                          1 place
+
 EF      = run:  speed in m/min / avg_hr               bike: normalized power / avg_hr                     3 places
 EF-GAP  = run:  grade adjusted speed in m/min / avg_hr                                                    3 places
 ```
 
-IF here is the heart rate reserve between resting and threshold heart rate, so an hour at LTHR scores 100, as an hour at FTP does in the power-based TSS (Allen, Coggan, McGregor 2019). hrTSS is one of the load candidates below; the load the model sums is `tss`, with its `if` and `load_source`. `include_activities` returns one row per activity with these values and the inputs: type, sport group, duration, moving time, distance, elevation, heart rate, power, cadence, calories, Garmin training load and training effect, RPE (Foster's CR-10 scale, 1-10; Garmin stores it × 10) and feel (when the activity detail was downloaded), seconds in Garmin's HR zones 1-5, the LTHR and resting heart rate used, and `source` (`db` or `import`).
+IF here is the heart rate reserve between resting and threshold heart rate, so an hour at LTHR scores 100, as an hour at FTP does in the power-based TSS (Allen, Coggan, McGregor 2019). The zone method follows TrainingPeaks' hrTSS, which scores the time in zones derived from LTHR with an estimate of TSS per hour in each zone (Friel: zone 1 about 20-40 an hour, zone 2 about 60, threshold 100) rather than the average heart rate of the whole activity (TrainingPeaks, "Training with TSS vs. hrTSS" and "Estimating Training Stress Score", references 15 and 17). Stress grows with the square of IF, so a session of hard intervals and easy recoveries scores more by zones than from its average: 5 × 3 min in zone 5 with 32 min in zone 1 (average 135 bpm, LTHR 170, resting 50) gives 44 by zones and 39 from the average, while a steady session gives almost the same either way. Zone bounds come from the Garmin profile (`heartRateZones`, cycling the CYCLING zones when the profile has them, every other group the default ones, as in the intensity distribution); time below zone 1 is not in Garmin's zones and adds nothing. `hr_method` of each activity says which method gave its `hrtss`; `flags: {"hr_method": "avg"}` forces the average for every activity (for comparison with models that use the average). hrTSS is one of the load candidates below; the load the model sums is `tss`, with its `if` and `load_source`. `include_activities` returns one row per activity with these values and the inputs: type, sport group, duration, moving time, distance, elevation, heart rate, power, cadence, calories, Garmin training load and training effect, RPE (Foster's CR-10 scale, 1-10; Garmin stores it × 10) and feel (when the activity detail was downloaded), seconds in Garmin's HR zones 1-5, the LTHR and resting heart rate used, and `source` (`db` or `import`).
 
 Rough hrTSS orientation: an hour in zone 1 is about 40-55, an hour in zone 2 about 60-80, an hour at threshold 100, a 10 km race about 80-90, a marathon about 250-300, a 10-hour mountain ultra 500 and more.
 
@@ -85,7 +92,7 @@ Each activity gets one training stress `tss` from the first candidate that gives
 | --- | --- | --- | --- | --- | --- |
 | 1 | `power` | `bike` | normalized power `np_w`, `ftp_w` on the activity's date | IF = NP / FTP | TSS = duration_h × IF² × 100 (Coggan) |
 | 2 | `pace` | `run` | Garmin's grade adjusted speed `gap_mps`, `run_threshold_pace_s_per_km` on the activity's date | IF = GAP / (1000 / threshold pace) | rTSS = duration_h × IF² × 100 (McGregor) |
-| 3 | `hr` | any | average heart rate | IF = (avg_hr − RHR) / (LTHR − RHR) | hrTSS (above) |
+| 3 | `hr` | any | time in HR zones and the profile's zone bounds, else average heart rate | IF_z per zone, else IF = (avg_hr − RHR) / (LTHR − RHR) | hrTSS (above, `hr_method`) |
 | 4 | `rpe` | any | session RPE 1-10 from the activity detail, duration | none (`if` absent) | sRPE = RPE × duration_min × `rpe_calibration` (Foster) |
 | - | `none` | | none of the above | | no `tss` |
 
@@ -106,7 +113,7 @@ Each activity gets one training stress `tss` from the first candidate that gives
 
 ### Load flags
 
-`flags` raised on `to`. Override any threshold with `flags`, e.g. `{"acwr_high": 1.4, "week_jump_pct": 10}`; missing keys keep the default, unknown keys and non-numbers are ignored with a note.
+`flags` raised on `to`. Override any threshold with `flags`, e.g. `{"acwr_high": 1.4, "week_jump_pct": 10}`; missing keys keep the default, unknown keys and invalid values (a non-number, or for `hr_method` anything but `zones` and `avg`) are ignored with a note.
 
 | Key | Default | Flag |
 | --- | --- | --- |
@@ -119,6 +126,7 @@ Each activity gets one training stress `tss` from the first candidate that gives
 | `week_jump_pct` | 15 | `week_jump`: total hours or running km of the last 7 days ending on `to` grew by more than this percentage against the 7 days before (rolling windows, not ISO weeks, so a heavy week still shows on the Monday or Tuesday after it); not raised when the 7 days before hold less than 1 h |
 | `z1_min_pct` | 75 | `z1_below_target`: Z1 share of run, bike, nordic and row time below this percentage (see intensity) |
 | `rpe_calibration` | 0.23 | no flag: the multiplier of session RPE × minutes for activities with `load_source: "rpe"` (load sources above) |
+| `hr_method` | `zones` | no flag: `zones` scores hrTSS from the time in HR zones when the activity has them and the profile has zone bounds, `avg` always from the average heart rate (per-activity metrics above) |
 
 At most one of the three ACWR flags is raised. While `warming_up` is true, `tsb_low` and `tsb_fresh` are not raised: CTL still reads low, so TSB is deeply negative after a few ordinary days. The ACWR, monotony and week-jump flags work as usual.
 
@@ -179,7 +187,7 @@ The HRV rules follow day-to-day HRV-guided training, which compares the night wi
 ## Reading the numbers
 
 - **ACWR** detects a sudden jump in load against what you are used to; it does not predict injuries (Gabbett 2016; Hulin et al. 2016; Impellizzeri et al. 2020). After a break of more than 10 days the chronic mean is low and the ratio rises artificially on the first sessions back.
-- **hrTSS** comes from heart rate, so it under-rates strength work and short intervals (heart rate lags behind), and over-rates sessions in the heat (cardiac drift). That is why it comes last among the load sources; `load_source` of each activity shows which one counted. Load measured internally and externally answer different questions (Impellizzeri, Marcora, Coutts 2019).
+- **hrTSS** comes from heart rate, so it under-rates strength work and short intervals (heart rate lags behind), and over-rates sessions in the heat (cardiac drift). Scoring by time in zones takes back part of the interval gap, not the lag itself. That is why it comes last among the load sources; `load_source` of each activity shows which one counted. Load measured internally and externally answer different questions (Impellizzeri, Marcora, Coutts 2019).
 - **Own load vs Garmin load** (`load_ratio_28d`, `load_ratio_usual` in `latest`): the sum of own daily load divided by the sum of Garmin's training load (EPOC), on the days that have both, over the last 28 days of the range, and the median of the same ratio over the earlier 28-day windows of the whole history (from 8 windows on). The two models never agree in absolute terms, but their ratio is stable while nothing changes. When the current ratio is more than 25 % away from the usual one, `meta.note` says "Own load vs Garmin load drifted (ratio a vs usual b): check thresholds or the HR strap": an outdated LTHR, FTP or threshold pace, a new or failing heart-rate strap, or a new power meter usually explains it. With `source: "garmin_load"` there is no ratio.
 - **Monotony**: a rest day with stress 0 lowers it strongly, which is intended: varying hard and easy days is the point. Read **strain** as a trend; a jump of more than 30 % week to week deserves attention.
 - **TSB in the first 42 days** of the history (`warming_up`) is not fatigue: CTL starts at 0 and climbs slowly, so a week of ordinary training already gives a TSB of −25 or lower. The TSB flags and the `load` signal of the readiness stay off until the model has settled.
@@ -218,3 +226,4 @@ The HRV rules follow day-to-day HRV-guided training, which compares the night wi
 14. TrainingPeaks. What is Normalized Graded Pace? (NGP after S. McGregor). https://www.trainingpeaks.com/learn/articles/what-is-normalized-graded-pace/
 15. TrainingPeaks. Training with TSS vs. hrTSS: what's the difference? https://www.trainingpeaks.com/learn/articles/training-with-tss-vs-hrtss-whats-the-difference/
 16. Foster C, Florhaug JA, Franklin J, Gottschall L, Hrovatin LA, Parker S, Doleshal P, Dodge C. A new approach to monitoring exercise training. J Strength Cond Res. 2001;15(1):109-115.
+17. TrainingPeaks. Estimating Training Stress Score (TSS) (TSS per hour by zone after J. Friel). https://www.trainingpeaks.com/learn/articles/estimating-training-stress-score-tss/

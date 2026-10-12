@@ -327,7 +327,7 @@ describe('garmin load', () => {
     );
     expect(res.data.latest.tss).toBe(100);
     expect(res.data.flags_used.acwr_high).toBe(1.2);
-    expect(res.meta.note).toContain('Ignored flags (unknown key or not a number): nope');
+    expect(res.meta.note).toContain('Ignored flags (unknown key or invalid value): nope');
     fs.writeFileSync(file, '[1]');
     await expect(run(deps, 'load', '--flags', file)).rejects.toThrow('must hold a JSON object');
     await expect(run(deps, 'load', '--source', 'epoc')).rejects.toThrow('Allowed choices are auto, hrtss, garmin_load');

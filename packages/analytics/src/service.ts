@@ -21,8 +21,10 @@ import {
   loadOn,
   loadRatio,
   loadSeries,
+  isLoadFlagValue,
   resolveLoadFlags,
   weeklyBySport,
+  type HrMethod,
   type LoadDay,
   type LoadFlag,
   type LoadFlags,
@@ -41,6 +43,7 @@ import {
   thresholdOn,
   thresholdsBySport,
   type SportThresholds,
+  type ProfileZoneFloors,
   type ThresholdSport,
 } from './thresholds.js';
 
@@ -185,15 +188,20 @@ function withProfileGap(data: Partial<ResponseMeta>, profile: Partial<ResponseMe
 const inRanges = (set: RangeSet, date: IsoDate): boolean => set.some(([a, b]) => date >= a && date <= b);
 
 /** Finite-number overrides for the known keys; the rest is reported in a note. */
-function overrides(input: Record<string, unknown> | undefined, defaults: object, what: string): { values: Record<string, number>; note?: string } {
-  const values: Record<string, number> = {};
+function overrides(
+  input: Record<string, unknown> | undefined,
+  defaults: object,
+  what: string,
+  valid: (key: string, v: unknown) => boolean = (k, v) => Object.hasOwn(defaults, k) && typeof v === 'number' && Number.isFinite(v),
+): { values: Record<string, unknown>; note?: string } {
+  const values: Record<string, unknown> = {};
   const ignored: string[] = [];
   for (const [k, v] of Object.entries(input ?? {})) {
-    if (Object.hasOwn(defaults, k) && typeof v === 'number' && Number.isFinite(v)) values[k] = v;
+    if (valid(k, v)) values[k] = v;
     else ignored.push(k);
   }
   if (ignored.length === 0) return { values };
-  return { values, note: `Ignored ${what} (unknown key or not a number): ${ignored.join(', ')}; valid keys: ${Object.keys(defaults).join(', ')}.` };
+  return { values, note: `Ignored ${what} (unknown key or invalid value): ${ignored.join(', ')}; valid keys: ${Object.keys(defaults).join(', ')}.` };
 }
 
 function assertParam(param: string): ThresholdParam {
@@ -254,9 +262,14 @@ export class AnalyticsService {
   /**
    * Every session up to `to`: stored activities (RPE/feel from their summary detail, when
    * fetched) plus imported CSV activities on dates outside `activities:covered`, with the
-   * thresholds valid on each date; `rpeCalibration` overrides the session RPE multiplier.
+   * thresholds valid on each date and the profile's HR zone bounds (`floors`); `rpeCalibration`
+   * overrides the session RPE multiplier, `hrMethod` the heart-rate candidate (default `zones`).
    */
-  #sessions(to: IsoDate, rpeCalibration?: number): { sessions: Session[]; notes: string[]; thresholds: ThresholdRow[]; daily: { date: IsoDate; resting_hr: number | null }[] } {
+  #sessions(
+    to: IsoDate,
+    rpeCalibration?: number,
+    hrMethod?: HrMethod,
+  ): { sessions: Session[]; notes: string[]; thresholds: ThresholdRow[]; daily: { date: IsoDate; resting_hr: number | null }[]; floors: ProfileZoneFloors } {
     const store = this.#store;
     const inputs: SessionInput[] = store
       .queryActivities({ to, sort: 'asc' })
@@ -270,8 +283,9 @@ export class AnalyticsService {
     const daily = store
       .getDaily('daily_summary', addDays(first !== undefined && first < to ? first : to, -RHR_WINDOW_DAYS), to)
       .map((d) => ({ date: d.date, resting_hr: d.resting_hr }));
-    const { sessions, notes } = buildSessions(inputs, { thresholds, daily, rpe_calibration: rpeCalibration });
-    return { sessions, notes, thresholds, daily };
+    const floors = profileZoneFloors(store.getProfile()?.raw);
+    const { sessions, notes } = buildSessions(inputs, { thresholds, daily, rpe_calibration: rpeCalibration, floors, hr_method: hrMethod });
+    return { sessions, notes, thresholds, daily, floors };
   }
 
   // ------------------------------------------------------------ get_load
@@ -285,7 +299,7 @@ export class AnalyticsService {
     const { from, to } = this.garmin.range(q.from, q.to, DEFAULT_LOAD_DAYS);
     const source = q.source ?? 'auto';
     if (!LOAD_SOURCES.includes(source)) throw new InputError(`Unknown load source "${String(source)}"`, `Use one of: ${LOAD_SOURCES.join(', ')}.`);
-    const flagInput = overrides(q.flags, DEFAULT_LOAD_FLAGS, 'flags');
+    const flagInput = overrides(q.flags, DEFAULT_LOAD_FLAGS, 'flags', isLoadFlagValue);
     const flags = resolveLoadFlags(flagInput.values);
     const today = this.garmin.today();
     const end = to > today ? to : today;
@@ -295,14 +309,13 @@ export class AnalyticsService {
       this.garmin.syncer.ensureDaily(['daily_summary'], addDays(from, -RHR_WINDOW_DAYS), to, this.#budget),
     ]);
 
-    const { sessions, notes, thresholds, daily } = this.#sessions(end, flags.rpe_calibration);
+    const { sessions, notes, thresholds, daily, floors } = this.#sessions(end, flags.rpe_calibration, flags.hr_method);
     const series = loadSeries(sessions, source, end);
     const day = loadOn(series, to);
     const ratio = day && source !== 'garmin_load' ? loadRatio(sessions, source, to) : undefined;
     const latest: LatestLoad | undefined = day && { ...day, load_ratio_28d: ratio?.ratio_28d, load_ratio_usual: ratio?.usual };
     const inRange = sessions.filter((s) => s.date >= from && s.date <= to);
     const last28 = addDays(to, -(DEFAULT_LOAD_DAYS - 1));
-    const floors = profileZoneFloors(this.#store.getProfile()?.raw);
     const { note: intensityNote, ...intensity } = intensityDistribution(sessions, thresholds, last28 > from ? last28 : from, to, flags.z1_min_pct, floors);
     const flagList = loadFlags(latest, sessions, flags);
     if (intensity.z1_below_target) {
@@ -337,9 +350,9 @@ export class AnalyticsService {
       "It differs from computed_load in get_training_status, which runs the same EWMA on Garmin's EPOC training load.";
     const note =
       source === 'auto'
-        ? `Own load model: daily TSS, per activity from power (cycling NP / FTP), else pace (running grade adjusted speed / threshold pace), else heart rate (hrTSS), else session RPE × minutes × rpe_calibration (Foster, approximate), with the thresholds valid on each date; load_source per activity says which. ${model}`
+        ? `Own load model: daily TSS, per activity from power (cycling NP / FTP), else pace (running grade adjusted speed / threshold pace), else heart rate (hrTSS from the time in HR zones, else from the average; hr_method per activity), else session RPE × minutes × rpe_calibration (Foster, approximate), with the thresholds valid on each date; load_source per activity says which. ${model}`
         : source === 'hrtss'
-          ? `Own load model: daily hrTSS from heart rate only, with the thresholds valid on each date (LTHR per sport, 28-day resting HR). ${model}`
+          ? `Own load model: daily hrTSS from heart rate only (time in HR zones, else the average; hr_method per activity), with the thresholds valid on each date (LTHR per sport, 28-day resting HR). ${model}`
           : "Daily load is the sum of Garmin's per-activity training load (EPOC), as in computed_load of get_training_status; imported activities have no Garmin load and count 0.";
 
     const data: LoadData = {

@@ -21,6 +21,13 @@ export const CTL_WARMUP_DAYS = 42;
  * multiplied by this. An approximation; `flags.rpe_calibration` of `get_load` overrides it.
  */
 export const RPE_LOAD_CALIBRATION = 0.23;
+/**
+ * How the heart-rate candidate (`hrtss`) is computed: `zones` from the time in Garmin's HR zones
+ * and the profile's zone bounds, `avg` from the average heart rate.
+ */
+export const HR_METHODS = ['zones', 'avg'] as const;
+export type HrMethod = (typeof HR_METHODS)[number];
+
 /** ACWR acute and chronic windows (rolling means, days). */
 export const ACWR_ACUTE_DAYS = 7;
 export const ACWR_CHRONIC_DAYS = 28;
@@ -68,6 +75,8 @@ export interface LoadFlags {
   z1_min_pct: number;
   /** Multiplier of session RPE × minutes (`load_source: "rpe"`); not a flag threshold, but overridden the same way. */
   rpe_calibration: number;
+  /** Heart-rate candidate from the time in zones (`zones`) or from the average heart rate (`avg`); not a flag threshold, but overridden the same way. */
+  hr_method: HrMethod;
 }
 
 export const DEFAULT_LOAD_FLAGS: Readonly<LoadFlags> = {
@@ -80,6 +89,7 @@ export const DEFAULT_LOAD_FLAGS: Readonly<LoadFlags> = {
   week_jump_pct: 15,
   z1_min_pct: 75,
   rpe_calibration: RPE_LOAD_CALIBRATION,
+  hr_method: 'zones',
 };
 
 export type LoadFlagCode =
@@ -97,14 +107,20 @@ export interface LoadFlag {
   text: string;
 }
 
-/** Defaults overridden by the finite numbers in `overrides`. */
-export function resolveLoadFlags(overrides?: Partial<Record<keyof LoadFlags, number | undefined>>): LoadFlags {
-  const out: LoadFlags = { ...DEFAULT_LOAD_FLAGS };
-  for (const key of Object.keys(DEFAULT_LOAD_FLAGS) as (keyof LoadFlags)[]) {
-    const v = overrides?.[key];
-    if (typeof v === 'number' && Number.isFinite(v)) out[key] = v;
+/** Is `v` a valid value of the load flag `key`: a finite number, or for `hr_method` one of {@link HR_METHODS}. */
+export function isLoadFlagValue(key: string, v: unknown): boolean {
+  if (key === 'hr_method') return typeof v === 'string' && (HR_METHODS as readonly string[]).includes(v);
+  return Object.hasOwn(DEFAULT_LOAD_FLAGS, key) && typeof v === 'number' && Number.isFinite(v);
+}
+
+/** Defaults overridden by the valid values in `overrides` (finite numbers; `hr_method` one of {@link HR_METHODS}). */
+export function resolveLoadFlags(overrides?: Partial<Record<keyof LoadFlags, unknown>>): LoadFlags {
+  const out: Record<string, unknown> = { ...DEFAULT_LOAD_FLAGS };
+  for (const key of Object.keys(DEFAULT_LOAD_FLAGS)) {
+    const v = overrides?.[key as keyof LoadFlags];
+    if (isLoadFlagValue(key, v)) out[key] = v;
   }
-  return out;
+  return out as unknown as LoadFlags;
 }
 
 /** The fields of a session the load model reads. */

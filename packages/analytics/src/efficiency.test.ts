@@ -12,6 +12,7 @@ function sess(date: string, extra: Partial<Session> = {}): Session {
     avg_hr: 150,
     load_source: 'none',
     hrtss: 0,
+    hr_method: 'avg',
     ef: 1.3,
     lthr_used: 170,
     lt1_used: 153,
