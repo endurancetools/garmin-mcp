@@ -66,7 +66,7 @@ const session = z.looseObject({
   source: str,
 });
 
-const sportThresholds = obj({ lthr: num, lt1: num, lthr_note: str, lt1_note: str, ftp: num, threshold_pace: num });
+const sportThresholds = obj({ lthr: num, lt1: num, lthr_note: str, lt1_note: str, ftp: num, threshold_pace: num, css: num });
 /** `by_sport` of `get_thresholds`, also `thresholds_used.by_sport` of `get_load`. */
 const bySport = obj({ run: sportThresholds, bike: sportThresholds, swim: sportThresholds });
 

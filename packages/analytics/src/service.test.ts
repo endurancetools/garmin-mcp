@@ -131,6 +131,26 @@ describe('AnalyticsService.getLoad', () => {
     expect(hr.data.latest?.ctl).toBeLessThan(auto.data.latest?.ctl ?? 0);
   });
 
+  it('auto scores a swim from its speed against CSS (sTSS), and thresholds_used.by_sport.swim has css', async () => {
+    const t = setup();
+    t.store.markReferenceFetched('profile', NOW);
+    const swim = activity(9050, TODAY, { activityType: { typeKey: 'lap_swimming' }, distance: 1600, duration: 1800, movingDuration: 1390, averageHR: 140 });
+    t.activities([swim], addDays(TODAY, -1), TODAY);
+    t.daily('daily_summary', addDays(TODAY, -40), TODAY, () => ({ resting_hr: 50 }));
+    t.store.addThreshold({ date: '2026-01-01', param: 'lthr_run', value: 170, source: 'manual', created_at: NOW });
+    const hrOnly = await t.analytics.getLoad({ from: TODAY, include_activities: true });
+    expect(hrOnly.data.activities?.[0]?.load_source).toBe('hr');
+    expect(hrOnly.data.thresholds_used.by_sport.swim.css).toBeUndefined();
+    expect(hrOnly.meta.note).toContain('no css_s_per_100m');
+    t.store.addThreshold({ date: '2026-01-01', param: 'css_s_per_100m', value: 80, source: 'manual', created_at: NOW });
+    const auto = await t.analytics.getLoad({ from: TODAY, include_activities: true });
+    expect(loadOutput.safeParse(auto).success).toBe(true);
+    expect(auto.data.activities?.[0]).toMatchObject({ sport: 'swim', load_source: 'swim_pace', tss: 30.2, if: 0.921 });
+    expect(auto.data.latest?.tss).toBe(30.2);
+    expect(auto.data.thresholds_used.by_sport.swim).toMatchObject({ css: 80 });
+    expect(auto.data.note).toMatch(/swimming speed \/ CSS/);
+  });
+
   it('auto counts strength without heart rate from the session RPE of its summary detail; flags.rpe_calibration overrides 0.23', async () => {
     const t = setup();
     t.store.markReferenceFetched('profile', NOW);

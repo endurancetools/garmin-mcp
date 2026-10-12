@@ -252,6 +252,8 @@ export interface SportThresholds {
   ftp?: number;
   /** `thresholds_used` of `get_load` only: running threshold pace (s/km) of the pace candidate, when in the history. */
   threshold_pace?: number;
+  /** `thresholds_used` of `get_load` only: critical swim speed (s per 100 m) of the swim pace candidate, when in the history. */
+  css?: number;
 }
 
 /**

@@ -8,6 +8,7 @@ import {
   hrTss,
   hrZonesCandidate,
   intensityFactor,
+  NO_CSS_NOTE,
   NO_FTP_NOTE,
   NO_THRESHOLD_PACE_NOTE,
   paceCandidate,
@@ -18,6 +19,7 @@ import {
   sessionFromActivity,
   sessionFromImported,
   sessionMetrics,
+  swimPaceCandidate,
   type SessionContext,
   type SessionInput,
 } from './session.js';
@@ -199,6 +201,50 @@ describe('load sources: power, then pace, then heart rate', () => {
     expect(sessionMetrics(ride({ date: '2026-05-31' }), ctx).tss).toBe(64);
     expect(sessionMetrics(ride({ date: '2026-06-01' }), ctx)).toMatchObject({ tss: 100, if: 1 });
     expect(sessionMetrics(run({ date: '2026-06-01' }), ctx)).toMatchObject({ tss: 100, if: 1 });
+  });
+});
+
+describe('load source: swim pace from CSS (sTSS)', () => {
+  // TrainingPeaks' example: CSS 75 m/min (80 s per 100 m), 1 600 m in 23:10 of moving time.
+  const WITH_CSS: SessionContext = { ...CTX, thresholds: [...CTX.thresholds, row('2026-01-01', 'css_s_per_100m', 80)] };
+  const swim = (extra: Partial<SessionInput> = {}) =>
+    input({ type: 'lap_swimming', distance_m: 1600, moving_s: 23 * 60 + 10, duration_s: 1800, avg_hr: 140, ...extra });
+
+  it('IF = speed / CSS speed, sTSS = moving h × IF³ × 100 (article: IF 0.92, sTSS ≈ 30)', () => {
+    const c = swimPaceCandidate(1600, 1390, 80);
+    expect(c?.source).toBe('swim_pace');
+    expect(c?.if).toBeCloseTo(1600 / 1390 / 1.25, 10);
+    expect(c?.tss).toBeCloseTo((1390 / 3600) * (1600 / 1390 / 1.25) ** 3 * 100, 10);
+    const s = sessionMetrics(swim(), WITH_CSS);
+    expect(s).toMatchObject({ tss: 30.2, if: 0.921, load_source: 'swim_pace' });
+    expect(round(s.if, 2)).toBe(0.92);
+    // the heart-rate candidate stays on the session for source "hrtss"
+    expect(s.hrtss).toBe(round(hrTss(1800, intensityFactor(140, 50, 170)), 1));
+  });
+
+  it('the cube: an hour at 1.1 × CSS speed scores 133.1, not 121 as with the square', () => {
+    const fast = swimPaceCandidate(3960, 3600, 100);
+    expect(fast?.if).toBeCloseTo(1.1, 10);
+    expect(fast?.tss).toBeCloseTo(133.1, 6);
+  });
+
+  it('without CSS, distance or moving time a swim uses heart rate, as before', () => {
+    const notes: string[] = [];
+    expect(sessionMetrics(swim(), CTX, (n) => notes.push(n)).load_source).toBe('hr');
+    expect(notes).toEqual([NO_CSS_NOTE]);
+    const quiet: string[] = [];
+    expect(sessionMetrics(swim({ moving_s: undefined }), WITH_CSS, (n) => quiet.push(n)).load_source).toBe('hr');
+    expect(sessionMetrics(swim({ moving_s: undefined }), CTX, (n) => quiet.push(n)).load_source).toBe('hr');
+    expect(sessionMetrics(swim({ distance_m: 0 }), WITH_CSS).load_source).toBe('hr');
+    expect(quiet).toEqual([]);
+    expect(swimPaceCandidate(1600, 1390, 0)).toBeUndefined();
+  });
+
+  it('CSS counts for the swim group only and is taken on the session date', () => {
+    expect(sessionMetrics(input({ distance_m: 1600, moving_s: 1390 }), WITH_CSS).load_source).toBe('hr');
+    const ctx = { ...WITH_CSS, thresholds: [...WITH_CSS.thresholds, row('2026-06-01', 'css_s_per_100m', 1390 / 16)] };
+    expect(sessionMetrics(swim({ date: '2026-05-31' }), ctx).tss).toBe(30.2);
+    expect(sessionMetrics(swim({ date: '2026-06-01' }), ctx)).toMatchObject({ if: 1, tss: round((1390 / 3600) * 100, 1) });
   });
 });
 
