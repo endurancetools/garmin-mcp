@@ -72,6 +72,42 @@ export function profileThresholds(profileRaw: unknown): { param: ThresholdParam;
   });
 }
 
+/** Lower bounds of Garmin's HR zones 1–5 and the HRmax Garmin used (bpm), from one sport of the profile. */
+export interface ZoneFloors {
+  zone1Floor: number;
+  zone2Floor: number;
+  zone3Floor: number;
+  zone4Floor: number;
+  zone5Floor: number;
+  maxHeartRateUsed: number;
+}
+
+/** HR zone boundaries of the profile's DEFAULT and CYCLING sport; a sport is absent when they are missing. */
+export interface ProfileZoneFloors {
+  DEFAULT?: ZoneFloors;
+  CYCLING?: ZoneFloors;
+}
+
+const ZONE_FLOOR_KEYS = ['zone1Floor', 'zone2Floor', 'zone3Floor', 'zone4Floor', 'zone5Floor', 'maxHeartRateUsed'] as const;
+
+/**
+ * HR zone boundaries of the DEFAULT and CYCLING sport in a stored Garmin profile (`profile.raw`).
+ * A sport is left out unless all six values are numbers rising strictly from zone 1 to HRmax.
+ * These are the profile's current zones, not the ones of an activity's date.
+ */
+export function profileZoneFloors(profileRaw: unknown): ProfileZoneFloors {
+  const zones = obj(profileRaw)?.['heartRateZones'];
+  const one = (sport: string): ZoneFloors | undefined => {
+    const z = bySport(zones, sport);
+    const values = ZONE_FLOOR_KEYS.map((k) => num(z?.[k]));
+    if (values.some((v, i) => v === undefined || (i > 0 && !(v > (values[i - 1] ?? Infinity))))) return undefined;
+    return Object.fromEntries(ZONE_FLOOR_KEYS.map((k, i) => [k, values[i]])) as unknown as ZoneFloors;
+  };
+  const DEFAULT = one('DEFAULT');
+  const CYCLING = one('CYCLING');
+  return { ...(DEFAULT && { DEFAULT }), ...(CYCLING && { CYCLING }) };
+}
+
 /**
  * Adds a `garmin-auto` row for each profile value that differs from the last `garmin-auto`
  * row of its param, dated with the local date of `profile.fetched_at`. Idempotent and offline;

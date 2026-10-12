@@ -32,6 +32,7 @@ import { DEFAULT_READINESS_RULES, readiness, READINESS_WINDOW_DAYS, type Readine
 import { buildSessions, sessionFromActivity, sessionFromImported, type Session, type SessionInput } from './session.js';
 import {
   hrmaxOn,
+  profileZoneFloors,
   recordProfileThresholds,
   restingHrOn,
   RHR_MIN_SAMPLES,
@@ -289,7 +290,8 @@ export class AnalyticsService {
     const latest = loadOn(series, to);
     const inRange = sessions.filter((s) => s.date >= from && s.date <= to);
     const last28 = addDays(to, -(DEFAULT_LOAD_DAYS - 1));
-    const intensity = intensityDistribution(sessions, thresholds, last28 > from ? last28 : from, to, flags.z1_min_pct);
+    const floors = profileZoneFloors(this.#store.getProfile()?.raw);
+    const { note: intensityNote, ...intensity } = intensityDistribution(sessions, thresholds, last28 > from ? last28 : from, to, flags.z1_min_pct, floors);
     const flagList = loadFlags(latest, sessions, flags);
     if (intensity.z1_below_target) {
       flagList.push({
@@ -308,6 +310,7 @@ export class AnalyticsService {
     if (firstDay !== undefined && firstDay > addDays(from, -CTL_WARMUP_DAYS)) {
       allNotes.add(`The activity history starts on ${firstDay}; CTL needs about ${CTL_WARMUP_DAYS} days before ${from} to settle, so it reads low until then.`);
     }
+    if (intensityNote) allNotes.add(intensityNote);
     if (flagInput.note) allNotes.add(flagInput.note);
 
     const note =
