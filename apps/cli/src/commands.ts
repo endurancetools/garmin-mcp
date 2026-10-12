@@ -294,10 +294,21 @@ export function buildProgram(deps: ProgramDeps = {}): Command {
     .option('--series', 'add the daily series of the range')
     .option('--activities', 'add per-activity metrics of the range')
     .option('--efficiency', 'add the monthly efficiency factor of aerobic sessions')
+    .option('--by-sport', 'add CTL/ATL/TSB/ACWR per sport group next to the total (and per sport columns in the --json series)')
     .option('--json', 'the { data, meta } envelope of the get_load tool')
     .action(
       async (
-        opts: { from?: string; to?: string; source: LoadSource; flags?: string; series?: boolean; activities?: boolean; efficiency?: boolean; json?: boolean },
+        opts: {
+          from?: string;
+          to?: string;
+          source: LoadSource;
+          flags?: string;
+          series?: boolean;
+          activities?: boolean;
+          efficiency?: boolean;
+          bySport?: boolean;
+          json?: boolean;
+        },
         cmd: Command,
       ) => {
         const flags = opts.flags ? readJsonObject(opts.flags, '--flags') : undefined;
@@ -309,6 +320,7 @@ export function buildProgram(deps: ProgramDeps = {}): Command {
             include_series: opts.series,
             include_activities: opts.activities,
             include_efficiency: opts.efficiency,
+            include_by_sport: opts.bySport,
             flags,
           }),
         );

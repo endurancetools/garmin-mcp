@@ -318,6 +318,24 @@ describe('garmin load', () => {
     expect(res.data.flags_used.acwr_high).toBe(1.5);
   });
 
+  it('adds the per sport load with --by-sport, in markdown and in the envelope', async () => {
+    const { deps } = fake();
+    const md = (await run(deps, 'load', '--by-sport')).stdout;
+    expect(md).toContain('## By sport on 2026-10-08');
+    expect(md).toContain('| sport | ctl | atl | tsb | acwr |');
+    expect(md).toMatch(/\| run \| \d+(\.\d)? \| \d+(\.\d)? \| -?\d+(\.\d)? \|/);
+    expect((await run(deps, 'load')).stdout).not.toContain('## By sport');
+    const res = json<{ data: { latest: { ctl: number; atl: number }; by_sport: Record<string, { ctl: number; atl: number }>; series: Record<string, unknown>[] } }>(
+      (await run(deps, 'load', '--from', '2026-10-01', '--by-sport', '--series', '--json')).stdout,
+    );
+    expect(Object.keys(res.data.by_sport)).toEqual(['run']);
+    expect(res.data.by_sport.run).toMatchObject({ ctl: res.data.latest.ctl, atl: res.data.latest.atl });
+    expect(res.data.series.at(-1)).toHaveProperty('run_ctl');
+    const plain = json<{ data: { by_sport?: unknown; series: Record<string, unknown>[] } }>((await run(deps, 'load', '--from', '2026-10-01', '--series', '--json')).stdout);
+    expect(plain.data.by_sport).toBeUndefined();
+    expect(plain.data.series.at(-1)).not.toHaveProperty('run_ctl');
+  });
+
   it('reads flag thresholds from a JSON file and switches the source', async () => {
     const { deps } = fake();
     const file = path.join(tmp, 'flags.json');
