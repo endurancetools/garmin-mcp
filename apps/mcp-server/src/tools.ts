@@ -388,7 +388,8 @@ export const TOOLS: ToolDef[] = [
       "Own transparent load model (TSS per activity from power, else pace, else heart rate, else session RPE, with date-dependent thresholds), not Garmin's EPOC load; for Garmin's status and load use get_training_status. " +
       'Returns CTL/ATL/TSB, ACWR, monotony and strain on `to` (`latest`), warning `flags`, ISO weeks per sport (sessions, hours, km, TSS, hrTSS, Garmin load, hours in Z1-2/Z3/Z4-5), ' +
       'the 3-zone intensity split of the last 28 days (Z1/Z2/Z3 minutes and %) and the thresholds used. ' +
-      'include_series adds the daily curve, include_activities TSS/IF/load_source/EF per activity, include_efficiency the monthly EF trend. ' +
+      'include_series adds the daily curve, include_activities TSS/IF/load_source/EF per activity, include_efficiency the monthly EF trend, ' +
+      'include_by_sport CTL/ATL/TSB/ACWR per sport group (`by_sport`, plus run_ctl… columns in the series) next to the total, which stays the default. ' +
       'Example: {"from":"2026-09-01","to":"2026-09-30","include_activities":true}.',
     input: {
       from: date.optional().describe('Default: 27 days before `to`'),
@@ -397,6 +398,7 @@ export const TOOLS: ToolDef[] = [
       include_series: z.boolean().default(false),
       include_activities: z.boolean().default(false),
       include_efficiency: z.boolean().default(false),
+      include_by_sport: z.boolean().default(false),
       flags: z.looseObject({}).optional().describe(`Own flag thresholds, any of (default): ${defaults(DEFAULT_LOAD_FLAGS)}`),
     },
     output: loadOutput,

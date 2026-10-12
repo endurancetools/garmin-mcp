@@ -1,7 +1,7 @@
 import { addDays, daysBetween, type IsoDate } from 'garmin-mcp-config';
 import { round, trainingLoadSeries } from 'garmin-mcp-domain';
 import type { Session } from './session.js';
-import type { SportGroup } from './sport.js';
+import { SPORT_GROUPS, type SportGroup } from './sport.js';
 
 /**
  * Daily stress source: `auto` the per-session hierarchy (power → pace → heart rate → session RPE, `tss`),
@@ -196,6 +196,57 @@ export function loadSeries(
 /** The last day of the series on or before `date`. */
 export function loadOn(series: readonly LoadDay[], date: IsoDate): LoadDay | undefined {
   return series.findLast((d) => d.date <= date);
+}
+
+/** The part of a day of the load model `by_sport` of `get_load` reports per sport group. */
+export const SPORT_LOAD_KEYS = ['ctl', 'atl', 'tsb', 'acwr'] as const;
+export type SportLoadKey = (typeof SPORT_LOAD_KEYS)[number];
+export type SportLoad = Pick<LoadDay, SportLoadKey>;
+/** A day of the series with per-sport columns (`run_ctl`, `bike_tsb`, …) for the groups whose series has begun. */
+export type LoadSeriesDay = LoadDay & Partial<Record<`${SportGroup}_${SportLoadKey}`, number>>;
+
+/**
+ * Load model per sport group: {@link loadSeries} on the sessions of each group that has any,
+ * in {@link SPORT_GROUPS} order, each from its own first session to `to`. No weights between
+ * sports; the EWMA is linear, so the CTL and ATL of the groups add up to the total ones
+ * (up to rounding), while ACWR, monotony and strain do not.
+ */
+export function loadSeriesBySport(
+  sessions: readonly (LoadSession & Pick<Session, 'sport'>)[],
+  source: LoadSource,
+  to: IsoDate,
+): Map<SportGroup, LoadDay[]> {
+  const out = new Map<SportGroup, LoadDay[]>();
+  for (const sport of SPORT_GROUPS) {
+    const own = sessions.filter((s) => s.sport === sport);
+    if (own.length) out.set(sport, loadSeries(own, source, to));
+  }
+  return out;
+}
+
+const sportLoad = (d: LoadDay): SportLoad => ({ ctl: d.ctl, atl: d.atl, tsb: d.tsb, acwr: d.acwr });
+
+/** CTL, ATL, TSB and ACWR of every sport group on `date` (groups without a session up to `date` are left out). */
+export function sportLoadOn(bySport: ReadonlyMap<SportGroup, readonly LoadDay[]>, date: IsoDate): Partial<Record<SportGroup, SportLoad>> {
+  const out: Partial<Record<SportGroup, SportLoad>> = {};
+  for (const [sport, series] of bySport) {
+    const day = loadOn(series, date);
+    if (day) out[sport] = sportLoad(day);
+  }
+  return out;
+}
+
+/** The days of `series` with the columns `<sport>_ctl`, `<sport>_atl`, `<sport>_tsb`, `<sport>_acwr` of every group that has that day. */
+export function withSportColumns(series: readonly LoadDay[], bySport: ReadonlyMap<SportGroup, readonly LoadDay[]>): LoadSeriesDay[] {
+  const days = [...bySport].map(([sport, s]) => [sport, new Map(s.map((d) => [d.date, d]))] as const);
+  return series.map((d) => {
+    const row: LoadSeriesDay = { ...d };
+    for (const [sport, byDate] of days) {
+      const own = byDate.get(d.date);
+      if (own) for (const k of SPORT_LOAD_KEYS) row[`${sport}_${k}` as const] = own[k];
+    }
+    return row;
+  });
 }
 
 /** Volume of one sport in one ISO week. */

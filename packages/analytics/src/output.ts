@@ -66,6 +66,9 @@ const session = z.looseObject({
   source: str,
 });
 
+/** `by_sport` of `get_load`: the load model of one sport group on `to`; the series has the same values as `<sport>_ctl` … columns. */
+const sportLoad = obj({ ctl: num, atl: num, tsb: num, acwr: num });
+
 const sportThresholds = obj({ lthr: num, lt1: num, lthr_note: str, lt1_note: str, ftp: num, threshold_pace: num, css: num });
 /** `by_sport` of `get_thresholds`, also `thresholds_used.by_sport` of `get_load`. */
 const bySport = obj({ run: sportThresholds, bike: sportThresholds, swim: sportThresholds });
@@ -108,6 +111,7 @@ export const loadOutput = envelope({
     z1_below_target: bool,
   }),
   thresholds_used: obj({ date: str, by_sport: bySport, rhr: num }),
+  by_sport: obj({ run: sportLoad, bike: sportLoad, swim: sportLoad, strength: sportLoad, nordic: sportLoad, row: sportLoad, hike: sportLoad, other: sportLoad }),
   series: list(z.looseObject(loadDay)),
   activities: list(session),
   efficiency: list(z.looseObject({ period: str, sport: str, n: num, ef_avg: num, ef_max: num, ef_gap_avg: num })),

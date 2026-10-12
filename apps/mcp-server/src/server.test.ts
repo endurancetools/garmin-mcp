@@ -123,11 +123,11 @@ describe('MCP server', () => {
     const create = tools.find((t) => t.name === 'create_workout')?.inputSchema;
     const preview = tools.find((t) => t.name === 'preview_workout')?.inputSchema;
     const overwrite = all.find((t) => t.name === 'create_workout')?.inputSchema;
-    expect(context(tools)).toBeLessThanOrEqual(42_484);
+    expect(context(tools)).toBeLessThanOrEqual(42_746);
     expect(size(create)).toBeLessThanOrEqual(11_500);
-    expect(context(all)).toBeLessThanOrEqual(44_050);
-    expect(size(tools)).toBeLessThanOrEqual(78_055);
-    expect(size(all)).toBeLessThanOrEqual(81_762);
+    expect(context(all)).toBeLessThanOrEqual(44_312);
+    expect(size(tools)).toBeLessThanOrEqual(79_942);
+    expect(size(all)).toBeLessThanOrEqual(83_649);
     // The preview is create_workout without `workout_id`. Without destructive tools create_workout
     // is a strict object (a stray workout_id fails loudly); the preview stays lenient.
     const { workout_id: _overwrite, ...properties } = overwrite?.properties ?? {};
