@@ -8,10 +8,13 @@ import {
   loadOn,
   loadRatio,
   loadSeries,
+  loadSeriesBySport,
   resolveLoadFlags,
   sampleSd,
+  sportLoadOn,
   weekJump,
   weeklyBySport,
+  withSportColumns,
   type LoadDay,
 } from './load.js';
 import type { Session } from './session.js';
@@ -145,6 +148,53 @@ describe('loadSeries', () => {
   it('only Garmin-load days without any load still start the series', () => {
     const series = loadSeries([sess('2026-05-01')], 'garmin_load', '2026-05-02');
     expect(series.map((d) => d.tss)).toEqual([0, 0]);
+  });
+});
+
+describe('loadSeriesBySport', () => {
+  // Runs every day from day 0, rides of 60 every other day from day 100, one swim on day 150.
+  const start = '2026-01-01';
+  const to = addDays(start, 199);
+  const sessions = [
+    ...eachDay(start, to).map((d) => sess(d, { tss: 80 })),
+    ...eachDay(addDays(start, 100), to)
+      .filter((_, i) => i % 2 === 0)
+      .map((d) => sess(d, { id: `b${d}`, sport: 'bike', tss: 60 })),
+    sess(addDays(start, 150), { id: 'swim', sport: 'swim', tss: 40 }),
+  ];
+  const total = loadSeries(sessions, 'auto', to);
+  const bySport = loadSeriesBySport(sessions, 'auto', to);
+
+  it('runs one series per group with sessions, from its own first session, in SPORT_GROUPS order', () => {
+    expect([...bySport.keys()]).toEqual(['run', 'bike', 'swim']);
+    expect(bySport.get('run')?.[0]?.date).toBe(start);
+    expect(bySport.get('bike')?.[0]?.date).toBe(addDays(start, 100));
+    expect(bySport.get('swim')?.at(-1)?.date).toBe(to);
+  });
+
+  it('CTL and ATL of the groups add up to the total (no weights), ACWR does not', () => {
+    const on = sportLoadOn(bySport, to);
+    const last = loadOn(total, to);
+    expect(Object.keys(on)).toEqual(['run', 'bike', 'swim']);
+    expect((on.run?.ctl ?? 0) + (on.bike?.ctl ?? 0) + (on.swim?.ctl ?? 0)).toBeCloseTo(last?.ctl ?? 0, 0);
+    expect((on.run?.atl ?? 0) + (on.bike?.atl ?? 0) + (on.swim?.atl ?? 0)).toBeCloseTo(last?.atl ?? 0, 0);
+    expect(on.run).toEqual({ ctl: expect.any(Number), atl: 80, tsb: expect.any(Number), acwr: 1 });
+    expect(on.swim?.acwr).toBe(0);
+    expect(on.bike?.ctl).toBeLessThan(on.run?.ctl ?? 0);
+  });
+
+  it('leaves out groups without a session up to the date', () => {
+    expect(Object.keys(sportLoadOn(bySport, addDays(start, 99)))).toEqual(['run']);
+    expect(sportLoadOn(new Map(), to)).toEqual({});
+  });
+
+  it('adds <sport>_ctl, _atl, _tsb, _acwr columns only on days the group series has', () => {
+    const days = withSportColumns(total.filter((d) => d.date >= addDays(start, 99) && d.date <= addDays(start, 100)), bySport);
+    expect(days[0]).toMatchObject({ run_ctl: expect.any(Number), run_acwr: 1 });
+    expect(days[0]).not.toHaveProperty('bike_ctl');
+    expect(days[1]).toMatchObject({ bike_ctl: bySport.get('bike')?.[0]?.ctl, bike_atl: expect.any(Number), bike_tsb: 0, bike_acwr: 1 });
+    expect(days[1]).toMatchObject({ ctl: total[100]?.ctl, tss: 140 });
+    expect(withSportColumns(total.slice(0, 2), new Map())).toEqual(total.slice(0, 2));
   });
 });
 

@@ -1,4 +1,4 @@
-import { addDays, InputError } from 'garmin-mcp-config';
+import { addDays, eachDay, InputError } from 'garmin-mcp-config';
 import { describe, expect, it } from 'vitest';
 import type { z } from 'zod';
 import { loadOutput, readinessOutput, setThresholdOutput, thresholdsOutput } from './output.js';
@@ -129,6 +129,37 @@ describe('AnalyticsService.getLoad', () => {
     const hr = await t.analytics.getLoad({ from: addDays(TODAY, -1), source: 'hrtss' });
     expect(hr.data.latest?.tss).toBe(69.4);
     expect(hr.data.latest?.ctl).toBeLessThan(auto.data.latest?.ctl ?? 0);
+  });
+
+  it('include_by_sport adds the load model of each sport group next to the unchanged total, and its columns in the series', async () => {
+    const t = setup();
+    t.store.markReferenceFetched('profile', NOW);
+    const runs = t.dailyRuns('2026-06-01', TODAY);
+    const rides = eachDay(addDays(TODAY, -9), TODAY).map((d, i) => activity(9000 + i, d, { activityType: { typeKey: 'road_biking' } }));
+    t.activities([...runs, ...rides], '2026-06-01', TODAY);
+    t.daily('daily_summary', '2026-05-01', TODAY, () => ({ resting_hr: 50 }));
+    t.store.addThreshold({ date: '2026-01-01', param: 'lthr_run', value: 170, source: 'manual', created_at: NOW });
+    const from = addDays(TODAY, -10);
+    const plain = await t.analytics.getLoad({ from, include_series: true });
+    expect(plain.data.by_sport).toBeUndefined();
+    expect(plain.data.series?.[0]).not.toHaveProperty('run_ctl');
+    const res = await t.analytics.getLoad({ from, include_series: true, include_by_sport: true });
+    fits(loadOutput, res);
+    expect(loadOutput.safeParse(res).success).toBe(true);
+    expect(res.data.latest).toEqual(plain.data.latest);
+    const { run, bike } = res.data.by_sport ?? {};
+    expect(Object.keys(res.data.by_sport ?? {})).toEqual(['run', 'bike']);
+    expect(run).toEqual({ ctl: expect.any(Number), atl: expect.any(Number), tsb: expect.any(Number), acwr: 1 });
+    expect((run?.ctl ?? 0) + (bike?.ctl ?? 0)).toBeCloseTo(res.data.latest?.ctl ?? 0, 0);
+    expect(bike?.ctl).toBeLessThan(run?.ctl ?? 0);
+    expect(bike?.tsb).toBeLessThan(0);
+    // Rides start 9 days before `to`: the first day of the range has only the run columns.
+    expect(res.data.series?.[0]).toMatchObject({ ...plain.data.series?.[0], run_ctl: expect.any(Number) });
+    expect(res.data.series?.[0]).not.toHaveProperty('bike_ctl');
+    expect(res.data.series?.at(-1)).toMatchObject({ run_ctl: run?.ctl, bike_ctl: bike?.ctl, bike_tsb: bike?.tsb, bike_acwr: bike?.acwr });
+    const noSeries = await t.analytics.getLoad({ from, include_by_sport: true });
+    expect(noSeries.data.series).toBeUndefined();
+    expect(noSeries.data.by_sport).toEqual(res.data.by_sport);
   });
 
   it('auto scores a swim from its speed against CSS (sTSS), and thresholds_used.by_sport.swim has css', async () => {

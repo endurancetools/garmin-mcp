@@ -21,18 +21,24 @@ import {
   loadOn,
   loadRatio,
   loadSeries,
+  loadSeriesBySport,
   isLoadFlagValue,
   resolveLoadFlags,
+  sportLoadOn,
   weeklyBySport,
+  withSportColumns,
   type HrMethod,
   type LoadDay,
   type LoadFlag,
   type LoadFlags,
+  type LoadSeriesDay,
   type LoadSource,
+  type SportLoad,
   type WeekSport,
 } from './load.js';
 import { DEFAULT_READINESS_RULES, readiness, READINESS_WINDOW_DAYS, type Readiness } from './readiness.js';
 import { buildSessions, sessionFromActivity, sessionFromImported, type Session, type SessionInput } from './session.js';
+import type { SportGroup } from './sport.js';
 import {
   hrmaxOn,
   profileZoneFloors,
@@ -65,6 +71,8 @@ export interface LoadQuery {
   include_series?: boolean;
   include_activities?: boolean;
   include_efficiency?: boolean;
+  /** Adds `by_sport` (the load model of each sport group on `to`) and, with `include_series`, its columns in the series. */
+  include_by_sport?: boolean;
   /** Overrides of `DEFAULT_LOAD_FLAGS`; unknown keys and non-numbers are ignored with a note. */
   flags?: Record<string, unknown>;
 }
@@ -96,7 +104,9 @@ export interface LoadData {
   /** Run, bike, nordic and row intensity of the last 28 days of the range. */
   intensity: IntensityDistribution;
   thresholds_used: ThresholdsUsed;
-  series?: LoadDay[];
+  /** CTL, ATL, TSB and ACWR on `to` of every sport group with a session up to `to`, each from its own sessions only (`include_by_sport`). */
+  by_sport?: Partial<Record<SportGroup, SportLoad>>;
+  series?: LoadSeriesDay[];
   activities?: Session[];
   efficiency?: EfficiencyRow[];
   note: string;
@@ -311,6 +321,7 @@ export class AnalyticsService {
 
     const { sessions, notes, thresholds, daily, floors } = this.#sessions(end, flags.rpe_calibration, flags.hr_method);
     const series = loadSeries(sessions, source, end);
+    const perSport = q.include_by_sport ? loadSeriesBySport(sessions, source, end) : undefined;
     const day = loadOn(series, to);
     const ratio = day && source !== 'garmin_load' ? loadRatio(sessions, source, to) : undefined;
     const latest: LatestLoad | undefined = day && { ...day, load_ratio_28d: ratio?.ratio_28d, load_ratio_usual: ratio?.usual };
@@ -367,7 +378,8 @@ export class AnalyticsService {
       weeks: weeklyBySport(inRange),
       intensity,
       thresholds_used: { date: to, by_sport: bySport, rhr: rhr.value },
-      series: q.include_series ? series.filter((d) => d.date >= from && d.date <= to) : undefined,
+      by_sport: perSport && sportLoadOn(perSport, to),
+      series: q.include_series ? withSportColumns(series.filter((d) => d.date >= from && d.date <= to), perSport ?? new Map()) : undefined,
       activities: q.include_activities ? inRange : undefined,
       efficiency: q.include_efficiency ? efficiencyTrend(inRange, 'month') : undefined,
       note,
