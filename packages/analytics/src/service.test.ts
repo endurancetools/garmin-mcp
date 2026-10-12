@@ -50,7 +50,15 @@ describe('AnalyticsService.getLoad', () => {
       to: TODAY,
       source: 'hrtss',
       latest: { date: TODAY, tss: 69.4, acwr: 1, monotony: 0, strain: 0 },
-      thresholds_used: { date: TODAY, lthr_run: 170, lthr_bike: 170, lt1_run: 153, lt1_bike: 146, rhr: 50 },
+      thresholds_used: {
+        date: TODAY,
+        by_sport: {
+          run: { lthr: 170, lt1: 153 },
+          bike: { lthr: 170, lt1: 146, lthr_note: 'No lthr_bike in the threshold history; the running LTHR is used.' },
+          swim: { lthr: 170, lt1: 153 },
+        },
+        rhr: 50,
+      },
       intensity: { z1_pct: 100, sessions_by_avg_hr: 28, z1_below_target: false },
       flags_used: { acwr_high: 1.5, z1_min_pct: 75 },
     });
@@ -104,7 +112,8 @@ describe('AnalyticsService.getLoad', () => {
     expect(res.meta.sync_hint).toEqual({ scope: 'all', from: '2026-09-11', to: TODAY });
     expect(res.meta.note).toMatch(/garmin_sync/);
     expect(res.data.latest).toBeUndefined();
-    expect(res.data.thresholds_used).toMatchObject({ lthr_run: 170, rhr: 50 });
+    expect(res.data.thresholds_used).toMatchObject({ rhr: 50, by_sport: { run: { lthr: 170, lthr_note: expect.stringMatching(/default 170 bpm/) } } });
+    expect(res.data.thresholds_used.by_sport.bike.lthr_note).toBe(res.data.thresholds_used.by_sport.run.lthr_note);
     expect(res.meta.note).toMatch(/default 170 bpm/);
     expect(calls).toEqual([]);
   });

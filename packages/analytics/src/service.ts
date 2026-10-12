@@ -31,8 +31,6 @@ import { DEFAULT_READINESS_RULES, readiness, READINESS_WINDOW_DAYS, type Readine
 import { buildSessions, sessionFromActivity, sessionFromImported, type Session, type SessionInput } from './session.js';
 import {
   hrmaxOn,
-  lt1For,
-  lthrFor,
   recordProfileThresholds,
   restingHrOn,
   RHR_MIN_SAMPLES,
@@ -66,14 +64,10 @@ export interface LoadQuery {
   flags?: Record<string, unknown>;
 }
 
-/** Thresholds the load model used on `to`. */
+/** Thresholds the load model used on `to`: `by_sport` as in `get_thresholds`, and the resting HR. */
 export interface ThresholdsUsed {
   date: IsoDate;
-  lthr_run: number;
-  lthr_bike: number;
-  lthr_swim: number;
-  lt1_run: number;
-  lt1_bike: number;
+  by_sport: Record<ThresholdSport, SportThresholds>;
   rhr: number;
 }
 
@@ -285,14 +279,12 @@ export class AnalyticsService {
       });
     }
 
-    const lthrRun = lthrFor(thresholds, 'run', to);
-    const lthrBike = lthrFor(thresholds, 'bike', to);
-    const lthrSwim = lthrFor(thresholds, 'swim', to);
-    const lt1Run = lt1For(thresholds, 'run', to);
-    const lt1Bike = lt1For(thresholds, 'bike', to);
+    const bySport = thresholdsBySport(thresholds, to);
     const rhr = restingHrOn(daily, thresholds, to);
     const allNotes = new Set(notes);
-    for (const r of [lthrRun, lthrBike, lthrSwim, lt1Run, lt1Bike, rhr]) if (r.note) allNotes.add(r.note);
+    // The default-LTHR and LT1-approximation notes are the same for every sport, so the running
+    // ones cover them; the bike/swim fallback notes stay in by_sport.
+    for (const n of [bySport.run.lthr_note, bySport.run.lt1_note, rhr.note]) if (n) allNotes.add(n);
     const firstDay = series[0]?.date;
     if (firstDay !== undefined && firstDay > addDays(from, -CTL_WARMUP_DAYS)) {
       allNotes.add(`The activity history starts on ${firstDay}; CTL needs about ${CTL_WARMUP_DAYS} days before ${from} to settle, so it reads low until then.`);
@@ -313,15 +305,7 @@ export class AnalyticsService {
       flags_used: flags,
       weeks: weeklyBySport(inRange),
       intensity,
-      thresholds_used: {
-        date: to,
-        lthr_run: lthrRun.value,
-        lthr_bike: lthrBike.value,
-        lthr_swim: lthrSwim.value,
-        lt1_run: lt1Run.value,
-        lt1_bike: lt1Bike.value,
-        rhr: rhr.value,
-      },
+      thresholds_used: { date: to, by_sport: bySport, rhr: rhr.value },
       series: q.include_series ? series.filter((d) => d.date >= from && d.date <= to) : undefined,
       activities: q.include_activities ? inRange : undefined,
       efficiency: q.include_efficiency ? efficiencyTrend(inRange, 'month') : undefined,
