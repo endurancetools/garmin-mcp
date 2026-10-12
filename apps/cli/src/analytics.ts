@@ -101,7 +101,12 @@ export function loadMarkdown({ data, meta }: Envelope<LoadData>): string {
 export function readinessMarkdown({ data, meta }: Envelope<Readiness>): string {
   const out = [`# Readiness ${data.date}: ${data.decision}${data.partial ? ' (partial day)' : ''}`, ''];
   out.push(`Red ${data.counts.red}, yellow ${data.counts.yellow}, ok ${data.counts.ok}, unknown ${data.counts.unknown}.`, '');
-  out.push(mdTable(data.signals.map((s) => ({ signal: s.name, rating: s.rating, detail: s.detail })), ['signal', 'rating', 'detail']));
+  const counted = data.signals.filter((s) => s.rating !== 'info');
+  out.push(mdTable(counted.map((s) => ({ signal: s.name, rating: s.rating, detail: s.detail })), ['signal', 'rating', 'detail']));
+  for (const s of data.signals.filter((x) => x.rating === 'info')) {
+    const shown = Object.entries(s.value).map(([k, v]) => `${k} ${v}`).join(', ');
+    out.push('', `${s.name}: ${shown ? `${shown}. ` : ''}${s.detail}.`);
+  }
   const advice = data.recommendation ?? [];
   if (advice.length) out.push('', '## Advice', '', ...advice.map((r) => `- ${r}`));
   out.push(...metaBlock(meta));

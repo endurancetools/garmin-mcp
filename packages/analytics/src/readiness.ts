@@ -27,10 +27,6 @@ export interface ReadinessRules {
   bb_red: number;
   /** Body Battery high of the day below this: yellow. */
   bb_yellow: number;
-  /** Garmin Training Readiness (morning) below this: red. */
-  readiness_red: number;
-  /** Garmin Training Readiness (morning) below this: yellow. */
-  readiness_yellow: number;
   /** Average stress of the day before above this: yellow (never red). */
   stress_yellow: number;
   /** Own load red: ACWR above this. */
@@ -59,8 +55,6 @@ export const DEFAULT_READINESS_RULES: Readonly<ReadinessRules> = {
   sleep_h_yellow: 7,
   bb_red: 30,
   bb_yellow: 50,
-  readiness_red: 30,
-  readiness_yellow: 50,
   stress_yellow: 50,
   acwr_red: 1.5,
   acwr_yellow: 1.3,
@@ -92,8 +86,11 @@ export const READINESS_SIGNALS: readonly ReadinessSignalName[] = [
   'load',
 ];
 
-/** `unknown`: no data for the signal; it does not count towards the decision. */
-export type ReadinessRating = 'ok' | 'yellow' | 'red' | 'unknown';
+/**
+ * `unknown`: no data for the signal; `info`: shown for reference, never rated (Garmin's own
+ * Training Readiness score). Neither counts towards the decision.
+ */
+export type ReadinessRating = 'ok' | 'yellow' | 'red' | 'info' | 'unknown';
 
 export type ReadinessDecision = 'GO' | 'MODIFY' | 'REST';
 
@@ -289,19 +286,19 @@ export function morningReadiness(raw: unknown): { score?: number; level?: string
   };
 }
 
-function trainingReadinessSignal(row: ReadinessInput['training'][number] | undefined, r: ReadinessRules): ReadinessSignal {
+/**
+ * Garmin Training Readiness, always `info`: Garmin's score is itself made of HRV, sleep,
+ * recovery and load, which vote on their own, so counting it would count them twice.
+ */
+function trainingReadinessSignal(row: ReadinessInput['training'][number] | undefined): ReadinessSignal {
   const morning = row ? morningReadiness(row.raw) : undefined;
   const score = morning?.score ?? (finite(row?.readiness_score) ? row.readiness_score : undefined);
   if (score === undefined) return unknown('training_readiness', 'No Garmin Training Readiness for the day.');
-  const { rating, detail } = rate(
-    score < r.readiness_red ? `Training Readiness ${score} < ${r.readiness_red}.` : undefined,
-    score < r.readiness_yellow ? `Training Readiness ${score} < ${r.readiness_yellow}.` : undefined,
-  );
   return {
     name: 'training_readiness',
-    rating,
+    rating: 'info',
     value: vals({ score, level: morning?.level, recovery_h: morning?.recovery_h }),
-    detail: detail ?? `Training Readiness ${score} ≥ ${r.readiness_yellow}.`,
+    detail: "Garmin's own score, shown for reference, not counted",
   };
 }
 
@@ -342,7 +339,8 @@ function loadSignal(load: ReadinessInput['load'], start: IsoDate | undefined, r:
 
 /**
  * Morning GO / MODIFY / REST decision for `date` (spec 5.7): seven signals rated red,
- * yellow, ok or unknown (no data, or the load model still warming up; not counted); REST at `decision_red_min` red signals,
+ * yellow, ok, info (Garmin's Training Readiness, shown only) or unknown (no data, or the load
+ * model still warming up); info and unknown never count. REST at `decision_red_min` red signals,
  * else MODIFY at `decision_yellow_min` yellow ones, else GO. Stress is taken from the day
  * before (the day itself is still running). `partial` when the day is today or later, or a
  * row of the day was fetched before the day had ended (local date of `fetched_at` ≤ D).
@@ -365,12 +363,12 @@ export function readiness(input: ReadinessInput): Readiness {
     rhrSignal(daily?.resting_hr, mean(input.daily.filter(before).map((r) => r.resting_hr)), rules),
     sleepSignal(sleep, rules),
     bodyBatterySignal(daily?.body_battery_high, rules),
-    trainingReadinessSignal(training, rules),
+    trainingReadinessSignal(training),
     stressSignal(on(input.daily, yesterday)?.avg_stress, yesterday, rules),
     loadSignal(input.load, input.load_start, rules),
   ];
 
-  const counts: Record<ReadinessRating, number> = { red: 0, yellow: 0, ok: 0, unknown: 0 };
+  const counts: Record<ReadinessRating, number> = { red: 0, yellow: 0, ok: 0, info: 0, unknown: 0 };
   for (const s of signals) counts[s.rating] += 1;
   const decision: ReadinessDecision =
     counts.red >= rules.decision_red_min ? 'REST' : counts.yellow >= rules.decision_yellow_min ? 'MODIFY' : 'GO';
