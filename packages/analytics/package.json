@@ -31,6 +31,7 @@
   "dependencies": {
     "garmin-mcp-domain": "workspace:*",
     "garmin-mcp-store": "workspace:*",
-    "garmin-mcp-config": "workspace:*"
+    "garmin-mcp-config": "workspace:*",
+    "zod": "^4.6.5"
   }
 }

@@ -1,0 +1,253 @@
+import { InputError } from 'garmin-mcp-config';
+import { describe, expect, it } from 'vitest';
+import type { z } from 'zod';
+import { loadOutput, readinessOutput, setThresholdOutput, thresholdsOutput } from './output.js';
+import { NOW, setup, TODAY } from './test-utils/fake.js';
+
+/** The compile-time check of `apps/mcp-server/src/tools.ts`: a service result must fit its output schema. */
+type Fits<T> = T extends readonly (infer E)[]
+  ? readonly Fits<E>[]
+  : T extends object
+    ? {
+        [K in keyof T as K extends string ? (string extends K ? (unknown extends T[K] ? never : K) : K) : never]: undefined extends T[K]
+          ? Fits<T[K]> | null
+          : string extends K
+            ? Fits<T[K]> | undefined
+            : Fits<T[K]>;
+      }
+    : T;
+
+const fits = <O extends z.ZodType>(_schema: O, value: Fits<z.output<O>>) => value;
+
+function profile(lthr: number) {
+  return {
+    social: {},
+    settings: { userData: { vo2MaxRunning: 52 } },
+    heartRateZones: [{ sport: 'DEFAULT', maxHeartRateUsed: 192, restingHeartRateUsed: 48, lactateThresholdHeartRateUsed: lthr }],
+    powerZones: [],
+  };
+}
+
+/** Daily 1 h runs at 150 bpm from June, resting HR 50 from May, LTHR 170: hrTSS 69.4 a day. */
+function trained() {
+  const t = setup();
+  t.activities(t.dailyRuns('2026-06-01', TODAY), '2026-06-01', TODAY);
+  t.daily('daily_summary', '2026-05-01', TODAY, () => ({ resting_hr: 50, avg_stress: 30, body_battery_high: 80 }));
+  t.store.addThreshold({ date: '2026-01-01', param: 'lthr_run', value: 170, source: 'manual', created_at: NOW });
+  return t;
+}
+
+describe('AnalyticsService.getLoad', () => {
+  it('answers the own load model in the tool envelope, from the cache', async () => {
+    const { analytics, calls } = trained();
+    const res = await analytics.getLoad({ include_series: true, include_activities: true, include_efficiency: true });
+    fits(loadOutput, res);
+    expect(loadOutput.safeParse(res).success).toBe(true);
+    expect(res.meta.source).toBe('cache');
+    expect(res.meta.sync_hint).toBeUndefined();
+    expect(res.data).toMatchObject({
+      from: '2026-09-11',
+      to: TODAY,
+      source: 'hrtss',
+      latest: { date: TODAY, tss: 69.4, acwr: 1, monotony: 0, strain: 0 },
+      thresholds_used: { date: TODAY, lthr_run: 170, lthr_bike: 170, lt1_run: 153, lt1_bike: 146, rhr: 50 },
+      intensity: { z1_pct: 100, sessions_by_avg_hr: 28, z1_below_target: false },
+      flags_used: { acwr_high: 1.5, z1_min_pct: 75 },
+    });
+    expect(res.data.latest?.ctl).toBeGreaterThan(60);
+    expect(res.data.flags).toBeUndefined();
+    expect(res.data.series).toHaveLength(28);
+    expect(res.data.activities).toHaveLength(28);
+    expect(res.data.activities?.[0]).toMatchObject({ id: 103, date: '2026-09-11', sport: 'run', if: 0.833, hrtss: 69.4, lthr_used: 170, rhr_used: 50, source: 'db' });
+    expect(res.data.efficiency?.map((e) => e.period)).toEqual(['2026-09', '2026-10']);
+    expect(res.data.weeks?.at(-1)).toMatchObject({ week: '2026-W41', sport: 'run', sessions: 4, hours: 4, km: 40 });
+    expect(res.data.note).toMatch(/differs from computed_load/);
+    expect(res.meta.note).toMatch(/LT1 approximated/);
+    expect(calls).toEqual([]);
+  });
+
+  it('sums Garmin training load with source garmin_load and applies own flag thresholds', async () => {
+    const { analytics } = trained();
+    const res = await analytics.getLoad({ source: 'garmin_load', flags: { tsb_fresh: -100, nope: 1, acwr_warn: 'x' } });
+    expect(res.data.latest).toMatchObject({ tss: 100, acwr: 1 });
+    expect(res.data.flags?.map((f) => f.code)).toEqual(['tsb_fresh']);
+    expect(res.data.flags_used).toMatchObject({ tsb_fresh: -100, acwr_warn: 1.3 });
+    expect(res.meta.note).toMatch(/Ignored flags .*: nope, acwr_warn/);
+  });
+
+  it('adds imported activities only on dates outside the synced activity ranges, and hints the gap', async () => {
+    const { analytics, store } = trained();
+    const imported = (id: string, start: string) => ({
+      id,
+      start_time_local: start,
+      type: 'running',
+      duration_s: 3600,
+      distance_m: 10_000,
+      avg_hr: 150,
+      source_file: 'export.csv',
+      imported_at: NOW,
+    });
+    store.upsertImportedActivities([imported('csv-outside', '2026-05-15 08:00:00'), imported('csv-inside', '2026-09-15 08:00:00')]);
+    const res = await analytics.getLoad({ from: '2026-05-01', include_activities: true });
+    const ids = res.data.activities?.map((a) => a.id) ?? [];
+    expect(ids).toContain('csv-outside');
+    expect(ids).not.toContain('csv-inside');
+    expect(res.data.activities?.find((a) => a.id === 'csv-outside')).toMatchObject({ date: '2026-05-15', source: 'import', hrtss: 69.4 });
+    expect(ids).toHaveLength(131);
+    expect(res.meta.sync_hint).toEqual({ scope: 'activities', from: '2026-05-01', to: '2026-05-31' });
+  });
+
+  it('gives a sync hint and the default thresholds on an empty cache, without calling Garmin', async () => {
+    const { analytics, calls } = setup();
+    const res = await analytics.getLoad();
+    expect(loadOutput.safeParse(res).success).toBe(true);
+    expect(res.meta.sync_hint).toEqual({ scope: 'all', from: '2026-09-11', to: TODAY });
+    expect(res.meta.note).toMatch(/garmin_sync/);
+    expect(res.data.latest).toBeUndefined();
+    expect(res.data.thresholds_used).toMatchObject({ lthr_run: 170, rhr: 50 });
+    expect(res.meta.note).toMatch(/default 170 bpm/);
+    expect(calls).toEqual([]);
+  });
+
+  it('rejects a bad range or source', async () => {
+    const { analytics } = setup();
+    await expect(analytics.getLoad({ from: '2026-10-09', to: '2026-10-01' })).rejects.toThrow(InputError);
+    await expect(analytics.getLoad({ source: 'epoc' as never })).rejects.toThrow(/Unknown load source/);
+  });
+});
+
+describe('AnalyticsService.getReadiness', () => {
+  const D = '2026-10-07';
+
+  function ready() {
+    const t = trained();
+    t.daily('daily_summary', '2026-09-01', TODAY, (d) => ({ resting_hr: d === D ? 56 : 50, avg_stress: 30, body_battery_high: 80 }));
+    t.daily('sleep', '2026-09-01', TODAY, () => ({ score: 80, duration_s: 8 * 3600 }));
+    t.daily('hrv', '2026-09-01', TODAY, () => ({ last_night_avg: 60, weekly_avg: 60, status: 'BALANCED', baseline_low: 55, baseline_high: 70 }));
+    t.daily(
+      'training_status',
+      '2026-09-01',
+      TODAY,
+      () => ({ readiness_score: 70 }),
+      (d) => ({ status: null, readiness: [{ score: 70, level: 'HIGH', inputContext: 'AFTER_WAKEUP_RESET', timestamp: `${d}T05:30:00.0`, recoveryTime: 600 }] }),
+    );
+    return t;
+  }
+
+  it('decides from the cached rows of [D - 28, D] and the load model', async () => {
+    const { analytics } = ready();
+    const res = await analytics.getReadiness({ date: D });
+    fits(readinessOutput, res);
+    expect(readinessOutput.safeParse(res).success).toBe(true);
+    expect(res.meta).toEqual({ source: 'cache' });
+    expect(res.data).toMatchObject({ date: D, decision: 'REST', counts: { red: 1, yellow: 0, ok: 6 }, partial: false });
+    expect(res.data.signals.find((s) => s.name === 'rhr')).toMatchObject({ rating: 'red', value: { bpm: 56 }, reference: { mean28_bpm: 50 } });
+    expect(res.data.signals.find((s) => s.name === 'load')).toMatchObject({ rating: 'ok', value: { acwr: 1, date: D } });
+    expect(res.data.signals.find((s) => s.name === 'training_readiness')).toMatchObject({ rating: 'ok', value: { score: 70, level: 'HIGH', recovery_h: 10 } });
+  });
+
+  it('uses own rules over the defaults and reports ignored keys', async () => {
+    const { analytics } = ready();
+    const res = await analytics.getReadiness({ date: D, rules: { rhr_red_delta: 10, bogus: 1 } });
+    expect(res.data).toMatchObject({ decision: 'GO', counts: { red: 0, yellow: 1 }, rules_used: { rhr_red_delta: 10, rhr_yellow_delta: 3 } });
+    expect(res.meta.note).toMatch(/Ignored rules .*: bogus/);
+  });
+
+  it('hints a sync of the whole window when the cache lacks it', async () => {
+    const { analytics } = setup();
+    const res = await analytics.getReadiness();
+    expect(readinessOutput.safeParse(res).success).toBe(true);
+    expect(res.meta.sync_hint).toEqual({ scope: 'all', from: '2026-09-10', to: TODAY });
+    expect(res.data).toMatchObject({ date: TODAY, partial: true, counts: { unknown: 7 } });
+  });
+
+  it('rejects a future date', async () => {
+    const { analytics } = setup();
+    await expect(analytics.getReadiness({ date: '2026-10-09' })).rejects.toThrow(/in the future/);
+  });
+});
+
+describe('AnalyticsService thresholds', () => {
+  it('records changed Garmin profile thresholds before a read', async () => {
+    const { analytics, store } = trained();
+    store.setProfile(profile(168), Date.parse('2026-10-01T08:00:00Z'));
+    const res = await analytics.getThresholds({ date: TODAY });
+    fits(thresholdsOutput, res);
+    expect(thresholdsOutput.safeParse(res).success).toBe(true);
+    expect(res.meta).toEqual({ source: 'cache' });
+    expect(res.data.effective).toMatchObject({
+      lthr_run: { value: 168, since: '2026-10-01', source: 'garmin-auto' },
+      hrmax: { value: 192, since: '2026-10-01', source: 'garmin-auto' },
+      vo2max_run: { value: 52 },
+    });
+    expect(res.data.rhr_28d).toEqual({ value: 50, samples: 28 });
+    expect(res.data.lt1_note).toMatch(/151 bpm/);
+    // The profile did not change: a second read adds nothing.
+    await analytics.getThresholds();
+    expect(store.listThresholds().filter((r) => r.source === 'garmin-auto')).toHaveLength(4);
+  });
+
+  it('set_threshold is visible in get_thresholds and in the load model', async () => {
+    const { analytics, store } = trained();
+    store.setProfile(profile(168), Date.parse('2026-10-01T08:00:00Z'));
+    const set = await analytics.setThreshold({ date: '2026-10-05', param: 'lthr_run', value: 171, note: '30 min test' });
+    fits(setThresholdOutput, set);
+    expect(setThresholdOutput.safeParse(set).success).toBe(true);
+    expect(set).toEqual({
+      data: {
+        added: true,
+        row: { date: '2026-10-05', param: 'lthr_run', value: 171, source: 'test', note: '30 min test' },
+        effective: { date: TODAY, param: 'lthr_run', value: 171, since: '2026-10-05', source: 'test', note: '30 min test' },
+      },
+      meta: { source: 'local' },
+    });
+
+    const now = await analytics.getThresholds({ param: 'lthr_run', history: true });
+    expect(now.data.effective).toEqual({ lthr_run: { value: 171, since: '2026-10-05', source: 'test', note: '30 min test' } });
+    expect(now.data.history?.map((r) => [r.date, r.source, r.value])).toEqual([
+      ['2026-01-01', 'manual', 170],
+      ['2026-10-01', 'garmin-auto', 168],
+      ['2026-10-05', 'test', 171],
+    ]);
+    const before = await analytics.getThresholds({ date: '2026-10-02', param: 'lthr_run' });
+    expect(before.data.effective.lthr_run).toMatchObject({ value: 168, source: 'garmin-auto' });
+
+    const load = await analytics.getLoad({ from: '2026-10-04', include_activities: true });
+    expect(load.data.activities?.map((a) => [a.date, a.lthr_used])).toEqual([
+      ['2026-10-04', 168],
+      ['2026-10-05', 171],
+      ['2026-10-06', 171],
+      ['2026-10-07', 171],
+      ['2026-10-08', 171],
+    ]);
+  });
+
+  it('keeps an existing row and says when a later row stays in effect', async () => {
+    const { analytics, store } = trained();
+    await analytics.setThreshold({ date: '2026-10-05', param: 'lthr_run', value: 171 });
+    const dup = await analytics.setThreshold({ date: '2026-10-05', param: 'lthr_run', value: 175 });
+    expect(dup.data).toMatchObject({ added: false, row: { value: 171 }, effective: { value: 171 } });
+    expect(dup.data.note).toMatch(/already exists \(value 171\)/);
+    const older = await analytics.setThreshold({ date: '2026-09-01', param: 'lthr_run', value: 165, source: 'manual' });
+    expect(older.data).toMatchObject({ added: true, effective: { value: 171, since: '2026-10-05' } });
+    expect(older.data.note).toMatch(/later row \(2026-10-05, test\).*2026-09-01\.\.2026-10-04/);
+    expect(store.listThresholds('lthr_run').map((r) => r.value)).toEqual([170, 165, 171]);
+  });
+
+  it('rejects unknown params and sources, future dates and bad values', async () => {
+    const { analytics, store } = setup();
+    await expect(analytics.setThreshold({ date: '2026-10-01', param: 'ftp', value: 250 })).rejects.toThrow(/Unknown threshold param/);
+    await expect(analytics.setThreshold({ date: '2026-10-01', param: 'ftp_w', value: 250, source: 'garmin-auto' })).rejects.toThrow(/Unknown threshold source/);
+    await expect(analytics.setThreshold({ date: '2026-10-09', param: 'ftp_w', value: 250 })).rejects.toThrow(/in the future/);
+    await expect(analytics.setThreshold({ date: '2026-10-01', param: 'ftp_w', value: -1 })).rejects.toThrow(/positive/);
+    await expect(analytics.getThresholds({ param: 'ftp' })).rejects.toThrow(InputError);
+    expect(store.listThresholds()).toEqual([]);
+  });
+
+  it('hints the resting HR window when it was never synced', async () => {
+    const { analytics } = setup();
+    const res = await analytics.getThresholds();
+    expect(res.meta.sync_hint).toEqual({ scope: 'health', from: '2026-09-10', to: '2026-10-07' });
+    expect(res.data.rhr_28d).toMatchObject({ value: 50, samples: 0, note: expect.stringMatching(/default 50/) });
+  });
+});
