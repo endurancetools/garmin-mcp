@@ -385,15 +385,15 @@ export const TOOLS: ToolDef[] = [
     name: 'get_load',
     title: 'Get training load (own model)',
     description:
-      "Own transparent load model from heart rate (hrTSS with date-dependent thresholds), not Garmin's EPOC load; for Garmin's status and load use get_training_status. " +
-      'Returns CTL/ATL/TSB, ACWR, monotony and strain on `to` (`latest`), warning `flags`, ISO weeks per sport (sessions, hours, km, hrTSS, Garmin load, hours in Z1-2/Z3/Z4-5), ' +
+      "Own transparent load model (TSS per activity from power, else pace, else heart rate, with date-dependent thresholds), not Garmin's EPOC load; for Garmin's status and load use get_training_status. " +
+      'Returns CTL/ATL/TSB, ACWR, monotony and strain on `to` (`latest`), warning `flags`, ISO weeks per sport (sessions, hours, km, TSS, hrTSS, Garmin load, hours in Z1-2/Z3/Z4-5), ' +
       'the 3-zone intensity split of the last 28 days (Z1/Z2/Z3 minutes and %) and the thresholds used. ' +
-      'include_series adds the daily curve, include_activities IF/hrTSS/EF per activity, include_efficiency the monthly EF trend. ' +
+      'include_series adds the daily curve, include_activities TSS/IF/load_source/EF per activity, include_efficiency the monthly EF trend. ' +
       'Example: {"from":"2026-09-01","to":"2026-09-30","include_activities":true}.',
     input: {
       from: date.optional().describe('Default: 27 days before `to`'),
       to: date.optional().describe('Default: today'),
-      source: z.enum(['hrtss', 'garmin_load']).default('hrtss').describe('hrtss from HR and thresholds; garmin_load sums Garmin activity training load'),
+      source: z.enum(['auto', 'hrtss', 'garmin_load']).default('auto').describe('auto: power, pace, then HR per activity; hrtss: HR only; garmin_load: Garmin activity training load'),
       include_series: z.boolean().default(false),
       include_activities: z.boolean().default(false),
       include_efficiency: z.boolean().default(false),
@@ -443,7 +443,7 @@ export const TOOLS: ToolDef[] = [
       'Returns the row and the value in effect today. Example: {"date":"2026-10-11","param":"lthr_run","value":171,"note":"30 min TT"}.',
     input: {
       date: date.describe('Day of the test, not in the future'),
-      param: z.enum(THRESHOLD_PARAMS).describe('Heart rates in bpm, ftp_w/run_ftp_w in W, css_s_per_100m in s per 100 m'),
+      param: z.enum(THRESHOLD_PARAMS).describe('Heart rates in bpm, ftp_w/run_ftp_w in W, css_s_per_100m in s per 100 m, run_threshold_pace_s_per_km in s per km'),
       value: z.number().positive(),
       source: z.enum(SET_THRESHOLD_SOURCES).default('test'),
       note: z.string().max(200).optional(),

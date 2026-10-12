@@ -40,7 +40,7 @@ export function loadMarkdown({ data, meta }: Envelope<LoadData>): string {
   const out = [`# Load ${data.from}..${data.to} (${data.source})`, ''];
   out.push(l ? mdTable([l], ['date', 'tss', 'ctl', 'atl', 'tsb', 'acwr', 'monotony', 'strain']) : `No activity up to ${data.to}.`);
   if (data.flags?.length) out.push('', '## Flags', '', ...data.flags.map((f) => `- **${f.code}**: ${f.text}`));
-  out.push('', '## Weeks', '', mdTable(data.weeks ?? [], ['week', 'sport', 'sessions', 'hours', 'km', 'elev_m', 'hrtss', 'g_load', 'z12_h', 'z3_h', 'z45_h']));
+  out.push('', '## Weeks', '', mdTable(data.weeks ?? [], ['week', 'sport', 'sessions', 'hours', 'km', 'elev_m', 'tss', 'hrtss', 'g_load', 'z12_h', 'z3_h', 'z45_h']));
   const i = data.intensity;
   out.push(
     '',
@@ -63,8 +63,15 @@ export function loadMarkdown({ data, meta }: Envelope<LoadData>): string {
     `## Thresholds on ${t.date}`,
     '',
     mdTable(
-      Object.entries(t.by_sport).map(([sport, s]) => ({ sport, lthr: s.lthr, lt1: s.lt1, note: [s.lthr_note, s.lt1_note].filter(Boolean).join(' ') })),
-      ['sport', 'lthr', 'lt1', 'note'],
+      Object.entries(t.by_sport).map(([sport, s]) => ({
+        sport,
+        lthr: s.lthr,
+        lt1: s.lt1,
+        ftp: s.ftp,
+        threshold_pace: s.threshold_pace,
+        note: [s.lthr_note, s.lt1_note].filter(Boolean).join(' '),
+      })),
+      ['sport', 'lthr', 'lt1', 'ftp', 'threshold_pace', 'note'],
     ),
     '',
     `Resting HR: ${t.rhr}`,
@@ -77,7 +84,7 @@ export function loadMarkdown({ data, meta }: Envelope<LoadData>): string {
       '',
       mdTable(
         data.activities.map((a) => ({ ...a, duration: hm(a.duration_s), km: km(a.distance_m) })),
-        ['date', 'sport', 'type', 'name', 'duration', 'km', 'avg_hr', 'if', 'hrtss', 'ef', 'ef_gap', 'lthr_used', 'lt1_used', 'rhr_used', 'source'],
+        ['date', 'sport', 'type', 'name', 'duration', 'km', 'avg_hr', 'tss', 'if', 'load_source', 'hrtss', 'ef', 'ef_gap', 'lthr_used', 'lt1_used', 'rhr_used', 'source'],
       ),
     );
   }

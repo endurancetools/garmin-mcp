@@ -2,7 +2,7 @@ import { addDays, InputError } from 'garmin-mcp-config';
 import { describe, expect, it } from 'vitest';
 import type { z } from 'zod';
 import { loadOutput, readinessOutput, setThresholdOutput, thresholdsOutput } from './output.js';
-import { NOW, setup, TODAY } from './test-utils/fake.js';
+import { activity, NOW, setup, TODAY } from './test-utils/fake.js';
 
 /** The compile-time check of `apps/mcp-server/src/tools.ts`: a service result must fit its output schema. */
 type Fits<T> = T extends readonly (infer E)[]
@@ -49,7 +49,7 @@ describe('AnalyticsService.getLoad', () => {
     expect(res.data).toMatchObject({
       from: '2026-09-11',
       to: TODAY,
-      source: 'hrtss',
+      source: 'auto',
       latest: { date: TODAY, tss: 69.4, acwr: 1, monotony: 0, strain: 0, warming_up: false },
       thresholds_used: {
         date: TODAY,
@@ -67,7 +67,7 @@ describe('AnalyticsService.getLoad', () => {
     expect(res.data.flags).toBeUndefined();
     expect(res.data.series).toHaveLength(28);
     expect(res.data.activities).toHaveLength(28);
-    expect(res.data.activities?.[0]).toMatchObject({ id: 103, date: '2026-09-11', sport: 'run', if: 0.833, hrtss: 69.4, lthr_used: 170, lt1_used: 153, rhr_used: 50, source: 'db' });
+    expect(res.data.activities?.[0]).toMatchObject({ id: 103, date: '2026-09-11', sport: 'run', tss: 69.4, if: 0.833, load_source: 'hr', hrtss: 69.4, lthr_used: 170, lt1_used: 153, rhr_used: 50, source: 'db' });
     expect(res.data.efficiency?.map((e) => e.period)).toEqual(['2026-09', '2026-10']);
     expect(res.data.weeks?.at(-1)).toMatchObject({ week: '2026-W41', sport: 'run', sessions: 4, hours: 4, km: 40 });
     expect(res.data.note).toMatch(/differs from computed_load/);
@@ -82,6 +82,32 @@ describe('AnalyticsService.getLoad', () => {
     expect(res.data.flags?.map((f) => f.code)).toEqual(['tsb_fresh']);
     expect(res.data.flags_used).toMatchObject({ tsb_fresh: -100, acwr_warn: 1.3 });
     expect(res.meta.note).toMatch(/Ignored flags .*: nope, acwr_warn/);
+  });
+
+  it('auto takes power and pace before heart rate; source hrtss keeps the heart-rate numbers', async () => {
+    const t = setup();
+    t.store.markReferenceFetched('profile', NOW);
+    const runs = t.dailyRuns('2026-06-01', addDays(TODAY, -1), 1, { avgGradeAdjustedSpeed: 3.5 });
+    const ride = activity(9000, TODAY, { activityType: { typeKey: 'road_biking' }, normPower: 200 });
+    t.activities([...runs, ride], '2026-06-01', TODAY);
+    t.daily('daily_summary', '2026-05-01', TODAY, () => ({ resting_hr: 50 }));
+    for (const [param, value] of [['lthr_run', 170], ['ftp_w', 250], ['run_threshold_pace_s_per_km', 250]] as const) {
+      t.store.addThreshold({ date: '2026-01-01', param, value, source: 'manual', created_at: NOW });
+    }
+    const auto = await t.analytics.getLoad({ from: addDays(TODAY, -1), include_activities: true });
+    expect(loadOutput.safeParse(auto).success).toBe(true);
+    expect(auto.data.source).toBe('auto');
+    expect(auto.data.activities?.map((a) => [a.load_source, a.tss, a.if, a.hrtss])).toEqual([
+      ['pace', 76.6, 0.875, 69.4],
+      ['power', 64, 0.8, 69.4],
+    ]);
+    expect(auto.data.latest?.tss).toBe(64);
+    expect(auto.data.weeks?.find((w) => w.sport === 'bike')).toMatchObject({ tss: 64, hrtss: 69 });
+    expect(auto.data.thresholds_used.by_sport).toMatchObject({ run: { lthr: 170, threshold_pace: 250 }, bike: { ftp: 250 } });
+    expect(auto.data.note).toMatch(/from power .*else pace .*else heart rate/);
+    const hr = await t.analytics.getLoad({ from: addDays(TODAY, -1), source: 'hrtss' });
+    expect(hr.data.latest?.tss).toBe(69.4);
+    expect(hr.data.latest?.ctl).toBeLessThan(auto.data.latest?.ctl ?? 0);
   });
 
   it('marks a week of history as warming up: no TSB flag in get_load, load signal unknown in get_readiness', async () => {

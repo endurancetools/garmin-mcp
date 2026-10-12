@@ -9,6 +9,7 @@ import {
   recordProfileThresholds,
   restingHrOn,
   thresholdOn,
+  thresholdPaceFromSpeed,
   type ThresholdPoint,
 } from './thresholds.js';
 
@@ -54,6 +55,23 @@ describe('profileThresholds', () => {
     ).toEqual([{ param: 'lthr_run', value: 171 }]);
     expect(profileThresholds(null)).toEqual([]);
     expect(profileThresholds({ heartRateZones: 'x' })).toEqual([]);
+  });
+});
+
+describe('running threshold pace from the profile', () => {
+  it('reads userData.lactateThresholdSpeed (units of 10 m/s) as whole seconds per km', () => {
+    // the value of packages/client/fixtures/user-settings.json: 3.806 m/s, 4:23 per km
+    const raw = { settings: { userData: { lactateThresholdSpeed: 0.38055448999999997 } } };
+    expect(profileThresholds(raw)).toEqual([{ param: 'run_threshold_pace_s_per_km', value: 263 }]);
+  });
+
+  it('takes a value of 1 or more as m/s and drops implausible paces', () => {
+    expect(thresholdPaceFromSpeed(4)).toBe(250);
+    expect(thresholdPaceFromSpeed(0.4)).toBe(250);
+    expect(thresholdPaceFromSpeed(0.05)).toBeUndefined();
+    expect(thresholdPaceFromSpeed(12)).toBeUndefined();
+    expect(thresholdPaceFromSpeed(0)).toBeUndefined();
+    expect(thresholdPaceFromSpeed(undefined)).toBeUndefined();
   });
 });
 

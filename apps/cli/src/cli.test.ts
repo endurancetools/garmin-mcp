@@ -291,12 +291,12 @@ describe('garmin load', () => {
   it('prints the load model as markdown, offline and without auto fetch', async () => {
     const { deps, opened, calls } = fake();
     const { stdout } = await run(deps, 'load');
-    expect(stdout).toContain('# Load 2026-09-11..2026-10-08 (hrtss)');
+    expect(stdout).toContain('# Load 2026-09-11..2026-10-08 (auto)');
     expect(stdout).toContain('| date | tss | ctl | atl | tsb | acwr | monotony | strain |');
     expect(stdout).toMatch(/\| 2026-10-08 \| 69\.4 \| \d+(\.\d)? \|/);
     expect(stdout).toContain('| 2026-W41 | run | 4 | 4 | 40 |');
     expect(stdout).toContain('## Intensity 2026-09-11..2026-10-08 (run and bike)');
-    expect(stdout).toContain('| bike | 170 | 146 | No lthr_bike in the threshold history; the running LTHR is used. LT1 approximated');
+    expect(stdout).toContain('| bike | 170 | 146 |  |  | No lthr_bike in the threshold history; the running LTHR is used. LT1 approximated');
     expect(stdout).toContain('\n> ');
     expect(stdout).not.toContain('## Series');
     expect(opened[0]?.autoFetch).toBe(false);
@@ -307,7 +307,7 @@ describe('garmin load', () => {
     const { deps } = fake();
     const md = (await run(deps, 'load', '--from', '2026-10-01', '--series', '--activities', '--efficiency')).stdout;
     expect(md).toContain('## Series');
-    expect(md).toContain('| 2026-10-01 | run | running | Run 2026-10-01 | 1:00 | 10 | 150 | 0.833 | 69.4 |');
+    expect(md).toContain('| 2026-10-01 | run | running | Run 2026-10-01 | 1:00 | 10 | 150 | 69.4 | 0.833 | hr | 69.4 |');
     expect(md).toContain('## Efficiency (aerobic sessions)');
     const res = json<{ data: { latest: { tss: number }; series: unknown[]; flags_used: Record<string, number> }; meta: { source: string } }>(
       (await run(deps, 'load', '--from', '2026-10-01', '--series', '--json')).stdout,
@@ -330,7 +330,9 @@ describe('garmin load', () => {
     expect(res.meta.note).toContain('Ignored flags (unknown key or not a number): nope');
     fs.writeFileSync(file, '[1]');
     await expect(run(deps, 'load', '--flags', file)).rejects.toThrow('must hold a JSON object');
-    await expect(run(deps, 'load', '--source', 'epoc')).rejects.toThrow('Allowed choices are hrtss, garmin_load');
+    await expect(run(deps, 'load', '--source', 'epoc')).rejects.toThrow('Allowed choices are auto, hrtss, garmin_load');
+    const hr = json<{ data: { source: string; latest: { tss: number } } }>((await run(deps, 'load', '--source', 'hrtss', '--json')).stdout);
+    expect(hr.data).toMatchObject({ source: 'hrtss', latest: { tss: 69.4 } });
   });
 });
 

@@ -10,7 +10,7 @@ function sess(date: string, extra: Partial<Session> = {}): Session {
     sport: 'run',
     duration_s: 3600,
     avg_hr: 150,
-    if: 0,
+    load_source: 'none',
     hrtss: 0,
     ef: 1.3,
     lthr_used: 170,

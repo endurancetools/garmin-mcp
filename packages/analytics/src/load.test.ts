@@ -22,7 +22,9 @@ function sess(date: string, extra: Partial<Session> = {}): Session {
     sport: 'run',
     duration_s: 3600,
     distance_m: 10_000,
+    tss: 100,
     if: 1,
+    load_source: 'hr',
     hrtss: 100,
     lthr_used: 170,
     lt1_used: 153,
@@ -110,6 +112,23 @@ describe('loadSeries', () => {
       ['2026-05-02', 100],
     ]);
     expect(loadSeries(sessions, 'garmin_load', '2026-05-02').map((d) => d.tss)).toEqual([80, 40]);
+  });
+
+  it('auto sums the session TSS of the hierarchy; a session without load counts 0, hrtss keeps the heart-rate stress', () => {
+    const sessions = [
+      sess('2026-05-01', { tss: 120, if: 0.95, load_source: 'power', hrtss: 90 }),
+      sess('2026-05-01', { tss: undefined, if: undefined, load_source: 'none', hrtss: 0 }),
+      sess('2026-05-02', { tss: 64.3, if: 0.8, load_source: 'pace', hrtss: 70 }),
+    ];
+    expect([...dailyTss(sessions, 'auto')]).toEqual([
+      ['2026-05-01', 120],
+      ['2026-05-02', 64.3],
+    ]);
+    expect([...dailyTss(sessions, 'hrtss')]).toEqual([
+      ['2026-05-01', 90],
+      ['2026-05-02', 70],
+    ]);
+    expect(loadSeries(sessions, 'auto', '2026-05-02').map((d) => d.tss)).toEqual([120, 64.3]);
   });
 
   it('warming_up for the first 42 days from the first session (days 0..41), then false', () => {
@@ -247,8 +266,8 @@ describe('weekJump', () => {
 describe('weeklyBySport', () => {
   it('sums sessions per ISO week and sport with rounded totals and zone hours', () => {
     const rows = weeklyBySport([
-      sess('2026-05-04', { week: '2026-W19', duration_s: 3000, distance_m: 9876, elev_gain_m: 120, hrtss: 55.4, g_load: 80, z1_s: 600, z2_s: 1200, z3_s: 600, z4_s: 300, z5_s: 300 }),
-      sess('2026-05-06', { week: '2026-W19', duration_s: 1800, distance_m: 5000, hrtss: 30.3 }),
+      sess('2026-05-04', { week: '2026-W19', duration_s: 3000, distance_m: 9876, elev_gain_m: 120, tss: 70.6, hrtss: 55.4, g_load: 80, z1_s: 600, z2_s: 1200, z3_s: 600, z4_s: 300, z5_s: 300 }),
+      sess('2026-05-06', { week: '2026-W19', duration_s: 1800, distance_m: 5000, tss: 30.3, hrtss: 30.3 }),
       sess('2026-05-05', { week: '2026-W19', sport: 'bike', duration_s: 5400, distance_m: 45_000 }),
       sess('2026-04-30', { week: '2026-W18', duration_s: 3600 }),
     ]);
@@ -260,6 +279,7 @@ describe('weeklyBySport', () => {
       hours: 1.33,
       km: 14.9,
       elev_m: 120,
+      tss: 101,
       hrtss: 86,
       g_load: 80,
       z12_h: 0.5,
