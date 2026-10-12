@@ -1,0 +1,146 @@
+import { addDays, dateIn, type IsoDate } from 'garmin-mcp-config';
+import { round } from 'garmin-mcp-domain';
+import type { NewThreshold, Store, ThresholdParam, ThresholdRow } from 'garmin-mcp-store';
+import type { SportGroup } from './sport.js';
+
+/** Used when the history has no LTHR at all (bpm). */
+export const DEFAULT_LTHR = 170;
+/** Used when there is neither a rolling resting HR nor an `rhr` row (bpm). */
+export const DEFAULT_RHR = 50;
+/** LT1 approximation without an `lt1_hr` row: this share of the running LTHR. */
+export const LT1_FROM_LTHR = 0.9;
+/** Cycling LT1 sits this many bpm below the running one. */
+export const BIKE_LT1_OFFSET = 7;
+/** Rolling resting HR: mean over the days [D − 28, D − 1] … */
+export const RHR_WINDOW_DAYS = 28;
+/** … when at least this many of them have a value. */
+export const RHR_MIN_SAMPLES = 14;
+
+/** The fields of a threshold row the lookups need; rows of one date keep their input order. */
+export type ThresholdPoint = Pick<ThresholdRow, 'date' | 'param' | 'value'>;
+
+/** A resolved value; `note` says when it is a default or an approximation. */
+export interface Resolved {
+  value: number;
+  note?: string;
+}
+
+/** Garmin profile parameters recorded as `garmin-auto` rows, in this order. */
+export const PROFILE_THRESHOLD_PARAMS = [
+  'hrmax',
+  'rhr',
+  'lthr_run',
+  'lthr_bike',
+  'ftp_w',
+  'run_ftp_w',
+  'vo2max_run',
+] as const satisfies readonly ThresholdParam[];
+
+type Obj = Record<string, unknown>;
+
+const obj = (v: unknown): Obj | undefined => (v !== null && typeof v === 'object' ? (v as Obj) : undefined);
+const num = (v: unknown): number | undefined => (typeof v === 'number' && Number.isFinite(v) ? v : undefined);
+const bySport = (list: unknown, sport: string): Obj | undefined =>
+  Array.isArray(list) ? list.map(obj).find((z) => z?.['sport'] === sport) : undefined;
+
+/**
+ * Threshold values in a stored Garmin profile (`profile.raw`): HR zones of the DEFAULT and
+ * CYCLING sport, power zones of CYCLING and RUNNING, and `settings.userData`. Missing or
+ * non-numeric values are left out.
+ */
+export function profileThresholds(profileRaw: unknown): { param: ThresholdParam; value: number }[] {
+  const p = obj(profileRaw);
+  const hz = bySport(p?.['heartRateZones'], 'DEFAULT');
+  const hzBike = bySport(p?.['heartRateZones'], 'CYCLING');
+  const pzBike = bySport(p?.['powerZones'], 'CYCLING');
+  const pzRun = bySport(p?.['powerZones'], 'RUNNING');
+  const user = obj(obj(p?.['settings'])?.['userData']);
+  const values: Record<(typeof PROFILE_THRESHOLD_PARAMS)[number], number | undefined> = {
+    hrmax: num(hz?.['maxHeartRateUsed']),
+    rhr: num(hz?.['restingHeartRateUsed']),
+    lthr_run: num(hz?.['lactateThresholdHeartRateUsed']) ?? num(user?.['lactateThresholdHeartRate']),
+    lthr_bike: num(hzBike?.['lactateThresholdHeartRateUsed']),
+    ftp_w: num(pzBike?.['functionalThresholdPower']),
+    run_ftp_w: num(pzRun?.['functionalThresholdPower']),
+    vo2max_run: num(user?.['vo2MaxRunning']),
+  };
+  return PROFILE_THRESHOLD_PARAMS.flatMap((param) => {
+    const value = values[param];
+    return value === undefined ? [] : [{ param, value }];
+  });
+}
+
+/**
+ * Adds a `garmin-auto` row for each profile value that differs from the last `garmin-auto`
+ * row of its param, dated with the local date of `profile.fetched_at`. Idempotent and offline;
+ * run it before every analytics read. A second, different value on a date that already has a
+ * `garmin-auto` row is not stored (the UNIQUE key keeps the first); the next profile fetch on
+ * a later date records it.
+ */
+export function recordProfileThresholds(store: Store, now: number, timeZone: string): { added: NewThreshold[] } {
+  const profile = store.getProfile();
+  if (!profile) return { added: [] };
+  const date = dateIn(timeZone, new Date(profile.fetched_at));
+  const added: NewThreshold[] = [];
+  for (const { param, value } of profileThresholds(profile.raw)) {
+    const last = store.listThresholds(param).findLast((r) => r.source === 'garmin-auto');
+    if (last?.value === value) continue;
+    const row: NewThreshold = { date, param, value, source: 'garmin-auto', created_at: now };
+    if (store.addThreshold(row).added) added.push(row);
+  }
+  return { added };
+}
+
+/**
+ * Value of `param` on `date`: the row with the latest date ≤ `date` whatever its source (same
+ * date: the later row in `rows`); before the whole history, the first row (carried back);
+ * no rows, `undefined`.
+ */
+export function thresholdOn(rows: readonly ThresholdPoint[], param: ThresholdParam, date: IsoDate): number | undefined {
+  const own = rows.filter((r) => r.param === param).toSorted((a, b) => a.date.localeCompare(b.date));
+  return (own.findLast((r) => r.date <= date) ?? own[0])?.value;
+}
+
+/** Lactate threshold HR for a sport on `date`: bike and swim fall back to the running LTHR, then to 170. */
+export function lthrFor(rows: readonly ThresholdPoint[], sport: SportGroup, date: IsoDate): Resolved {
+  const own = sport === 'bike' ? 'lthr_bike' : sport === 'swim' ? 'lthr_swim' : undefined;
+  const value = (own && thresholdOn(rows, own, date)) ?? thresholdOn(rows, 'lthr_run', date);
+  if (value !== undefined) return { value };
+  return { value: DEFAULT_LTHR, note: `No LTHR in the threshold history; default ${DEFAULT_LTHR} bpm used.` };
+}
+
+/** LT1 HR on `date`: the `lt1_hr` row, else 0.90 × running LTHR (rounded); cycling 7 bpm lower. */
+export function lt1For(rows: readonly ThresholdPoint[], sport: SportGroup, date: IsoDate): Resolved {
+  const offset = sport === 'bike' ? BIKE_LT1_OFFSET : 0;
+  const lt1 = thresholdOn(rows, 'lt1_hr', date);
+  if (lt1 !== undefined) return { value: lt1 - offset };
+  const lthr = lthrFor(rows, 'run', date);
+  const note = `LT1 approximated as ${LT1_FROM_LTHR.toFixed(2)} × running LTHR; confirm with a test.`;
+  return {
+    value: Math.round(LT1_FROM_LTHR * lthr.value) - offset,
+    note: lthr.note ? `${lthr.note} ${note}` : note,
+  };
+}
+
+/**
+ * Resting HR used for `date`: mean `resting_hr` of the days [D − 28, D − 1] when at least 14 of
+ * them have a value (rounded to 0.1), else the `rhr` threshold on that date, else 50.
+ */
+export function restingHrOn(
+  daily: readonly { date: IsoDate; resting_hr: number | null }[],
+  rows: readonly ThresholdPoint[],
+  date: IsoDate,
+): Resolved {
+  const from = addDays(date, -RHR_WINDOW_DAYS);
+  const samples = daily.flatMap((d) =>
+    d.date >= from && d.date < date && d.resting_hr !== null && Number.isFinite(d.resting_hr) && d.resting_hr > 0
+      ? [d.resting_hr]
+      : [],
+  );
+  if (samples.length >= RHR_MIN_SAMPLES) {
+    return { value: round(samples.reduce((s, v) => s + v, 0) / samples.length, 1) ?? DEFAULT_RHR };
+  }
+  const value = thresholdOn(rows, 'rhr', date);
+  if (value !== undefined) return { value };
+  return { value: DEFAULT_RHR, note: `No resting HR history; default ${DEFAULT_RHR} bpm used.` };
+}
