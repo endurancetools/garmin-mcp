@@ -42,7 +42,7 @@ flowchart TD
 
 | Package | What it does |
 | --- | --- |
-| `garmin-mcp-server` | The MCP server your client starts: 17 tools, resources such as your profile and gear, two prompts; stdio and streamable HTTP. Built on the official MCP SDK. |
+| `garmin-mcp-server` | The MCP server your client starts: 21 tools, resources such as your profile and gear, two prompts; stdio and streamable HTTP. Built on the official MCP SDK. |
 | `garmin-mcp-cli` | The `garmin` command for setup and checks: `login`, `status`, `sync`, `doctor`, `logout`, plus `activities` and `health` for a quick look from the terminal. |
 | `garmin-mcp-domain` | Turns stored data into answers: training load (CTL/ATL/TSB), trends, period summaries, readable workouts, and the workout builder with its presets. |
 | `garmin-mcp-store` | The local SQLite database and the download logic: what is already stored, what is missing, how long cached items stay fresh, pacing and the daily request budget. |
