@@ -27,12 +27,13 @@ Sign-in happens once, in your browser on Garmin's page; afterwards the auth laye
 
 ## The packages
 
-The server is published as seven small npm packages. You only ever install two of them, the rest come along as dependencies.
+The server is published as eight small npm packages. You only ever install two of them, the rest come along as dependencies.
 
 ```mermaid
 flowchart TD
     cli[garmin-mcp-cli<br/>login, sync, status, doctor] --> server
-    server[garmin-mcp-server<br/>MCP tools, resources, prompts] --> domain
+    server[garmin-mcp-server<br/>MCP tools, resources, prompts] --> analytics
+    analytics[garmin-mcp-analytics<br/>thresholds, load model, readiness] --> domain
     domain[garmin-mcp-domain<br/>metrics, summaries, workout builder] --> store
     store[garmin-mcp-store<br/>SQLite cache and downloads] --> client
     client[garmin-mcp-client<br/>typed Garmin Connect API] --> auth
@@ -44,6 +45,7 @@ flowchart TD
 | --- | --- |
 | `garmin-mcp-server` | The MCP server your client starts: 21 tools, resources such as your profile and gear, two prompts; stdio and streamable HTTP. Built on the official MCP SDK. |
 | `garmin-mcp-cli` | The `garmin` command for setup and checks: `login`, `status`, `sync`, `doctor`, `logout`, plus `activities` and `health` for a quick look from the terminal. |
+| `garmin-mcp-analytics` | Training analytics computed from the local cache: training thresholds with their history, its own heart-rate load model (hrTSS, CTL/ATL/TSB, ACWR), the readiness of the day, and the import of a Garmin Connect CSV export. Formulas and defaults: [Training analytics](analytics.md). |
 | `garmin-mcp-domain` | Turns stored data into answers: training load (CTL/ATL/TSB), trends, period summaries, readable workouts, and the workout builder with its presets. |
 | `garmin-mcp-store` | The local SQLite database and the download logic: what is already stored, what is missing, how long cached items stay fresh, pacing and the daily request budget. |
 | `garmin-mcp-client` | A typed client for Garmin Connect's API with validation of every response, retries and rate limits. |
@@ -57,7 +59,7 @@ Each layer only knows the ones below it, which is why the same core powers both 
 | Where | What |
 | --- | --- |
 | `~/.garmin-mcp/tokens.json`, `account.json` | Garmin tokens and the signed-in account; readable only by you |
-| `~/.garmin-mcp/garmin-<account>.db` | the local database (one per account): activities, daily health, sleep, training status, workouts, calendar, gear, devices |
+| `~/.garmin-mcp/garmin-<account>.db` | the local database (one per account): activities, daily health, sleep, training status, workouts, calendar, gear, devices; plus the analytics' own tables: `thresholds` (threshold history) and `imported_activities` (activities imported from CSV) |
 | `~/.garmin-mcp/downloads/` | activity files you asked to download (FIT, GPX, ...) |
 | `~/.garmin-mcp/config.json` | optional settings |
 
