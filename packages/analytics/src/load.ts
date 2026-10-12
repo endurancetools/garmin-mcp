@@ -1,0 +1,285 @@
+import { addDays, isoWeek, type IsoDate } from 'garmin-mcp-config';
+import { round, trainingLoadSeries } from 'garmin-mcp-domain';
+import type { Session } from './session.js';
+import type { SportGroup } from './sport.js';
+
+/** Daily stress source: own hrTSS, or Garmin's per-activity training load (EPOC). */
+export type LoadSource = 'hrtss' | 'garmin_load';
+
+export const LOAD_SOURCES: readonly LoadSource[] = ['hrtss', 'garmin_load'];
+
+/** ACWR acute and chronic windows (rolling means, days). */
+export const ACWR_ACUTE_DAYS = 7;
+export const ACWR_CHRONIC_DAYS = 28;
+/** Monotony and strain window (days). */
+export const MONOTONY_DAYS = 7;
+/** `acwr_low` is raised only above this CTL (a low ratio on almost no training says nothing). */
+export const ACWR_LOW_MIN_CTL = 20;
+
+/** One day of the load model. */
+export interface LoadDay {
+  date: IsoDate;
+  /** Daily stress (sum of hrTSS or Garmin load), 1 place. */
+  tss: number;
+  ctl: number;
+  atl: number;
+  /** CTL − ATL at the start of the day. */
+  tsb: number;
+  /** Mean of the last 7 days / mean of the last 28 days, windows cut at the series start; 0 when the chronic mean is 0. */
+  acwr: number;
+  /** Mean / sample SD of the last 7 days (Foster); 0 when the SD is 0 or there are fewer than 2 days. */
+  monotony: number;
+  /** Sum of the last 7 days × monotony. */
+  strain: number;
+}
+
+/** Thresholds of the load flags; every one can be overridden in the tool input. */
+export interface LoadFlags {
+  /** ACWR above this: high injury risk zone (Gabbett). */
+  acwr_high: number;
+  /** ACWR above this (up to `acwr_high`): caution. */
+  acwr_warn: number;
+  /** ACWR below this, with CTL above 20: undertraining or taper. */
+  acwr_low: number;
+  /** 7-day monotony above this (Foster). */
+  monotony_high: number;
+  /** TSB below this: deep fatigue. */
+  tsb_low: number;
+  /** TSB above this: fresh (taper, rest). */
+  tsb_fresh: number;
+  /** Week-to-week growth of total hours or running km above this percentage. */
+  week_jump_pct: number;
+  /** Share of Z1 (below LT1) in run and bike time under this percentage (spec 5.5). */
+  z1_min_pct: number;
+}
+
+export const DEFAULT_LOAD_FLAGS: Readonly<LoadFlags> = {
+  acwr_high: 1.5,
+  acwr_warn: 1.3,
+  acwr_low: 0.8,
+  monotony_high: 2,
+  tsb_low: -30,
+  tsb_fresh: 15,
+  week_jump_pct: 15,
+  z1_min_pct: 75,
+};
+
+export type LoadFlagCode =
+  | 'acwr_high'
+  | 'acwr_warn'
+  | 'acwr_low'
+  | 'monotony_high'
+  | 'tsb_low'
+  | 'tsb_fresh'
+  | 'week_jump'
+  | 'z1_below_target';
+
+export interface LoadFlag {
+  code: LoadFlagCode;
+  text: string;
+}
+
+/** Defaults overridden by the finite numbers in `overrides`. */
+export function resolveLoadFlags(overrides?: Partial<Record<keyof LoadFlags, number | undefined>>): LoadFlags {
+  const out: LoadFlags = { ...DEFAULT_LOAD_FLAGS };
+  for (const key of Object.keys(DEFAULT_LOAD_FLAGS) as (keyof LoadFlags)[]) {
+    const v = overrides?.[key];
+    if (typeof v === 'number' && Number.isFinite(v)) out[key] = v;
+  }
+  return out;
+}
+
+/** Daily stress per date: Σ hrTSS, or Σ Garmin load (sessions without one count 0). */
+export function dailyTss(sessions: readonly Pick<Session, 'date' | 'hrtss' | 'g_load'>[], source: LoadSource): Map<IsoDate, number> {
+  const out = new Map<IsoDate, number>();
+  for (const s of sessions) {
+    const v = source === 'hrtss' ? s.hrtss : (s.g_load ?? 0);
+    out.set(s.date, (out.get(s.date) ?? 0) + v);
+  }
+  return out;
+}
+
+const mean = (xs: readonly number[]): number => (xs.length ? xs.reduce((s, v) => s + v, 0) / xs.length : 0);
+
+/** Sample standard deviation (n − 1); 0 for fewer than 2 values. */
+export function sampleSd(xs: readonly number[]): number {
+  if (xs.length < 2) return 0;
+  const m = mean(xs);
+  return Math.sqrt(xs.reduce((s, v) => s + (v - m) ** 2, 0) / (xs.length - 1));
+}
+
+// Below this the SD of a constant week is floating-point noise.
+const SD_EPSILON = 1e-9;
+
+/**
+ * Load model (spec 5.4) from the first day with an activity to `to` (the service passes
+ * max(to, today)), days without activities as 0. CTL/ATL/TSB come from `trainingLoadSeries`
+ * (EWMA 42/7, k = 1 − e^(−1/N)) on the daily stress; ACWR 7:28 and monotony/strain on the
+ * same daily stress. Empty without sessions.
+ */
+export function loadSeries(
+  sessions: readonly Pick<Session, 'date' | 'hrtss' | 'g_load'>[],
+  source: LoadSource,
+  to: IsoDate,
+): LoadDay[] {
+  const daily = dailyTss(sessions, source);
+  if (daily.size === 0) return [];
+  const first = [...daily.keys()].reduce((a, b) => (b < a ? b : a));
+  const ewma = trainingLoadSeries(
+    [...daily].map(([date, load]) => ({ date, training_load: load })),
+    first,
+    to,
+  );
+  const hist: number[] = [];
+  return ewma.map((p) => {
+    const tss = daily.get(p.date) ?? 0;
+    hist.push(tss);
+    const acute = hist.slice(-ACWR_ACUTE_DAYS);
+    const m7 = mean(acute);
+    const m28 = mean(hist.slice(-ACWR_CHRONIC_DAYS));
+    const week = hist.slice(-MONOTONY_DAYS);
+    const sd = sampleSd(week);
+    const monotony = sd > SD_EPSILON ? mean(week) / sd : 0;
+    const sum7 = week.reduce((s, v) => s + v, 0);
+    return {
+      date: p.date,
+      tss: round(tss, 1) ?? 0,
+      ctl: p.ctl,
+      atl: p.atl,
+      tsb: p.tsb,
+      acwr: m28 > 0 ? (round(m7 / m28, 2) ?? 0) : 0,
+      monotony: round(monotony, 2) ?? 0,
+      strain: round(sum7 * monotony, 0) ?? 0,
+    };
+  });
+}
+
+/** The last day of the series on or before `date`. */
+export function loadOn(series: readonly LoadDay[], date: IsoDate): LoadDay | undefined {
+  return series.findLast((d) => d.date <= date);
+}
+
+/** Volume of one sport in one ISO week. */
+export interface WeekSport {
+  week: string;
+  sport: SportGroup;
+  sessions: number;
+  hours: number;
+  km: number;
+  elev_m: number;
+  hrtss: number;
+  g_load: number;
+  /** Hours in HR zones 1–2, 3 and 4–5 (sessions with Garmin zones only). */
+  z12_h: number;
+  z3_h: number;
+  z45_h: number;
+}
+
+/** ISO week × sport volume of the sessions, sorted by week and sport. */
+export function weeklyBySport(sessions: readonly Session[]): WeekSport[] {
+  const acc = new Map<string, WeekSport>();
+  for (const s of sessions) {
+    const key = `${s.week}|${s.sport}`;
+    const w = acc.get(key) ?? {
+      week: s.week,
+      sport: s.sport,
+      sessions: 0,
+      hours: 0,
+      km: 0,
+      elev_m: 0,
+      hrtss: 0,
+      g_load: 0,
+      z12_h: 0,
+      z3_h: 0,
+      z45_h: 0,
+    };
+    w.sessions += 1;
+    w.hours += (s.duration_s ?? 0) / 3600;
+    w.km += (s.distance_m ?? 0) / 1000;
+    w.elev_m += s.elev_gain_m ?? 0;
+    w.hrtss += s.hrtss;
+    w.g_load += s.g_load ?? 0;
+    w.z12_h += ((s.z1_s ?? 0) + (s.z2_s ?? 0)) / 3600;
+    w.z3_h += (s.z3_s ?? 0) / 3600;
+    w.z45_h += ((s.z4_s ?? 0) + (s.z5_s ?? 0)) / 3600;
+    acc.set(key, w);
+  }
+  return [...acc.values()]
+    .map((w) => ({
+      ...w,
+      hours: round(w.hours, 2) ?? 0,
+      km: round(w.km, 1) ?? 0,
+      elev_m: round(w.elev_m, 0) ?? 0,
+      hrtss: round(w.hrtss, 0) ?? 0,
+      g_load: round(w.g_load, 0) ?? 0,
+      z12_h: round(w.z12_h, 2) ?? 0,
+      z3_h: round(w.z3_h, 2) ?? 0,
+      z45_h: round(w.z45_h, 2) ?? 0,
+    }))
+    .toSorted((a, b) => a.week.localeCompare(b.week) || a.sport.localeCompare(b.sport));
+}
+
+const pct = (cur: number, prev: number): number | undefined => (prev > 0 ? ((cur - prev) / prev) * 100 : undefined);
+
+/**
+ * Week-to-week jump: total hours (all sports) and running km of the ISO week of `asOf`
+ * against the week before; `undefined` when neither grew by more than `limitPct` (or the
+ * previous week is empty).
+ */
+export function weekJump(
+  sessions: readonly Pick<Session, 'date' | 'sport' | 'duration_s' | 'distance_m'>[],
+  asOf: IsoDate,
+  limitPct: number,
+): LoadFlag | undefined {
+  const cur = isoWeek(asOf);
+  const prev = isoWeek(addDays(asOf, -7));
+  const tot = { [cur]: { h: 0, km: 0 }, [prev]: { h: 0, km: 0 } };
+  for (const s of sessions) {
+    if (s.date > asOf) continue;
+    const t = tot[isoWeek(s.date)];
+    if (!t) continue;
+    t.h += (s.duration_s ?? 0) / 3600;
+    if (s.sport === 'run') t.km += (s.distance_m ?? 0) / 1000;
+  }
+  const c = tot[cur] ?? { h: 0, km: 0 };
+  const p = tot[prev] ?? { h: 0, km: 0 };
+  const parts: string[] = [];
+  const dh = pct(c.h, p.h);
+  if (dh !== undefined && dh > limitPct) parts.push(`hours +${Math.round(dh)}% (${round(p.h, 1)} → ${round(c.h, 1)} h)`);
+  const dk = pct(c.km, p.km);
+  if (dk !== undefined && dk > limitPct) parts.push(`running km +${Math.round(dk)}% (${round(p.km, 1)} → ${round(c.km, 1)} km)`);
+  if (parts.length === 0) return undefined;
+  return { code: 'week_jump', text: `Week ${cur} vs ${prev}: ${parts.join(', ')}; above the ${limitPct}% rule of thumb.` };
+}
+
+/**
+ * Flags of one day of the load model (ACWR, monotony, TSB) plus the week jump of its week.
+ * ACWR raises at most one of `acwr_high`, `acwr_warn`, `acwr_low`.
+ */
+export function loadFlags(
+  day: LoadDay | undefined,
+  sessions: readonly Pick<Session, 'date' | 'sport' | 'duration_s' | 'distance_m'>[],
+  flags: LoadFlags = DEFAULT_LOAD_FLAGS,
+): LoadFlag[] {
+  if (!day) return [];
+  const out: LoadFlag[] = [];
+  if (day.acwr > flags.acwr_high) {
+    out.push({ code: 'acwr_high', text: `ACWR ${day.acwr} > ${flags.acwr_high}: high-risk zone for a load spike.` });
+  } else if (day.acwr > flags.acwr_warn) {
+    out.push({ code: 'acwr_warn', text: `ACWR ${day.acwr} > ${flags.acwr_warn}: load rising fast, watch recovery.` });
+  } else if (day.acwr < flags.acwr_low && day.ctl > ACWR_LOW_MIN_CTL) {
+    out.push({ code: 'acwr_low', text: `ACWR ${day.acwr} < ${flags.acwr_low}: load well below the chronic level (taper or undertraining).` });
+  }
+  if (day.monotony > flags.monotony_high) {
+    out.push({ code: 'monotony_high', text: `Monotony ${day.monotony} > ${flags.monotony_high}: days too similar, vary hard and easy days.` });
+  }
+  if (day.tsb < flags.tsb_low) {
+    out.push({ code: 'tsb_low', text: `TSB ${day.tsb} < ${flags.tsb_low}: deep fatigue, fine only in a planned overload week.` });
+  }
+  if (day.tsb > flags.tsb_fresh) {
+    out.push({ code: 'tsb_fresh', text: `TSB ${day.tsb} > ${flags.tsb_fresh}: fresh (taper or rest).` });
+  }
+  const jump = weekJump(sessions, day.date, flags.week_jump_pct);
+  if (jump) out.push(jump);
+  return out;
+}
