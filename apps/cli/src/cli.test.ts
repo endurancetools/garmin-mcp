@@ -418,6 +418,20 @@ describe('garmin thresholds', () => {
     expect(Object.keys(res.data.effective)).toEqual(['lthr_run']);
   });
 
+  it('shows the zones of the cached Garmin profile as a separate table', async () => {
+    const { deps, store } = fake();
+    expect((await run(deps, 'thresholds')).stdout).not.toContain('## Zones');
+    const fixture = (name: string): unknown =>
+      JSON.parse(fs.readFileSync(path.resolve(import.meta.dirname, '../../../packages/client/fixtures', `${name}.json`), 'utf8')) as unknown;
+    store.setProfile({ social: {}, settings: {}, heartRateZones: fixture('heart-rate-zones'), powerZones: fixture('power-zones') }, NOW);
+    const md = (await run(deps, 'thresholds')).stdout;
+    expect(md).toContain('## Zones (Garmin profile, fetched 2026-10-08)');
+    expect(md).toContain('| zones | sport | method | floors | hrmax | rhr | lthr | ftp |');
+    expect(md).toContain('| hr | default | HR_MAX | 94 / 134 / 154 / 163 / 174 | 185 | 55 | 168 |  |');
+    expect(md).toContain('| power | running |  | 260 / 317 / 361 / 399 / 458 |  |  |  | 404 |');
+    expect(md).toMatch(/not a history/);
+  });
+
   it('adds a test result and refuses bad input', async () => {
     const { deps, store } = fake();
     const { stdout } = await run(deps, 'thresholds', 'add', '2026-10-01', 'lthr_run', '172', '--note', '30 min test');

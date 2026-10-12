@@ -1,4 +1,4 @@
-import { addDays, assertIsoDate, InputError, type IsoDate } from 'garmin-mcp-config';
+import { addDays, assertIsoDate, dateIn, InputError, type IsoDate } from 'garmin-mcp-config';
 import { compact, type Envelope, type GarminService, type ResponseMeta, type SyncProgressOptions } from 'garmin-mcp-domain';
 import {
   parseRangeSet,
@@ -42,12 +42,15 @@ import type { SportGroup } from './sport.js';
 import {
   hrmaxOn,
   profileZoneFloors,
+  profileZones,
   recordProfileThresholds,
   restingHrOn,
   RHR_MIN_SAMPLES,
   RHR_WINDOW_DAYS,
   thresholdOn,
   thresholdsBySport,
+  type HrZones,
+  type PowerZones,
   type SportThresholds,
   type ProfileZoneFloors,
   type ThresholdSport,
@@ -151,7 +154,22 @@ export interface ThresholdsData {
   hrmax: { value?: number; note?: string };
   /** Resting HR the load model uses on `date`: mean of the 28 days before, else the `rhr` row, else 50. */
   rhr_28d: { value: number; samples: number; note?: string };
+  /** HR and power zones of the cached Garmin profile as of its download; absent without a profile or zones. */
+  zones?: ThresholdZones;
 }
+
+/** The Garmin profile's current HR and power zones per sport (lower-case Garmin sport keys). */
+export interface ThresholdZones {
+  /** Local date the profile was downloaded. */
+  fetched: IsoDate;
+  hr?: Record<string, HrZones>;
+  power?: Record<string, PowerZones>;
+  note: string;
+}
+
+const ZONES_NOTE =
+  "The Garmin profile's zones as of its download date (fetched), not a history: the zones of an earlier date may have differed. " +
+  'floors are the lower bounds of zones 1..5 (HR, bpm) or 1..5-7 (power, W); hrmax, rhr and lthr are the values Garmin set the HR zones from.';
 
 export interface SetThresholdInput {
   date: string;
@@ -455,6 +473,7 @@ export class AnalyticsService {
     const daily = this.#store.getDaily('daily_summary', window.from, window.to).map((d) => ({ date: d.date, resting_hr: d.resting_hr }));
     const samples = daily.filter((d) => d.resting_hr !== null && Number.isFinite(d.resting_hr) && d.resting_hr > 0).length;
     const rhr = restingHrOn(daily, rows, date);
+    const zones = this.#zones();
     const rhrNote =
       rhr.note ?? (samples < RHR_MIN_SAMPLES ? `Fewer than ${RHR_MIN_SAMPLES} days with a resting HR in the 28 before ${date}; the rhr threshold is used.` : undefined);
     const data: ThresholdsData = {
@@ -464,9 +483,19 @@ export class AnalyticsService {
       by_sport: thresholdsBySport(rows, date),
       hrmax: hrmaxOn(rows, date),
       rhr_28d: { value: rhr.value, samples, note: rhrNote },
+      zones: zones.value,
     };
     const gap = withProfileGap(this.garmin.coverage('daily', window.from, window.to, ['daily_summary']), profile.gap);
-    return { data: compact(data), meta: readMeta([profile.ensured, ensured], gap) };
+    return { data: compact(data), meta: readMeta([profile.ensured, ensured], gap, zones.note ? [zones.note] : []) };
+  }
+
+  /** Zones of the cached profile; none without zone floors in it, a note instead without a profile. */
+  #zones(): { value?: ThresholdZones; note?: string } {
+    const p = this.#store.getProfile();
+    if (!p) return { note: 'No Garmin profile in the cache, so zones are left out.' };
+    const { hr, power } = profileZones(p.raw);
+    if (Object.keys(hr).length === 0 && Object.keys(power).length === 0) return {};
+    return { value: { fetched: dateIn(this.garmin.timeZone, new Date(p.fetched_at)), hr, power, note: ZONES_NOTE } };
   }
 
   // ------------------------------------------------------------ set_threshold

@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import { addDays, eachDay, InputError } from 'garmin-mcp-config';
 import { describe, expect, it } from 'vitest';
 import type { z } from 'zod';
@@ -449,6 +451,42 @@ describe('AnalyticsService thresholds', () => {
     expect(calls).toEqual([]);
   });
 
+  it('lists the HR and power zones of the cached profile per sport, with its download date', async () => {
+    const { analytics, store, calls, daily } = setup();
+    daily('daily_summary', '2026-09-10', '2026-10-07', () => ({ resting_hr: 50 }));
+    const fixture = (name: string): unknown =>
+      JSON.parse(fs.readFileSync(path.resolve(import.meta.dirname, '../../client/fixtures', `${name}.json`), 'utf8')) as unknown;
+    const fetched = Date.parse('2026-10-01T08:00:00Z');
+    store.setProfile({ ...profile(168), heartRateZones: fixture('heart-rate-zones'), powerZones: fixture('power-zones') }, fetched);
+    store.markReferenceFetched('profile', fetched);
+    const res = await analytics.getThresholds();
+    fits(thresholdsOutput, res);
+    expect(thresholdsOutput.safeParse(res).success).toBe(true);
+    expect(res.meta).toEqual({ source: 'cache' });
+    // The local date of the download; running has five power zones (6 and 7 are 0 in the profile).
+    expect(res.data.zones).toEqual({
+      fetched: '2026-10-01',
+      hr: {
+        default: { method: 'HR_MAX', floors: [94, 134, 154, 163, 174], hrmax: 185, rhr: 55, lthr: 168 },
+        cycling: { method: 'HR_MAX', floors: [109, 133, 148, 159, 167], hrmax: 185, rhr: 55, lthr: 160 },
+      },
+      power: {
+        cycling: { floors: [0, 128, 179, 209, 248, 277, 353], ftp: 235 },
+        cross_country_skiing: { floors: [0, 74, 101, 121, 141, 161, 201], ftp: 134 },
+        running: { floors: [260, 317, 361, 399, 458], ftp: 404 },
+        rowing: { floors: [0, 118, 161, 193, 225, 257, 321], ftp: 214 },
+      },
+      note: expect.stringMatching(/as of its download date \(fetched\), not a history/),
+    });
+    expect(calls).toEqual([]);
+
+    // A profile without zone floors: no zones field.
+    store.setProfile(profile(168), fetched);
+    const none = await analytics.getThresholds();
+    expect(none.data.zones).toBeUndefined();
+    expect(none.meta).toEqual({ source: 'cache' });
+  });
+
   it('hints a reference sync when the profile was never fetched, without calling Garmin', async () => {
     const { analytics, calls, daily } = setup();
     daily('daily_summary', '2026-09-10', '2026-10-07', () => ({ resting_hr: 50 }));
@@ -471,7 +509,8 @@ describe('AnalyticsService thresholds', () => {
     const { analytics } = setup();
     const res = await analytics.getThresholds();
     expect(res.meta.sync_hint).toEqual({ scope: 'all', from: '2026-09-10', to: '2026-10-07' });
-    expect(res.meta.note).toMatch(/daily_summary.*The Garmin profile is missing too\.$/);
+    expect(res.meta.note).toMatch(/daily_summary.*The Garmin profile is missing too\. No Garmin profile in the cache, so zones are left out\.$/);
+    expect(res.data.zones).toBeUndefined();
     expect(res.data.rhr_28d).toMatchObject({ value: 50, samples: 0, note: expect.stringMatching(/default 50/) });
     expect(res.data.by_sport.run).toEqual({
       lthr: 170,

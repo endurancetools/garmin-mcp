@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import { addDays, eachDay } from 'garmin-mcp-config';
 import { Store, type ThresholdParam } from 'garmin-mcp-store';
 import { describe, expect, it } from 'vitest';
@@ -6,6 +8,7 @@ import {
   lthrFor,
   profileThresholds,
   profileZoneFloors,
+  profileZones,
   recordProfileThresholds,
   restingHrOn,
   thresholdOn,
@@ -101,6 +104,46 @@ describe('profileZoneFloors', () => {
     expect(profileZoneFloors(profile())).toEqual({});
     expect(profileZoneFloors(null)).toEqual({});
     expect(profileZoneFloors({ heartRateZones: 'x' })).toEqual({});
+  });
+});
+
+/** A response fixture of garmin-mcp-client, the shape the profile stores. */
+const clientFixture = (name: string): unknown =>
+  JSON.parse(fs.readFileSync(path.resolve(import.meta.dirname, '../../client/fixtures', `${name}.json`), 'utf8')) as unknown;
+
+describe('profileZones', () => {
+  it('reads HR and power zones of every sport from the client fixtures', () => {
+    const zones = profileZones({ heartRateZones: clientFixture('heart-rate-zones'), powerZones: clientFixture('power-zones') });
+    expect(zones).toEqual({
+      hr: {
+        default: { method: 'HR_MAX', floors: [94, 134, 154, 163, 174], hrmax: 185, rhr: 55, lthr: 168 },
+        cycling: { method: 'HR_MAX', floors: [109, 133, 148, 159, 167], hrmax: 185, rhr: 55, lthr: 160 },
+      },
+      power: {
+        cycling: { floors: [0, 128, 179, 209, 248, 277, 353], ftp: 235 },
+        cross_country_skiing: { floors: [0, 74, 101, 121, 141, 161, 201], ftp: 134 },
+        // Zones 6 and 7 are 0 in the profile: running has five power zones.
+        running: { floors: [260, 317, 361, 399, 458], ftp: 404 },
+        rowing: { floors: [0, 118, 161, 193, 225, 257, 321], ftp: 214 },
+      },
+    });
+  });
+
+  it('leaves out a sport with fewer than five rising floors, keeps the first of a repeated sport', () => {
+    expect(
+      profileZones({
+        heartRateZones: [
+          { sport: 'DEFAULT', zone1Floor: 94, zone2Floor: 134, zone3Floor: 134, zone4Floor: 163, zone5Floor: 174 },
+          { sport: 'CYCLING', zone1Floor: 109, zone2Floor: 133, zone3Floor: 148, zone4Floor: 159, zone5Floor: 167 },
+          { sport: 'CYCLING', zone1Floor: 1, zone2Floor: 2, zone3Floor: 3, zone4Floor: 4, zone5Floor: 5 },
+          { zone1Floor: 1, zone2Floor: 2, zone3Floor: 3, zone4Floor: 4, zone5Floor: 5 },
+        ],
+        powerZones: [{ sport: 'CYCLING', functionalThresholdPower: 250, zone1Floor: 0, zone2Floor: 100, zone3Floor: 0 }],
+      }),
+    ).toEqual({ hr: { cycling: { floors: [109, 133, 148, 159, 167] } }, power: {} });
+    expect(profileZones(profile())).toEqual({ hr: {}, power: {} });
+    expect(profileZones(null)).toEqual({ hr: {}, power: {} });
+    expect(profileZones({ heartRateZones: 'x', powerZones: [null] })).toEqual({ hr: {}, power: {} });
   });
 });
 

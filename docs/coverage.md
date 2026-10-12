@@ -126,7 +126,7 @@ Totals for the 111 reads: 55 full, 16 partial, 40 missing.
 | User settings | `garmin://profile` | full | units, weight, height, birth date, VO2max, zones |
 | Full name | `garmin://profile` → `name` | full | |
 | Unit system | `garmin://profile` → `units` | full | |
-| Heart rate zones | `garmin://profile` → `hr_zones` | full | all sports at once |
+| Heart rate zones | `garmin://profile` → `hr_zones`, `get_thresholds` → `zones` | full | all sports at once; `get_thresholds` also has the power zones, for clients without resources |
 | Gear and gear stats | `get_gear` `include_activities` | full | stats always included |
 | Devices | `get_devices` | full | |
 | Device last used | `get_devices` → `last_sync_utc` | full | |

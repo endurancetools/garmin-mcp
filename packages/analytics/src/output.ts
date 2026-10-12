@@ -146,6 +146,12 @@ export const thresholdsOutput = envelope({
   by_sport: bySport,
   hrmax: obj({ value: num, note: str }),
   rhr_28d: obj({ value: num, samples: num, note: str }),
+  zones: obj({
+    fetched: str,
+    hr: z.record(z.string(), z.looseObject({ method: str, floors: list(z.number()), hrmax: num, rhr: num, lthr: num })).optional(),
+    power: z.record(z.string(), z.looseObject({ floors: list(z.number()), ftp: num })).optional(),
+    note: str,
+  }),
 });
 
 export const setThresholdOutput = envelope({

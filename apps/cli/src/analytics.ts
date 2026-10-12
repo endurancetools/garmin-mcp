@@ -133,6 +133,14 @@ export function thresholdsMarkdown({ data, meta }: Envelope<ThresholdsData>): st
     `HRmax: ${data.hrmax.value ?? '-'}${data.hrmax.note ? ` (${data.hrmax.note})` : ''}`,
     `Resting HR (28 days): ${data.rhr_28d.value} from ${data.rhr_28d.samples} days${data.rhr_28d.note ? ` (${data.rhr_28d.note})` : ''}`,
   );
+  if (data.zones) {
+    const { fetched, hr = {}, power = {}, note } = data.zones;
+    const rows = [
+      ...Object.entries(hr).map(([sport, z]) => ({ zones: 'hr', sport, method: z.method, floors: z.floors.join(' / '), hrmax: z.hrmax, rhr: z.rhr, lthr: z.lthr })),
+      ...Object.entries(power).map(([sport, z]) => ({ zones: 'power', sport, floors: z.floors.join(' / '), ftp: z.ftp })),
+    ];
+    out.push('', `## Zones (Garmin profile, fetched ${fetched})`, '', mdTable(rows, ['zones', 'sport', 'method', 'floors', 'hrmax', 'rhr', 'lthr', 'ftp']), '', note);
+  }
   if (data.history) out.push('', '## History', '', mdTable(data.history, ['date', 'param', 'value', 'source', 'note']));
   out.push(...metaBlock(meta));
   return out.join('\n');
