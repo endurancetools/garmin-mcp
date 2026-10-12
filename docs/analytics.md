@@ -86,20 +86,22 @@ Rough hrTSS orientation: an hour in zone 1 is about 40-55, an hour in zone 2 abo
 
 ## Load sources
 
-Each activity gets one training stress `tss` from the first candidate that gives a positive value, in this order (as TrainingPeaks ranks TSS, rTSS and hrTSS: heart rate is the last measured source, because it lags behind short efforts; the athlete's own rating comes after every measurement). All candidates share the scale where an hour at threshold is 100, so they add up in one daily sum and one CTL.
+Each activity gets one training stress `tss` from the first candidate that gives a positive value, in this order (as TrainingPeaks ranks TSS, rTSS, sTSS and hrTSS: heart rate is the last measured source, because it lags behind short efforts; the athlete's own rating comes after every measurement). All candidates share the scale where an hour at threshold is 100, so they add up in one daily sum and one CTL.
 
 | Order | `load_source` | Sport group | Needs | Intensity factor | Stress |
 | --- | --- | --- | --- | --- | --- |
 | 1 | `power` | `bike` | normalized power `np_w`, `ftp_w` on the activity's date | IF = NP / FTP | TSS = duration_h × IF² × 100 (Coggan) |
 | 2 | `pace` | `run` | Garmin's grade adjusted speed `gap_mps`, `run_threshold_pace_s_per_km` on the activity's date | IF = GAP / (1000 / threshold pace) | rTSS = duration_h × IF² × 100 (McGregor) |
-| 3 | `hr` | any | time in HR zones and the profile's zone bounds, else average heart rate | IF_z per zone, else IF = (avg_hr − RHR) / (LTHR − RHR) | hrTSS (above, `hr_method`) |
-| 4 | `rpe` | any | session RPE 1-10 from the activity detail, duration | none (`if` absent) | sRPE = RPE × duration_min × `rpe_calibration` (Foster) |
+| 3 | `swim_pace` | `swim` | distance, moving time, `css_s_per_100m` on the activity's date | IF = (distance / moving time) / (100 / CSS) | sTSS = moving_h × IF³ × 100 |
+| 4 | `hr` | any | time in HR zones and the profile's zone bounds, else average heart rate | IF_z per zone, else IF = (avg_hr − RHR) / (LTHR − RHR) | hrTSS (above, `hr_method`) |
+| 5 | `rpe` | any | session RPE 1-10 from the activity detail, duration | none (`if` absent) | sRPE = RPE × duration_min × `rpe_calibration` (Foster) |
 | - | `none` | | none of the above | | no `tss` |
 
 - **Zero is no load.** A candidate whose stress rounds to 0 (a power meter that read 0, a speed of 0) is skipped, so it does not hide the heart-rate stress of the same activity. An activity with no candidate has no `tss` and no `if` at all, never 0; it adds nothing to the daily sum.
-- **Thresholds of the day.** FTP and threshold pace are taken on the activity's date, as LTHR is. Without `ftp_w` a ride with power, and without `run_threshold_pace_s_per_km` a run with grade adjusted speed, falls back to heart rate and `meta.note` says which threshold to record.
+- **Thresholds of the day.** FTP, threshold pace and CSS are taken on the activity's date, as LTHR is. Without `ftp_w` a ride with power, without `run_threshold_pace_s_per_km` a run with grade adjusted speed, and without `css_s_per_100m` a swim with distance and moving time, falls back to heart rate and `meta.note` says which threshold to record.
 - **Rounding.** `tss` to 1 place and `if` to 3 places, both computed from the unrounded intensity factor.
 - **Pace is an average.** rTSS proper uses the normalized graded pace (NGP), weighted like normalized power from the second-by-second record. The activity list has only Garmin's average grade adjusted speed, which corrects for hills but not for the variability of the run, so rTSS of interval sessions reads a little low.
+- **Swimming is cubed.** sTSS follows TrainingPeaks (reference 18): the intensity factor is the average speed over the moving time against the critical swim speed (CSS), and stress grows with its cube, not its square, because water drag makes the cost of swimming rise faster with speed than that of running. Both the speed and the hours use Garmin's moving time of the activity, so rests that Garmin leaves out of it count neither as slow swimming nor as stress. Example: CSS 75 m/min (`css_s_per_100m` 80) and 1 600 m in 23:10 of moving time give IF 0.92 and sTSS 30. The Garmin profile has no CSS, so it comes only from `set_threshold` (`thresholds_used.by_sport.swim.css` shows it); a swim without distance or moving time, or without CSS, is scored from heart rate as before. The speed is an average of the whole swim, drills and kicking included.
 - **Session RPE is an approximation.** Foster's session RPE (RPE × minutes, Foster 1998; Foster et al. 2001) is in its own unit: an RPE of 6 gives 360 an hour, against about 80 for a typical hour scored from heart rate. `rpe_calibration` (default 0.23) brings it to the scale where an hour at threshold is 100, so an hour at RPE 6 scores about 83 and an hour at RPE 10 about 138. The factor is a fixed estimate, not fitted to your own heart-rate or power data; override it with `flags`, e.g. `{"rpe_calibration": 0.2}`. It counts only for activities with no measured source (strength without a heart-rate strap, for example), and only when the RPE was entered in Garmin Connect and the activity detail was downloaded.
 - `hrtss` stays on every activity as the heart-rate candidate, and `get_load` with `source: "hrtss"` sums it alone, as the model did before power and pace were added.
 
@@ -227,3 +229,4 @@ The HRV rules follow day-to-day HRV-guided training, which compares the night wi
 15. TrainingPeaks. Training with TSS vs. hrTSS: what's the difference? https://www.trainingpeaks.com/learn/articles/training-with-tss-vs-hrtss-whats-the-difference/
 16. Foster C, Florhaug JA, Franklin J, Gottschall L, Hrovatin LA, Parker S, Doleshal P, Dodge C. A new approach to monitoring exercise training. J Strength Cond Res. 2001;15(1):109-115.
 17. TrainingPeaks. Estimating Training Stress Score (TSS) (TSS per hour by zone after J. Friel). https://www.trainingpeaks.com/learn/articles/estimating-training-stress-score-tss/
+18. TrainingPeaks. Calculating swimming TSS score (sTSS from CSS). https://www.trainingpeaks.com/learn/articles/calculating-swimming-tss-score/

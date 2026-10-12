@@ -69,7 +69,7 @@ export interface LoadQuery {
   flags?: Record<string, unknown>;
 }
 
-/** Thresholds the load model used on `to`: `by_sport` as in `get_thresholds` plus bike `ftp` and run `threshold_pace`, and the resting HR. */
+/** Thresholds the load model used on `to`: `by_sport` as in `get_thresholds` plus bike `ftp`, run `threshold_pace` and swim `css`, and the resting HR. */
 export interface ThresholdsUsed {
   date: IsoDate;
   by_sport: Record<ThresholdSport, SportThresholds>;
@@ -330,6 +330,8 @@ export class AnalyticsService {
     const thresholdPace = thresholdOn(thresholds, 'run_threshold_pace_s_per_km', to);
     if (ftp !== undefined) bySport.bike.ftp = ftp;
     if (thresholdPace !== undefined) bySport.run.threshold_pace = thresholdPace;
+    const css = thresholdOn(thresholds, 'css_s_per_100m', to);
+    if (css !== undefined) bySport.swim.css = css;
     const rhr = restingHrOn(daily, thresholds, to);
     const allNotes = new Set(notes);
     // The default-LTHR and LT1-approximation notes are the same for every sport, so the running
@@ -350,7 +352,7 @@ export class AnalyticsService {
       "It differs from computed_load in get_training_status, which runs the same EWMA on Garmin's EPOC training load.";
     const note =
       source === 'auto'
-        ? `Own load model: daily TSS, per activity from power (cycling NP / FTP), else pace (running grade adjusted speed / threshold pace), else heart rate (hrTSS from the time in HR zones, else from the average; hr_method per activity), else session RPE × minutes × rpe_calibration (Foster, approximate), with the thresholds valid on each date; load_source per activity says which. ${model}`
+        ? `Own load model: daily TSS, per activity from power (cycling NP / FTP), else pace (running grade adjusted speed / threshold pace; swimming speed / CSS, cubed), else heart rate (hrTSS from the time in HR zones, else from the average; hr_method per activity), else session RPE × minutes × rpe_calibration (Foster, approximate), with the thresholds valid on each date; load_source per activity says which. ${model}`
         : source === 'hrtss'
           ? `Own load model: daily hrTSS from heart rate only (time in HR zones, else the average; hr_method per activity), with the thresholds valid on each date (LTHR per sport, 28-day resting HR). ${model}`
           : "Daily load is the sum of Garmin's per-activity training load (EPOC), as in computed_load of get_training_status; imported activities have no Garmin load and count 0.";

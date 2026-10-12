@@ -6,7 +6,7 @@ import { sportGroup, type SportGroup } from './sport.js';
 import { lt1For, lthrFor, restingHrOn, thresholdOn, zoneBounds, zoneFloorsFor, type ProfileZoneFloors, type ThresholdPoint } from './thresholds.js';
 
 /** Where the training stress of a session comes from (first positive candidate wins); `none` = no load. */
-export type SessionLoadSource = 'power' | 'pace' | 'hr' | 'rpe' | 'none';
+export type SessionLoadSource = 'power' | 'pace' | 'swim_pace' | 'hr' | 'rpe' | 'none';
 
 /** One activity, normalized from an `activities` row or an `imported_activities` row. */
 export interface SessionInput {
@@ -69,7 +69,7 @@ export interface Session {
   feel?: number;
   /** Training stress of the session from `load_source`, 1 place; absent (never 0) when no candidate is positive. */
   tss?: number;
-  /** Intensity factor of `load_source` (NP/FTP, GAP/threshold speed or HR reserve, from zones or the average), 3 places; absent with `rpe` and `none`. */
+  /** Intensity factor of `load_source` (NP/FTP, GAP/threshold speed, swim speed/CSS or HR reserve, from zones or the average), 3 places; absent with `rpe` and `none`. */
   if?: number;
   load_source: SessionLoadSource;
   /** The heart-rate candidate (0 without heart rate); `get_load` with `source: "hrtss"` sums it. */
@@ -243,6 +243,18 @@ export function paceCandidate(gapMps: number | undefined, thresholdPaceSPerKm: n
   return { source: 'pace', tss: stress(durationS, ifValue), if: ifValue };
 }
 
+/**
+ * Swim pace candidate (TrainingPeaks' sTSS): IF = (distance / moving time) / (100 / CSS),
+ * sTSS = moving hours × IF³ × 100; the cube, not the square, because the cost of swimming rises
+ * faster with speed (water drag) than that of running. `undefined` without distance, moving
+ * time or CSS (s per 100 m).
+ */
+export function swimPaceCandidate(distanceM: number | undefined, movingS: number | undefined, cssSPer100m: number | undefined): LoadCandidate | undefined {
+  if (!(distanceM !== undefined && distanceM > 0 && movingS !== undefined && movingS > 0 && cssSPer100m !== undefined && cssSPer100m > 0)) return undefined;
+  const ifValue = distanceM / movingS / (100 / cssSPer100m);
+  return { source: 'swim_pace', tss: (movingS / 3600) * ifValue ** 3 * 100, if: ifValue };
+}
+
 /** Foster's CR-10 scale of session RPE. */
 const RPE_MIN = 1;
 const RPE_MAX = 10;
@@ -329,11 +341,14 @@ export type NoteSink = (note: string) => void;
 export const NO_FTP_NOTE = 'Cycling activities with normalized power but no ftp_w in the threshold history use hrTSS; record FTP with set_threshold.';
 export const NO_THRESHOLD_PACE_NOTE =
   'Running activities with a grade adjusted speed but no run_threshold_pace_s_per_km in the threshold history use hrTSS; record the threshold pace with set_threshold.';
+export const NO_CSS_NOTE =
+  'Swims with distance and moving time but no css_s_per_100m in the threshold history use hrTSS; record the critical swim speed with set_threshold.';
 
 /**
  * Metrics of one session with the thresholds valid on its date (LTHR, LT1, FTP and threshold
- * pace of its sport, rolling resting HR). Load candidates in order: `power` (bike with NP and
- * `ftp_w`), `pace` (run with GAP and `run_threshold_pace_s_per_km`), `hr` (hrTSS from the time
+ * pace or CSS of its sport, rolling resting HR). Load candidates in order: `power` (bike with NP
+ * and `ftp_w`), `pace` (run with GAP and `run_threshold_pace_s_per_km`), `swim_pace` (swim with
+ * distance, moving time and `css_s_per_100m`), `hr` (hrTSS from the time
  * in zones with the profile's zone bounds, else from the average HR; `hr_method`), `rpe`
  * (session RPE, any sport); the first positive one gives `tss`, `if` and `load_source`. LT1 notes are not reported: `get_load`
  * takes them from `thresholds_used`. Rounding: IF, EF, EF-GAP, GAP 3 places; TSS, hrTSS,
@@ -354,9 +369,12 @@ export function sessionMetrics(input: SessionInput, ctx: SessionContext, onNote?
   const pace = sport === 'run' ? thresholdOn(ctx.thresholds, 'run_threshold_pace_s_per_km', input.date) : undefined;
   if (sport === 'bike' && ftp === undefined && input.np_w !== undefined && input.np_w > 0) onNote?.(NO_FTP_NOTE);
   if (sport === 'run' && pace === undefined && input.gap_mps !== undefined && input.gap_mps > 0) onNote?.(NO_THRESHOLD_PACE_NOTE);
+  const css = sport === 'swim' ? thresholdOn(ctx.thresholds, 'css_s_per_100m', input.date) : undefined;
+  if (sport === 'swim' && css === undefined && (input.distance_m ?? 0) > 0 && (input.moving_s ?? 0) > 0) onNote?.(NO_CSS_NOTE);
   const load = resolveLoad([
     sport === 'bike' ? powerCandidate(input.np_w, ftp, input.duration_s) : undefined,
     sport === 'run' ? paceCandidate(input.gap_mps, pace, input.duration_s) : undefined,
+    sport === 'swim' ? swimPaceCandidate(input.distance_m, input.moving_s, css) : undefined,
     hr,
     rpeCandidate(input.rpe, input.duration_s, ctx.rpe_calibration),
   ]);
