@@ -1,4 +1,4 @@
-import { addDays, daysBetween, isoWeek, type IsoDate } from 'garmin-mcp-config';
+import { addDays, daysBetween, type IsoDate } from 'garmin-mcp-config';
 import { round, trainingLoadSeries } from 'garmin-mcp-domain';
 import type { Session } from './session.js';
 import type { SportGroup } from './sport.js';
@@ -230,39 +230,43 @@ export function weeklyBySport(sessions: readonly Session[]): WeekSport[] {
 
 const pct = (cur: number, prev: number): number | undefined => (prev > 0 ? ((cur - prev) / prev) * 100 : undefined);
 
+/** Hours in the reference window below which `week_jump` is not raised (percentages of almost nothing). */
+export const WEEK_JUMP_MIN_REF_H = 1;
+
 /**
- * Week-to-week jump: total hours (all sports) and running km of the ISO week of `asOf`
- * against the week before; `undefined` when neither grew by more than `limitPct` (or the
- * previous week is empty).
+ * Week-to-week jump on rolling windows: total hours (all sports) and running km of the 7 days
+ * ending on `asOf` against the 7 days before (no ISO weeks, so a Tuesday after a heavy week
+ * still sees it); `undefined` when neither grew by more than `limitPct` or the reference
+ * window has less than {@link WEEK_JUMP_MIN_REF_H} hour.
  */
 export function weekJump(
   sessions: readonly Pick<Session, 'date' | 'sport' | 'duration_s' | 'distance_m'>[],
   asOf: IsoDate,
   limitPct: number,
 ): LoadFlag | undefined {
-  const cur = isoWeek(asOf);
-  const prev = isoWeek(addDays(asOf, -7));
-  const tot = { [cur]: { h: 0, km: 0 }, [prev]: { h: 0, km: 0 } };
+  const curFrom = addDays(asOf, -6);
+  const prevFrom = addDays(asOf, -13);
+  const c = { h: 0, km: 0 };
+  const p = { h: 0, km: 0 };
   for (const s of sessions) {
-    if (s.date > asOf) continue;
-    const t = tot[isoWeek(s.date)];
-    if (!t) continue;
+    if (s.date > asOf || s.date < prevFrom) continue;
+    const t = s.date >= curFrom ? c : p;
     t.h += (s.duration_s ?? 0) / 3600;
     if (s.sport === 'run') t.km += (s.distance_m ?? 0) / 1000;
   }
-  const c = tot[cur] ?? { h: 0, km: 0 };
-  const p = tot[prev] ?? { h: 0, km: 0 };
+  if (p.h < WEEK_JUMP_MIN_REF_H) return undefined;
+  const span = 'last 7 days vs the 7 before';
   const parts: string[] = [];
   const dh = pct(c.h, p.h);
-  if (dh !== undefined && dh > limitPct) parts.push(`hours +${Math.round(dh)}% (${round(p.h, 1)} → ${round(c.h, 1)} h)`);
+  if (dh !== undefined && dh > limitPct) parts.push(`hours +${Math.round(dh)}% (${round(p.h, 1)} → ${round(c.h, 1)} h, ${span})`);
   const dk = pct(c.km, p.km);
-  if (dk !== undefined && dk > limitPct) parts.push(`running km +${Math.round(dk)}% (${round(p.km, 1)} → ${round(c.km, 1)} km)`);
+  if (dk !== undefined && dk > limitPct) parts.push(`running km +${Math.round(dk)}% (${round(p.km, 1)} → ${round(c.km, 1)} km, ${span})`);
   if (parts.length === 0) return undefined;
-  return { code: 'week_jump', text: `Week ${cur} vs ${prev}: ${parts.join(', ')}; above the ${limitPct}% rule of thumb.` };
+  return { code: 'week_jump', text: `${parts.join(', ')}; above the ${limitPct}% rule of thumb.` };
 }
 
 /**
- * Flags of one day of the load model (ACWR, monotony, TSB) plus the week jump of its week.
+ * Flags of one day of the load model (ACWR, monotony, TSB) plus the jump of its last 7 days.
  * ACWR raises at most one of `acwr_high`, `acwr_warn`, `acwr_low`. While the model warms up
  * (`warming_up`), `tsb_low` and `tsb_fresh` are not raised: TSB on an unsettled CTL is not fatigue.
  */
