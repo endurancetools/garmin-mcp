@@ -88,7 +88,7 @@ Totals for the 111 reads: 55 full, 16 partial, 40 missing.
 | Garmin Connect data | garmin-mcp | Coverage | Note |
 | --- | --- | --- | --- |
 | Training status | `get_training_status` `to` = date | full | |
-| Training load trend | `get_training_status` `from`, `to`, `include_series: true` | full | CTL/ATL/TSB computed from activities |
+| Training load trend | `get_training_status` `from`, `to`, `include_series: true` | full | `garmin_load_model`: CTL/ATL/TSB from Garmin's training load per activity; the own TSS model (power, pace, heart rate, RPE) is `get_load` |
 | Training load balance | `get_training_status` `to` = date → `load_focus` | full | bands with targets and below/within/above |
 | VO2max trend | `get_training_status` `from`, `to` → `vo2max.running_trend` | partial | trend, not the daily series |
 | HRV of one night | `query_health` `metrics: [hrv]` → `hrv_status`, `hrv_baseline_low_ms`, `hrv_baseline_high_ms`; `get_sleep` `date` | partial | last-night average, status and baseline; no readings () |

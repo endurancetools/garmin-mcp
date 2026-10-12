@@ -45,8 +45,8 @@ flowchart TD
 | --- | --- |
 | `garmin-mcp-server` | The MCP server your client starts: 21 tools, resources such as your profile and gear, two prompts; stdio and streamable HTTP. Built on the official MCP SDK. |
 | `garmin-mcp-cli` | The `garmin` command for setup and checks: `login`, `status`, `sync`, `doctor`, `logout`, plus `activities` and `health` for a quick look from the terminal, and the analytics commands `load`, `readiness`, `thresholds` and `import-activities` (see [Training analytics](analytics.md)). |
-| `garmin-mcp-analytics` | Training analytics computed from the local cache: training thresholds with their history, its own heart-rate load model (hrTSS, CTL/ATL/TSB, ACWR), the readiness of the day, and the import of a Garmin Connect CSV export. Formulas and defaults: [Training analytics](analytics.md). |
-| `garmin-mcp-domain` | Turns stored data into answers: training load (CTL/ATL/TSB), trends, period summaries, readable workouts, and the workout builder with its presets. |
+| `garmin-mcp-analytics` | Training analytics computed from the local cache: training thresholds with their history, its own load model (TSS from power, pace, heart rate or RPE, CTL/ATL/TSB, ACWR in `get_load`; separate from `garmin_load_model`, the same averages on Garmin's training load), the readiness of the day, and the import of a Garmin Connect CSV export. Formulas and defaults: [Training analytics](analytics.md). |
+| `garmin-mcp-domain` | Turns stored data into answers: `garmin_load_model` (CTL/ATL/TSB from Garmin's training load), trends, period summaries, readable workouts, and the workout builder with its presets. |
 | `garmin-mcp-store` | The local SQLite database and the download logic: what is already stored, what is missing, how long cached items stay fresh, pacing and the daily request budget. |
 | `garmin-mcp-client` | A typed client for Garmin Connect's API with validation of every response, retries and rate limits. |
 | `garmin-mcp-auth` | Signing in (browser, terminal or imported tokens), token storage and automatic refresh. |
