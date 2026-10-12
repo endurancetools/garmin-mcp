@@ -40,6 +40,8 @@ docs:
         url: /coverage/
       - title: "How it works"
         url: /how-it-works/
+      - title: "Changelog"
+        url: /changelog/
   - title: Links
     children:
       - title: "GitHub"
