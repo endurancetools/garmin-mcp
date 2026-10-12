@@ -14,6 +14,7 @@ import {
 import { efficiencyTrend, type EfficiencyRow } from './efficiency.js';
 import { intensityDistribution, type IntensityDistribution } from './intensity.js';
 import {
+  CTL_WARMUP_DAYS,
   DEFAULT_LOAD_FLAGS,
   LOAD_SOURCES,
   loadFlags,
@@ -42,8 +43,6 @@ import {
 
 /** Default `get_load` range: the last 28 days. */
 export const DEFAULT_LOAD_DAYS = 28;
-/** CTL needs about this many days of history before `from` to settle (EWMA 42 days). */
-export const CTL_WARMUP_DAYS = 42;
 /** Sources `set_threshold` may write; `garmin-auto` and `import` come from the profile and the CSV import. */
 export const SET_THRESHOLD_SOURCES = ['test', 'manual'] as const satisfies readonly ThresholdSource[];
 
@@ -357,7 +356,8 @@ export class AnalyticsService {
 
     const store = this.#store;
     const { sessions, notes } = this.#sessions(date);
-    const load = loadOn(loadSeries(sessions, 'hrtss', date), date);
+    const series = loadSeries(sessions, 'hrtss', date);
+    const load = loadOn(series, date);
     const result = readiness({
       date,
       today,
@@ -367,6 +367,7 @@ export class AnalyticsService {
       hrv: store.getDaily('hrv', from, date),
       training: store.getDaily('training_status', from, date),
       load,
+      load_start: series[0]?.date,
       rules: ruleInput.values,
     });
     const allNotes = ruleInput.note ? [...notes, ruleInput.note] : notes;

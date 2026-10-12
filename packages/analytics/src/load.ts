@@ -1,4 +1,4 @@
-import { addDays, isoWeek, type IsoDate } from 'garmin-mcp-config';
+import { addDays, daysBetween, isoWeek, type IsoDate } from 'garmin-mcp-config';
 import { round, trainingLoadSeries } from 'garmin-mcp-domain';
 import type { Session } from './session.js';
 import type { SportGroup } from './sport.js';
@@ -8,6 +8,11 @@ export type LoadSource = 'hrtss' | 'garmin_load';
 
 export const LOAD_SOURCES: readonly LoadSource[] = ['hrtss', 'garmin_load'];
 
+/**
+ * Warm-up of the load model: CTL (EWMA 42 days) needs about this many days of history to
+ * settle. Before that it reads low, so TSB reads deeply negative after a few normal days.
+ */
+export const CTL_WARMUP_DAYS = 42;
 /** ACWR acute and chronic windows (rolling means, days). */
 export const ACWR_ACUTE_DAYS = 7;
 export const ACWR_CHRONIC_DAYS = 28;
@@ -31,6 +36,8 @@ export interface LoadDay {
   monotony: number;
   /** Sum of the last 7 days × monotony. */
   strain: number;
+  /** Fewer than `CTL_WARMUP_DAYS` days from the first session to this day: CTL and TSB are not settled yet. */
+  warming_up: boolean;
 }
 
 /** Thresholds of the load flags; every one can be overridden in the tool input. */
@@ -115,7 +122,7 @@ const SD_EPSILON = 1e-9;
  * Load model (spec 5.4) from the first day with an activity to `to` (the service passes
  * max(to, today)), days without activities as 0. CTL/ATL/TSB come from `trainingLoadSeries`
  * (EWMA 42/7, k = 1 − e^(−1/N)) on the daily stress; ACWR 7:28 and monotony/strain on the
- * same daily stress. Empty without sessions.
+ * same daily stress. `warming_up` marks the first `CTL_WARMUP_DAYS` days. Empty without sessions.
  */
 export function loadSeries(
   sessions: readonly Pick<Session, 'date' | 'hrtss' | 'g_load'>[],
@@ -132,6 +139,7 @@ export function loadSeries(
   );
   const hist: number[] = [];
   return ewma.map((p) => {
+    const warmingUp = daysBetween(first, p.date) < CTL_WARMUP_DAYS;
     const tss = daily.get(p.date) ?? 0;
     hist.push(tss);
     const acute = hist.slice(-ACWR_ACUTE_DAYS);
@@ -150,6 +158,7 @@ export function loadSeries(
       acwr: m28 > 0 ? (round(m7 / m28, 2) ?? 0) : 0,
       monotony: round(monotony, 2) ?? 0,
       strain: round(sum7 * monotony, 0) ?? 0,
+      warming_up: warmingUp,
     };
   });
 }
@@ -254,7 +263,8 @@ export function weekJump(
 
 /**
  * Flags of one day of the load model (ACWR, monotony, TSB) plus the week jump of its week.
- * ACWR raises at most one of `acwr_high`, `acwr_warn`, `acwr_low`.
+ * ACWR raises at most one of `acwr_high`, `acwr_warn`, `acwr_low`. While the model warms up
+ * (`warming_up`), `tsb_low` and `tsb_fresh` are not raised: TSB on an unsettled CTL is not fatigue.
  */
 export function loadFlags(
   day: LoadDay | undefined,
@@ -273,10 +283,10 @@ export function loadFlags(
   if (day.monotony > flags.monotony_high) {
     out.push({ code: 'monotony_high', text: `Monotony ${day.monotony} > ${flags.monotony_high}: days too similar, vary hard and easy days.` });
   }
-  if (day.tsb < flags.tsb_low) {
+  if (!day.warming_up && day.tsb < flags.tsb_low) {
     out.push({ code: 'tsb_low', text: `TSB ${day.tsb} < ${flags.tsb_low}: deep fatigue, fine only in a planned overload week.` });
   }
-  if (day.tsb > flags.tsb_fresh) {
+  if (!day.warming_up && day.tsb > flags.tsb_fresh) {
     out.push({ code: 'tsb_fresh', text: `TSB ${day.tsb} > ${flags.tsb_fresh}: fresh (taper or rest).` });
   }
   const jump = weekJump(sessions, day.date, flags.week_jump_pct);

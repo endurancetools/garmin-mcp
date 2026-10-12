@@ -1,7 +1,7 @@
-import { addDays, dateIn, type IsoDate } from 'garmin-mcp-config';
+import { addDays, dateIn, daysBetween, type IsoDate } from 'garmin-mcp-config';
 import { round } from 'garmin-mcp-domain';
 import type { DailyRows } from 'garmin-mcp-store';
-import type { LoadDay } from './load.js';
+import { CTL_WARMUP_DAYS, type LoadDay } from './load.js';
 
 /** Thresholds of the morning decision (spec 5.7); every one can be overridden in the tool input. */
 export interface ReadinessRules {
@@ -136,7 +136,9 @@ export interface ReadinessInput {
     Pick<DailyRows['hrv'], 'last_night_avg' | 'weekly_avg' | 'status' | 'baseline_low' | 'baseline_high'>)[];
   training: readonly (Fetched & Pick<DailyRows['training_status'], 'readiness_score' | 'raw'>)[];
   /** Load model point of D (`loadOn`). */
-  load?: Pick<LoadDay, 'date' | 'tsb' | 'acwr' | 'monotony'>;
+  load?: Pick<LoadDay, 'date' | 'tsb' | 'acwr' | 'monotony' | 'warming_up'>;
+  /** First day of the load series (the first session), for the warm-up progress in the `load` detail. */
+  load_start?: IsoDate;
   rules?: Partial<Record<keyof ReadinessRules, number | undefined>>;
 }
 
@@ -316,8 +318,12 @@ function stressSignal(avg: number | null | undefined, date: IsoDate, r: Readines
   };
 }
 
-function loadSignal(load: ReadinessInput['load'], r: ReadinessRules): ReadinessSignal {
+function loadSignal(load: ReadinessInput['load'], start: IsoDate | undefined, r: ReadinessRules): ReadinessSignal {
   if (!load) return unknown('load', 'No load model point on or before the day.');
+  if (load.warming_up) {
+    const progress = start === undefined ? `fewer than ${CTL_WARMUP_DAYS}` : `${daysBetween(start, load.date)} of ${CTL_WARMUP_DAYS}`;
+    return unknown('load', `load model warming up (${progress} days)`);
+  }
   const why = (acwr: number, tsb: number): string | undefined => {
     const parts = [
       load.acwr > acwr ? `ACWR ${load.acwr} > ${acwr}` : undefined,
@@ -336,7 +342,7 @@ function loadSignal(load: ReadinessInput['load'], r: ReadinessRules): ReadinessS
 
 /**
  * Morning GO / MODIFY / REST decision for `date` (spec 5.7): seven signals rated red,
- * yellow, ok or unknown (no data, not counted); REST at `decision_red_min` red signals,
+ * yellow, ok or unknown (no data, or the load model still warming up; not counted); REST at `decision_red_min` red signals,
  * else MODIFY at `decision_yellow_min` yellow ones, else GO. Stress is taken from the day
  * before (the day itself is still running). `partial` when the day is today or later, or a
  * row of the day was fetched before the day had ended (local date of `fetched_at` ≤ D).
@@ -361,7 +367,7 @@ export function readiness(input: ReadinessInput): Readiness {
     bodyBatterySignal(daily?.body_battery_high, rules),
     trainingReadinessSignal(training, rules),
     stressSignal(on(input.daily, yesterday)?.avg_stress, yesterday, rules),
-    loadSignal(input.load, rules),
+    loadSignal(input.load, input.load_start, rules),
   ];
 
   const counts: Record<ReadinessRating, number> = { red: 0, yellow: 0, ok: 0, unknown: 0 };

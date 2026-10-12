@@ -1,4 +1,4 @@
-import { InputError } from 'garmin-mcp-config';
+import { addDays, InputError } from 'garmin-mcp-config';
 import { describe, expect, it } from 'vitest';
 import type { z } from 'zod';
 import { loadOutput, readinessOutput, setThresholdOutput, thresholdsOutput } from './output.js';
@@ -50,7 +50,7 @@ describe('AnalyticsService.getLoad', () => {
       from: '2026-09-11',
       to: TODAY,
       source: 'hrtss',
-      latest: { date: TODAY, tss: 69.4, acwr: 1, monotony: 0, strain: 0 },
+      latest: { date: TODAY, tss: 69.4, acwr: 1, monotony: 0, strain: 0, warming_up: false },
       thresholds_used: {
         date: TODAY,
         by_sport: {
@@ -82,6 +82,22 @@ describe('AnalyticsService.getLoad', () => {
     expect(res.data.flags?.map((f) => f.code)).toEqual(['tsb_fresh']);
     expect(res.data.flags_used).toMatchObject({ tsb_fresh: -100, acwr_warn: 1.3 });
     expect(res.meta.note).toMatch(/Ignored flags .*: nope, acwr_warn/);
+  });
+
+  it('marks a week of history as warming up: no TSB flag in get_load, load signal unknown in get_readiness', async () => {
+    const t = setup();
+    t.store.markReferenceFetched('profile', NOW);
+    t.activities(t.dailyRuns(addDays(TODAY, -6), TODAY), addDays(TODAY, -60), TODAY);
+    t.daily('daily_summary', addDays(TODAY, -60), TODAY, () => ({ resting_hr: 50, avg_stress: 30, body_battery_high: 80 }));
+    t.store.addThreshold({ date: '2026-01-01', param: 'lthr_run', value: 170, source: 'manual', created_at: NOW });
+    const load = await t.analytics.getLoad();
+    expect(loadOutput.safeParse(load).success).toBe(true);
+    expect(load.data.latest).toMatchObject({ date: TODAY, warming_up: true });
+    expect(load.data.latest?.tsb).toBeLessThan(-20);
+    expect(load.data.flags?.map((f) => f.code) ?? []).not.toContain('tsb_low');
+    const res = await t.analytics.getReadiness({ date: TODAY });
+    expect(readinessOutput.safeParse(res).success).toBe(true);
+    expect(res.data.signals.find((s) => s.name === 'load')).toEqual({ name: 'load', rating: 'unknown', detail: 'load model warming up (6 of 42 days)' });
   });
 
   it('adds imported activities only on dates outside the synced activity ranges, and hints the gap', async () => {

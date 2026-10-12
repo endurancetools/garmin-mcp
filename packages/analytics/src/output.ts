@@ -20,7 +20,7 @@ function envelope<S extends z.core.$ZodLooseShape>(data: S) {
   return z.looseObject({ data: z.looseObject(data), meta: responseMetaSchema });
 }
 
-const loadDay = { date: str, tss: num, ctl: num, atl: num, tsb: num, acwr: num, monotony: num, strain: num };
+const loadDay = { date: str, tss: num, ctl: num, atl: num, tsb: num, acwr: num, monotony: num, strain: num, warming_up: bool };
 
 const session = z.looseObject({
   id: z.union([z.number(), z.string()]),

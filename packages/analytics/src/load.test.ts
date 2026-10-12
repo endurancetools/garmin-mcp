@@ -40,6 +40,7 @@ const day = (extra: Partial<LoadDay> = {}): LoadDay => ({
   acwr: 1,
   monotony: 1,
   strain: 300,
+  warming_up: false,
   ...extra,
 });
 
@@ -110,6 +111,14 @@ describe('loadSeries', () => {
     expect(loadSeries(sessions, 'garmin_load', '2026-05-02').map((d) => d.tss)).toEqual([80, 40]);
   });
 
+  it('warming_up for the first 42 days from the first session (days 0..41), then false', () => {
+    const series = loadSeries([sess('2026-01-01')], 'hrtss', '2026-03-01');
+    expect(loadOn(series, '2026-01-01')?.warming_up).toBe(true);
+    expect(loadOn(series, addDays('2026-01-01', 41))?.warming_up).toBe(true);
+    expect(loadOn(series, addDays('2026-01-01', 42))?.warming_up).toBe(false);
+    expect(series.at(-1)?.warming_up).toBe(false);
+  });
+
   it('only Garmin-load days without any load still start the series', () => {
     const series = loadSeries([sess('2026-05-01')], 'garmin_load', '2026-05-02');
     expect(series.map((d) => d.tss)).toEqual([0, 0]);
@@ -165,6 +174,14 @@ describe('loadFlags', () => {
     const texts = loadFlags(day({ acwr: 1.6, monotony: 2.5, tsb: -35 }), []).map((f) => f.text);
     expect(texts).toHaveLength(3);
     expect(texts[0]).toContain('1.6');
+  });
+
+  it('no TSB flags while the model warms up; ACWR, monotony and the week jump stay', () => {
+    expect(codes(day({ tsb: -45, warming_up: true }))).toEqual([]);
+    expect(codes(day({ tsb: 25, warming_up: true }))).toEqual([]);
+    expect(codes(day({ tsb: -45, acwr: 1.6, monotony: 2.5, warming_up: true }))).toEqual(['acwr_high', 'monotony_high']);
+    const sessions = [sess('2026-04-28'), sess('2026-05-04', { duration_s: 4500 })];
+    expect(loadFlags(day({ date: '2026-05-04', tsb: -45, warming_up: true }), sessions).map((f) => f.code)).toEqual(['week_jump']);
   });
 
   it('custom thresholds override the defaults', () => {
