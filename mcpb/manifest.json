@@ -4,7 +4,7 @@
   "display_name": "Garmin Connect",
   "version": "0.1.0",
   "description": "Your Garmin Connect activities, sleep, HRV, training status, body composition and workouts, served from a fast local cache.",
-  "long_description": "Garmin Connect data for Claude through 17 coarse tools backed by a local SQLite cache: questions about the last 90 days are answered from disk instead of 90 requests to Garmin.\n\n**First-time setup:** run `npx -y garmin-mcp-cli login` once in a terminal; it opens Garmin's own sign-in page in your browser (MFA supported). Only tokens are stored (0600, in the data directory); the password is never saved.\n\n**Downloading:** logging in downloads nothing. When a question needs days that are not in the local database yet, the tool downloads just that range itself (7-day chunks with pauses and a daily request cap), waits up to 20 s and answers; anything left keeps downloading in the background. Stored data is kept and never re-downloaded. To pre-load a range, run `npx -y garmin-mcp-cli sync --scope health --from <date> --to <date>` or ask Claude to sync. Turn off **Download missing data automatically** in the extension settings and nothing is downloaded until you sync: tools report the missing range and Claude asks before syncing.",
+  "long_description": "Garmin Connect data for Claude through 21 coarse tools backed by a local SQLite cache: questions about the last 90 days are answered from disk instead of 90 requests to Garmin.\n\n**First-time setup:** run `npx -y garmin-mcp-cli login` once in a terminal; it opens Garmin's own sign-in page in your browser (MFA supported). Only tokens are stored (0600, in the data directory); the password is never saved.\n\n**Downloading:** logging in downloads nothing. When a question needs days that are not in the local database yet, the tool downloads just that range itself (7-day chunks with pauses and a daily request cap), waits up to 20 s and answers; anything left keeps downloading in the background. Stored data is kept and never re-downloaded. To pre-load a range, run `npx -y garmin-mcp-cli sync --scope health --from <date> --to <date>` or ask Claude to sync. Turn off **Download missing data automatically** in the extension settings and nothing is downloaded until you sync: tools report the missing range and Claude asks before syncing.",
   "author": { "name": "garmin-mcp contributors" },
   "license": "MIT",
   "keywords": ["garmin", "fitness", "health", "running", "cycling", "training", "sleep", "hrv"],
@@ -69,7 +69,11 @@
     { "name": "create_workout", "description": "Create a structured workout" },
     { "name": "schedule_workouts", "description": "Put workouts on the calendar or take them off" },
     { "name": "get_gear", "description": "Shoes and bikes with distance" },
-    { "name": "get_devices", "description": "Devices, last sync and settings" }
+    { "name": "get_devices", "description": "Devices, last sync and settings" },
+    { "name": "get_load", "description": "Own heart-rate load model: hrTSS, CTL/ATL/TSB, ACWR, monotony, weekly volume and intensity split" },
+    { "name": "get_readiness", "description": "Morning GO/MODIFY/REST decision from HRV, resting HR, sleep, body battery and load" },
+    { "name": "get_thresholds", "description": "LTHR, LT1, HRmax, FTP and resting HR in effect on a date, with history" },
+    { "name": "set_threshold", "description": "Record a field test result (LTHR, LT1, HRmax, FTP) in the local database" }
   ],
   "prompts": [
     {

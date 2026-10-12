@@ -2,7 +2,7 @@ import { Client, InMemoryTransport, StreamableHTTPClientTransport } from '@model
 import type { AuthService } from 'garmin-mcp-auth';
 import { GarminError, InputError, loadConfig, silentLogger, type GarminConfig } from 'garmin-mcp-config';
 import { GarminService, WorkoutDefinitionError } from 'garmin-mcp-domain';
-import type { SyncJobReport, SyncJobRequest, SyncJobRunner, Syncer } from 'garmin-mcp-store';
+import { addRange, Store, Syncer, SyncJobRunner, type SyncJobReport, type SyncJobRequest } from 'garmin-mcp-store';
 import { readFileSync } from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
@@ -62,12 +62,13 @@ async function connect(rt: Runtime) {
 const text = (res: unknown) => JSON.parse(((res as { content: { text: string }[] }).content)[0]?.text ?? 'null') as Record<string, unknown>;
 
 describe('MCP server', () => {
-  it('exposes 17 tools, and destructive ones only when enabled', async () => {
+  it('exposes 21 tools, and destructive ones only when enabled', async () => {
     const tools = (await (await connect(runtime())).listTools()).tools.map((t) => t.name);
-    expect(tools).toHaveLength(17);
+    expect(tools).toHaveLength(21);
+    expect(tools.slice(-4)).toEqual(['get_load', 'get_readiness', 'get_thresholds', 'set_threshold']);
     expect(tools).not.toContain('delete_activity');
     const all = (await (await connect(runtime({ enableDestructive: true }))).listTools()).tools;
-    expect(all).toHaveLength(20);
+    expect(all).toHaveLength(24);
     const del = all.find((t) => t.name === 'delete_activity');
     expect(del?.annotations?.destructiveHint).toBe(true);
     expect(del?.description?.startsWith('PERMANENTLY deletes')).toBe(true);
@@ -117,11 +118,11 @@ describe('MCP server', () => {
     const create = tools.find((t) => t.name === 'create_workout')?.inputSchema;
     const preview = tools.find((t) => t.name === 'preview_workout')?.inputSchema;
     const overwrite = all.find((t) => t.name === 'create_workout')?.inputSchema;
-    expect(context(tools)).toBeLessThanOrEqual(39_000);
+    expect(context(tools)).toBeLessThanOrEqual(42_106);
     expect(size(create)).toBeLessThanOrEqual(11_500);
-    expect(context(all)).toBeLessThanOrEqual(41_000);
-    expect(size(tools)).toBeLessThanOrEqual(66_000);
-    expect(size(all)).toBeLessThanOrEqual(70_000);
+    expect(context(all)).toBeLessThanOrEqual(43_672);
+    expect(size(tools)).toBeLessThanOrEqual(76_025);
+    expect(size(all)).toBeLessThanOrEqual(79_732);
     // The preview is create_workout without `workout_id`. Without destructive tools create_workout
     // is a strict object (a stray workout_id fails loudly); the preview stays lenient.
     const { workout_id: _overwrite, ...properties } = overwrite?.properties ?? {};
@@ -144,13 +145,67 @@ describe('MCP server', () => {
 
   it('publishes an output schema for every tool: the { data, meta } envelope', async () => {
     const all = (await (await connect(runtime({ enableDestructive: true }))).listTools()).tools;
-    expect(all).toHaveLength(20);
+    expect(all).toHaveLength(24);
     // SDK 2 types `properties` as a plain object, so the fields are looked up through a record.
     const props = (t: (typeof all)[number]) => (t.outputSchema?.properties ?? {}) as Record<string, unknown>;
     const envelope = (t: (typeof all)[number]) => ({ name: t.name, type: t.outputSchema?.type, required: t.outputSchema?.required, meta: props(t)['meta'] });
     expect(all.map(envelope)).toEqual(all.map((t) => ({ name: t.name, type: 'object', required: ['data', 'meta'], meta: { $ref: '#/$defs/ResponseMeta' } })));
     const activities = all.find((t) => t.name === 'get_activities');
     expect(JSON.stringify(activities && props(activities)['data'])).toContain('"avg_hr_bpm"');
+  });
+
+  it('serves the analytics tools from the local cache, results matching their output schemas', async () => {
+    // A real GarminService over an in-memory store whose Garmin client fails every call.
+    const now = Date.parse('2026-10-08T12:00:00Z');
+    const garminCalls: string[] = [];
+    const garmin = new Proxy({}, { get: (_, name) => (name === 'then' ? undefined : () => (garminCalls.push(String(name)), Promise.reject(new Error('no Garmin')))) });
+    const store = Store.open(':memory:');
+    const syncer = new Syncer(garmin as never, store, { timeZone: 'UTC', now: () => now, fetchOnDemand: false });
+    const jobs = new SyncJobRunner(syncer, store, { chunkDays: 7, pause: { minMs: 0, maxMs: 0 }, maxRequestsPerDay: 10, timeZone: 'UTC', now: () => now });
+    const service = new GarminService({ client: garmin as never, store, syncer, jobs, timeZone: 'UTC', downloadDir: os.tmpdir(), budgetMs: 100, autoSync: false, now: () => now });
+    const runs = ['2026-10-05', '2026-10-06', '2026-10-07'].map((d, i) => ({
+      activityId: 500 + i,
+      activityName: `Run ${d}`,
+      startTimeLocal: `${d} 07:00:00`,
+      startTimeGMT: `${d} 07:00:00`,
+      activityType: { typeId: 1, typeKey: 'running' },
+      distance: 10_000,
+      duration: 3600,
+      averageHR: 150,
+      activityTrainingLoad: 100,
+    }));
+    store.upsertActivities(runs as never, now);
+    store.setMeta('activities:covered', JSON.stringify(addRange([], '2026-09-01', '2026-10-08')));
+    const client = await connect(runtime({}, service));
+    const call = async (name: string, args: Record<string, unknown>) => {
+      const res = await client.callTool({ name, arguments: args });
+      // The SDK checks structuredContent against outputSchema on both ends, so a mismatch fails here.
+      expect({ name, error: res.isError ? res.content : undefined }).toEqual({ name, error: undefined });
+      expect(res.structuredContent).toEqual(text(res));
+      return res.structuredContent as { data: Record<string, unknown>; meta: Record<string, unknown> };
+    };
+
+    const set = await call('set_threshold', { date: '2026-10-01', param: 'lthr_run', value: 171, note: 'test 30 min' });
+    expect(set).toMatchObject({ data: { added: true, effective: { date: '2026-10-08', param: 'lthr_run', value: 171, source: 'test' } }, meta: { source: 'local' } });
+    expect((await call('set_threshold', { date: '2026-10-01', param: 'lthr_run', value: 175 })).data).toMatchObject({ added: false, row: { value: 171 } });
+    const thresholds = await call('get_thresholds', { history: true });
+    expect(thresholds.data).toMatchObject({ date: '2026-10-08', effective: { lthr_run: { value: 171, since: '2026-10-01', source: 'test' } } });
+    expect(thresholds.data['history']).toHaveLength(1);
+    const load = await call('get_load', { include_activities: true, include_series: true, include_efficiency: true, flags: { tsb_fresh: 5 } });
+    expect(load.data).toMatchObject({ to: '2026-10-08', source: 'hrtss', flags_used: { tsb_fresh: 5 }, thresholds_used: { lthr_run: 171 } });
+    expect(load.data['activities']).toHaveLength(3);
+    const readiness = await call('get_readiness', { date: '2026-10-08', rules: { sleep_h_red: 5 } });
+    expect(readiness.data).toMatchObject({ date: '2026-10-08', rules_used: { sleep_h_red: 5 } });
+    expect(readiness.data['decision']).toMatch(/^(GO|MODIFY|REST)$/);
+    expect(garminCalls).toEqual([]);
+
+    const res = await client.callTool({ name: 'set_threshold', arguments: { date: '2026-10-01', param: 'lthr', value: 171 } });
+    expect(res.isError).toBe(true);
+    const tools = (await client.listTools()).tools;
+    // set_threshold writes only the local database: not read-only, but neither destructive nor open-world.
+    expect(tools.find((t) => t.name === 'set_threshold')?.annotations).toEqual({ readOnlyHint: false, destructiveHint: false, openWorldHint: false });
+    expect(tools.find((t) => t.name === 'get_readiness')?.description).toContain('`rules`');
+    store.close();
   });
 
   it('reports sync progress as notifications/progress only when the client asks for it', async () => {
@@ -320,7 +375,7 @@ describe('HTTP transport', () => {
     await client.connect(transport);
     expect(client.getProtocolEra()).toBe('modern');
     const tools = await client.listTools();
-    expect(tools.tools).toHaveLength(17);
+    expect(tools.tools).toHaveLength(21);
     expect(tools).toMatchObject({ ttlMs: 3_600_000, cacheScope: 'private' });
     const res = await client.callTool({ name: 'get_activities', arguments: { limit: 1 } });
     expect(res.structuredContent).toMatchObject({ data: { activities: [{ id: 1 }] }, meta });

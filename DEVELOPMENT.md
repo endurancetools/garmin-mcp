@@ -59,7 +59,7 @@ CI (`.github/workflows/ci.yml`) runs `nx affected` on Ubuntu, macOS and Windows 
 
 ## Tool-list budget
 
-Clients send `name`, `description` and `inputSchema` of every tool to the model with each request. For the 17 default tools that is 36 362 bytes (about 9 100 tokens; 37 928 with the 3 destructive ones), of which `create_workout` takes 11 175; shared workout schemas (`Target`, `Duration`, `Step`...) sit once per tool in `$defs` (JSON Schema 2020-12) instead of being copied into every field. The whole `tools/list` including the `outputSchema` of each tool is 62 387 bytes (66 094). A test in `apps/mcp-server/src/server.test.ts` keeps these under 39 000 / 41 000 / 11 500 and 66 000 / 70 000 bytes; when a description grows, measure and keep the margin.
+Clients send `name`, `description` and `inputSchema` of every tool to the model with each request. For the 21 default tools that is 41 106 bytes (about 10 300 tokens; 42 672 with the 3 destructive ones), of which `create_workout` takes 11 175 and the four analytics tools (`get_load`, `get_readiness`, `get_thresholds`, `set_threshold`) 4 486; shared workout schemas (`Target`, `Duration`, `Step`...) sit once per tool in `$defs` (JSON Schema 2020-12) instead of being copied into every field, and the `rules`/`flags` inputs are one open object each with the keys and defaults in its description. The whole `tools/list` including the `outputSchema` of each tool is 75 025 bytes (78 732). A test in `apps/mcp-server/src/server.test.ts` keeps these under 42 106 / 43 672 / 11 500 and 76 025 / 79 732 bytes (measured plus 1 000); when a description grows, measure and keep the margin.
 
 ## Evals
 

@@ -1,5 +1,15 @@
 import type { ToolAnnotations } from '@modelcontextprotocol/server';
 import {
+  AnalyticsService,
+  DEFAULT_LOAD_FLAGS,
+  DEFAULT_READINESS_RULES,
+  loadOutput,
+  readinessOutput,
+  SET_THRESHOLD_SOURCES,
+  setThresholdOutput,
+  thresholdsOutput,
+} from 'garmin-mcp-analytics';
+import {
   activitiesOutput,
   activityOutput,
   bodyCompositionOutput,
@@ -26,7 +36,7 @@ import {
   type GarminService,
   type SyncProgressOptions,
 } from 'garmin-mcp-domain';
-import { SYNC_SCOPES } from 'garmin-mcp-store';
+import { SYNC_SCOPES, THRESHOLD_PARAMS } from 'garmin-mcp-store';
 import { z } from 'zod';
 
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD');
@@ -54,6 +64,22 @@ const WRITE: ToolAnnotations = { readOnlyHint: false, destructiveHint: false, op
 /** Computed by the server alone: no Garmin request, no cache write. */
 const LOCAL: ToolAnnotations = { readOnlyHint: true, openWorldHint: false };
 const DELETE: ToolAnnotations = { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true };
+/** Writes the local database only: nothing is sent to Garmin, nothing is overwritten. */
+const LOCAL_WRITE: ToolAnnotations = { readOnlyHint: false, destructiveHint: false, openWorldHint: false };
+
+/** One `AnalyticsService` per `GarminService` (the runtime keeps one service per account). */
+const analyticsServices = new WeakMap<GarminService, AnalyticsService>();
+function analytics(service: GarminService): AnalyticsService {
+  let a = analyticsServices.get(service);
+  if (!a) analyticsServices.set(service, (a = new AnalyticsService(service)));
+  return a;
+}
+
+/** `key default, ...` of a rule or flag object, for the one description of its input. */
+const defaults = (values: object) =>
+  Object.entries(values)
+    .map(([k, v]) => `${k} ${String(v)}`)
+    .join(', ');
 
 /** Input of create_workout and preview_workout. */
 const WORKOUT_INPUT = {
@@ -88,7 +114,7 @@ function tool<S extends Record<string, z.ZodType>, O extends z.ZodType>(def: Omi
   return def as unknown as ToolDef;
 }
 
-/** The 17 coarse tools, plus opt-in destructive ones. */
+/** The 21 coarse tools, plus opt-in destructive ones. */
 export const TOOLS: ToolDef[] = [
   tool({
     name: 'garmin_sync',
@@ -353,6 +379,77 @@ export const TOOLS: ToolDef[] = [
     output: devicesOutput,
     annotations: READ,
     run: (s) => s.getDevices(),
+  }),
+  // ---------------------------------------------------------------- analytics (garmin-mcp-analytics)
+  tool({
+    name: 'get_load',
+    title: 'Get training load (own model)',
+    description:
+      "Own transparent load model from heart rate (hrTSS with date-dependent thresholds), not Garmin's EPOC load; for Garmin's status and load use get_training_status. " +
+      'Returns CTL/ATL/TSB, ACWR, monotony and strain on `to` (`latest`), warning `flags`, ISO weeks per sport (sessions, hours, km, hrTSS, Garmin load, hours in Z1-2/Z3/Z4-5), ' +
+      'the 3-zone intensity split of the last 28 days (Z1/Z2/Z3 minutes and %) and the thresholds used. ' +
+      'include_series adds the daily curve, include_activities IF/hrTSS/EF per activity, include_efficiency the monthly EF trend. ' +
+      'Example: {"from":"2026-09-01","to":"2026-09-30","include_activities":true}.',
+    input: {
+      from: date.optional().describe('Default: 27 days before `to`'),
+      to: date.optional().describe('Default: today'),
+      source: z.enum(['hrtss', 'garmin_load']).default('hrtss').describe('hrtss from HR and thresholds; garmin_load sums Garmin activity training load'),
+      include_series: z.boolean().default(false),
+      include_activities: z.boolean().default(false),
+      include_efficiency: z.boolean().default(false),
+      flags: z.looseObject({}).optional().describe(`Own flag thresholds, any of (default): ${defaults(DEFAULT_LOAD_FLAGS)}`),
+    },
+    output: loadOutput,
+    annotations: READ,
+    run: (s, a, ctx) => analytics(s).getLoad(a, ctx),
+  }),
+  tool({
+    name: 'get_readiness',
+    title: 'Morning readiness',
+    description:
+      'Morning GO/MODIFY/REST decision from HRV, resting HR, sleep, body battery, training readiness, stress and load; pass `rules` to use your own thresholds. ' +
+      'Each signal has its value, reference, rating (ok, yellow, red; unknown when data is missing) and a readable detail; plus rules_used and a recommendation. ' +
+      'Use for "how am I today" or "can I do a hard session". Example: {"date":"2026-10-12"}.',
+    input: {
+      date: date.optional().describe('Morning to judge; default today'),
+      rules: z.looseObject({}).optional().describe(`Own thresholds, any of (default): ${defaults(DEFAULT_READINESS_RULES)}`),
+    },
+    output: readinessOutput,
+    annotations: READ,
+    run: (s, a, ctx) => analytics(s).getReadiness(a, ctx),
+  }),
+  tool({
+    name: 'get_thresholds',
+    title: 'Get training thresholds',
+    description:
+      'Thresholds the analytics use on `date` (default today): per param its value, the date it applies since and its source (garmin-auto from the Garmin profile, test, manual, import), ' +
+      'the 28-day resting HR, and a note when LT1 is approximated from LTHR. history adds every recorded row. Example: {"param":"lthr_run","history":true}.',
+    input: {
+      date: date.optional(),
+      param: z.enum(THRESHOLD_PARAMS).optional(),
+      history: z.boolean().default(false),
+    },
+    output: thresholdsOutput,
+    annotations: READ,
+    run: (s, a, ctx) => analytics(s).getThresholds(a, ctx),
+  }),
+  tool({
+    name: 'set_threshold',
+    title: 'Record a threshold',
+    description:
+      'Record a field test result (LTHR, LT1, HRmax, FTP…) effective from a date; ask the user before saving. ' +
+      'Stored in the local database only, never sent to Garmin; a row with the same date, param and source stays as it is (added false). ' +
+      'Returns the row and the value in effect today. Example: {"date":"2026-10-11","param":"lthr_run","value":171,"note":"30 min TT"}.',
+    input: {
+      date: date.describe('Day of the test, not in the future'),
+      param: z.enum(THRESHOLD_PARAMS).describe('Heart rates in bpm, ftp_w/run_ftp_w in W, css_s_per_100m in s per 100 m'),
+      value: z.number().positive(),
+      source: z.enum(SET_THRESHOLD_SOURCES).default('test'),
+      note: z.string().max(200).optional(),
+    },
+    output: setThresholdOutput,
+    annotations: LOCAL_WRITE,
+    run: (s, a) => analytics(s).setThreshold(a),
   }),
   // ---------------------------------------------------------------- destructive, opt-in
   tool({
