@@ -176,9 +176,9 @@ garmin-mcp deliberately has few writes; listed so nothing disappears silently.
 | Activity name, type, description, perceived effort, feel | `update_activity` `name`, `type`, `description`, `rpe`, `feel` |
 | Activity event type | — () |
 | Manual activity | — () |
-| Workout from a preset (run intervals, walk/run, easy Z2, strength circuit) | `create_workout` `preset` |
-| Workout from typed steps (nestable repeats, HR/pace/power/cadence targets, strength exercises with load) | `create_workout` `definition` |
-| Workout from raw Garmin JSON | `create_workout` `garmin_json` (one per call) |
+| Workout from a preset (run intervals, walk/run, easy Z2, strength circuit) | `create_workout` `preset` (with `dry_run: true` first: steps and estimated duration, nothing saved) |
+| Workout from typed steps (nestable repeats, HR/pace/power/cadence targets, strength exercises with load) | `create_workout` `definition` (`dry_run: true` shows it first) |
+| Workout from raw Garmin JSON | `create_workout` `garmin_json` (one per call; `dry_run: true` shows it first) |
 | Edit a saved workout | `create_workout` `workout_id` (opt-in `GARMIN_ENABLE_DESTRUCTIVE`; overwrites in place, the id and calendar entries stay) |
 | Schedule workouts on dates | `schedule_workouts` `items` |
 | Unschedule workouts | `schedule_workouts` `unschedule` (schedule ids; the workout stays in the library) |

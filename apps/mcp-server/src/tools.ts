@@ -24,7 +24,6 @@ import {
   healthOutput,
   listWorkoutsOutput,
   periodSummaryOutput,
-  previewWorkoutOutput,
   scheduleOutput,
   sleepOutput,
   syncOutput,
@@ -61,8 +60,6 @@ export interface ToolDef {
 
 const READ: ToolAnnotations = { readOnlyHint: true, openWorldHint: true };
 const WRITE: ToolAnnotations = { readOnlyHint: false, destructiveHint: false, openWorldHint: true };
-/** Computed by the server alone: no Garmin request, no cache write. */
-const LOCAL: ToolAnnotations = { readOnlyHint: true, openWorldHint: false };
 const DELETE: ToolAnnotations = { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true };
 /** Writes the local database only: nothing is sent to Garmin, nothing is overwritten. */
 const LOCAL_WRITE: ToolAnnotations = { readOnlyHint: false, destructiveHint: false, openWorldHint: false };
@@ -81,7 +78,7 @@ const defaults = (values: object) =>
     .map(([k, v]) => `${k} ${String(v)}`)
     .join(', ');
 
-/** Input of create_workout and preview_workout. */
+/** Workout input of create_workout. */
 const WORKOUT_INPUT = {
   preset: workoutPresetSchema.optional(),
   definition: workoutDefinitionSchema.optional(),
@@ -114,7 +111,7 @@ function tool<S extends Record<string, z.ZodType>, O extends z.ZodType>(def: Omi
   return def as unknown as ToolDef;
 }
 
-/** The 21 coarse tools, plus opt-in destructive ones. */
+/** The 20 coarse tools, plus opt-in destructive ones. */
 export const TOOLS: ToolDef[] = [
   tool({
     name: 'garmin_sync',
@@ -308,19 +305,6 @@ export const TOOLS: ToolDef[] = [
     run: (s, a) => s.getWorkout(a.id),
   }),
   tool({
-    name: 'preview_workout',
-    title: 'Preview a workout',
-    description:
-      'Show what create_workout would save, without saving anything or contacting Garmin: the readable steps and the estimated duration ' +
-      '(time steps, plus distance steps at the middle of their pace range; steps with neither are listed in estimate_note, ' +
-      'and for garmin_json that carries its own estimate the note says it was taken from there). ' +
-      'Takes the same input as create_workout. Call it before every create_workout, show the result to the user and save only after they agree.',
-    input: WORKOUT_INPUT,
-    output: previewWorkoutOutput,
-    annotations: LOCAL,
-    run: (s, a) => s.previewWorkout(a),
-  }),
-  tool({
     name: 'create_workout',
     title: 'Create a workout',
     description:
@@ -328,8 +312,14 @@ export const TOOLS: ToolDef[] = [
       'Pass exactly one of: `preset` for a standard session from a few parameters (run_intervals, walk_run, easy_z2, strength_circuit); ' +
       '`definition` for anything else (typed steps with duration and target, nestable repeats); `garmin_json` only to copy an existing Garmin workout JSON. ' +
       'Errors name the bad field, e.g. steps[2].steps[0].target. ' +
-      'Show the workout with preview_workout (same input) first and save only after the user agreed.',
-    input: WORKOUT_INPUT,
+      'Call with dry_run: true first, show the steps to the user and save only after they agree. ' +
+      'dry_run saves nothing and does not contact Garmin: it returns the readable steps and the estimated duration ' +
+      '(time steps, plus distance steps at the middle of their pace range; steps with neither are listed in estimate_note, ' +
+      'and for garmin_json that carries its own estimate the note says it was taken from there).',
+    input: {
+      ...WORKOUT_INPUT,
+      dry_run: z.boolean().default(false).describe('true: only show the steps and estimated duration, save nothing'),
+    },
     output: createWorkoutOutput,
     annotations: WRITE,
     // Overwriting loses the old steps for good, so it sits behind the same switch as delete_workout.
@@ -337,12 +327,12 @@ export const TOOLS: ToolDef[] = [
       input: { workout_id: id.optional().describe('Saved workout to overwrite; omit to create a new one') },
       description:
         'With `workout_id` it overwrites that saved workout instead (same id, so its calendar entries stay; the old steps are lost): ' +
-        'read the current steps with get_workout, preview the full new version and overwrite only after the user agreed.',
+        'read the current steps with get_workout, show the full new version with dry_run: true and overwrite only after the user agreed.',
       disabledError: 'Overwriting a saved workout (workout_id) is turned off; it needs GARMIN_ENABLE_DESTRUCTIVE=true. Omit workout_id to save it as a new workout.',
     },
     run: (s, a) => {
-      const { workout_id, ...input } = a as typeof a & { workout_id?: number };
-      return s.createWorkout(input, workout_id);
+      const { workout_id, dry_run, ...input } = a as typeof a & { workout_id?: number };
+      return dry_run ? s.previewWorkout(input) : s.createWorkout(input, workout_id);
     },
   }),
   tool({

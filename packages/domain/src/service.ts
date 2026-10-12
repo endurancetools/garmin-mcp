@@ -85,7 +85,7 @@ const MAX_RANGE_DAYS = 366 * 3;
 /** Longest `get_period_summary` range, in days including both ends. */
 const MAX_PERIOD_DAYS = 366;
 
-/** Input of `create_workout` and `preview_workout`: exactly one of the three forms. */
+/** Workout input of `create_workout`: exactly one of the three forms. */
 export interface WorkoutInput {
   definition?: WorkoutDefinition;
   preset?: WorkoutPreset;
@@ -825,7 +825,7 @@ export class GarminService {
 
   /**
    * What `createWorkout` would save, without sending anything to Garmin: the readable steps
-   * and the estimated duration, so the model can show it and ask first.
+   * and the estimated duration, so the model can show it and ask first (`create_workout` with `dry_run`).
    */
   async previewWorkout(input: WorkoutInput) {
     const { payload, copied } = this.#workoutPayload(input);
@@ -840,10 +840,11 @@ export class GarminService {
         : undefined;
     return {
       data: compact({
+        dry_run: true,
         ...readable,
         estimated_duration: hms(estimated_duration_s),
         estimate_note: note,
-        next: 'Nothing was saved. Show this to the user and, once they agree, call create_workout with the same input (plus workout_id when it replaces a saved workout).',
+        next: 'Nothing was saved. Show this to the user and, once they agree, call create_workout with the same input without dry_run (plus workout_id when it replaces a saved workout).',
       }),
       meta: { source: 'local' as const, note: 'Preview computed locally; no request was sent to Garmin.' },
     };

@@ -291,13 +291,14 @@ describe('GarminService', () => {
       },
     });
     expect(res.data).toEqual({
+      dry_run: true,
       name: 'Intervals',
       sport: 'running',
       step_count: 3,
       steps: ['1. Warmup 10:00', '2. Repeat 4x:', '  2.1. Interval 1 km @ pace 4:00-4:10 /km', '  2.2. Recovery 200 m', '3. Cooldown until lap button'],
       estimated_duration: '26:20',
       estimate_note: 'Steps 2.2, 3 have no time and no distance with a pace range, so the estimate leaves them out.',
-      next: expect.stringContaining('call create_workout with the same input'),
+      next: expect.stringContaining('call create_workout with the same input without dry_run'),
     });
     expect(res.meta).toEqual({ source: 'local', note: expect.stringContaining('no request was sent to Garmin') });
     expect(calls.filter((c) => c.method === 'createWorkout')).toHaveLength(0);
@@ -645,7 +646,7 @@ describe('GarminService', () => {
     await fits(output.listWorkoutsOutput, service.listWorkouts({}));
     await fits(output.workoutOutput, service.getWorkout(1));
     const preset = { name: 'easy_z2' as const, params: { duration_min: 30 } };
-    await fits(output.previewWorkoutOutput, service.previewWorkout({ preset }));
+    await fits(output.createWorkoutOutput, service.previewWorkout({ preset }));
     await fits(output.createWorkoutOutput, service.createWorkout({ preset }));
     await fits(output.scheduleOutput, service.scheduleWorkouts([{ date: '2026-10-10', workout_id: 1 }]));
     await fits(output.gearOutput, service.getGear(true));

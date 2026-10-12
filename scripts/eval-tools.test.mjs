@@ -32,10 +32,11 @@ describe('eval-tools', () => {
 
   it('fails a forbidden first call, a wrong tool and any call where none fits', () => {
     const [preview, del] = parseScenarios(
-      '{"prompt":"Zrób mi 6x400 m","expect":{"tool":"preview_workout"},"forbid":["create_workout"]}\n{"prompt":"Usuń aktywność 123","expect":{"tool":null}}',
+      '{"prompt":"Zrób mi 6x400 m","expect":{"tool":"create_workout","args_include":{"dry_run":true}},"forbid":["schedule_workouts"]}\n{"prompt":"Usuń aktywność 123","expect":{"tool":null}}',
     );
-    expect(judge(preview, { name: 'preview_workout', input: {} }).pass).toBe(true);
-    expect(judge(preview, { name: 'create_workout', input: {} })).toEqual({ pass: false, reason: 'forbidden create_workout' });
+    expect(judge(preview, { name: 'create_workout', input: { dry_run: true } }).pass).toBe(true);
+    expect(judge(preview, { name: 'create_workout', input: {} }).pass).toBe(false);
+    expect(judge(preview, { name: 'schedule_workouts', input: {} })).toEqual({ pass: false, reason: 'forbidden schedule_workouts' });
     expect(judge(del, undefined).pass).toBe(true);
     expect(judge(del, { name: 'get_activity', input: { id: 123 } }).pass).toBe(false);
   });
@@ -43,15 +44,17 @@ describe('eval-tools', () => {
   it('accepts any tool of an expect.tool list, with shared or per-tool args_include', () => {
     const [workout, week, sleep] = parseScenarios(
       [
-        '{"prompt":"Zrób mi trening 6x400 m","expect":{"tool":["preview_workout","get_training_status","list_workouts"]},"forbid":["create_workout","schedule_workouts"]}',
+        '{"prompt":"Zrób mi trening 6x400 m","expect":{"tool":["create_workout","get_training_status","list_workouts"],"args_include":{"create_workout":{"dry_run":true}}},"forbid":["schedule_workouts"]}',
         '{"prompt":"What did I do last week?","expect":{"tool":["get_activities","get_period_summary"],"args_include":{"from":"2026-10-05"}}}',
         '{"prompt":"Jak spałem w tym tygodniu?","expect":{"tool":["query_health","get_sleep"],"args_include":{"query_health":{"metrics":["sleep"]}}}}',
       ].join('\n'),
     );
-    expect(workout.expect.tool).toEqual(['preview_workout', 'get_training_status', 'list_workouts']);
+    expect(workout.expect.tool).toEqual(['create_workout', 'get_training_status', 'list_workouts']);
+    expect(judge(workout, { name: 'create_workout', input: { preset: { name: 'run_intervals' }, dry_run: true } }).pass).toBe(true);
+    expect(judge(workout, { name: 'create_workout', input: { preset: { name: 'run_intervals' } } }).pass).toBe(false);
     expect(judge(workout, { name: 'get_training_status', input: {} }).pass).toBe(true);
     expect(judge(workout, { name: 'list_workouts', input: { from: '2026-10-12' } }).pass).toBe(true);
-    expect(judge(workout, { name: 'get_activities', input: {} })).toEqual({ pass: false, reason: 'expected preview_workout | get_training_status | list_workouts' });
+    expect(judge(workout, { name: 'get_activities', input: {} })).toEqual({ pass: false, reason: 'expected create_workout | get_training_status | list_workouts' });
     expect(judge(workout, undefined).pass).toBe(false);
 
     // Shared args_include applies to every listed tool.
@@ -64,13 +67,13 @@ describe('eval-tools', () => {
     expect(judge(sleep, { name: 'get_sleep', input: { from: '2026-10-06', to: '2026-10-12' } }).pass).toBe(true);
 
     expect(() => parseScenarios('{"prompt":"x","expect":{"tool":[]}}')).toThrow('line 1: "expect.tool" must be');
-    expect(() => parseScenarios('{"prompt":"x","expect":{"tool":["preview_workout",null]}}')).toThrow('line 1: "expect.tool" must be');
+    expect(() => parseScenarios('{"prompt":"x","expect":{"tool":["create_workout",null]}}')).toThrow('line 1: "expect.tool" must be');
   });
 
   it('fails a forbidden first call when expect.tool is a list, and rejects a tool both listed and forbidden', () => {
-    const [workout] = parseScenarios('{"prompt":"Zrób mi 6x400 m","expect":{"tool":["preview_workout","list_workouts"]},"forbid":["create_workout"]}');
-    expect(judge(workout, { name: 'create_workout', input: {} })).toEqual({ pass: false, reason: 'forbidden create_workout' });
-    expect(() => parseScenarios('{"prompt":"x","expect":{"tool":["preview_workout","create_workout"]},"forbid":["create_workout"]}')).toThrow(
+    const [workout] = parseScenarios('{"prompt":"Zrób mi 6x400 m","expect":{"tool":["create_workout","list_workouts"]},"forbid":["schedule_workouts"]}');
+    expect(judge(workout, { name: 'schedule_workouts', input: {} })).toEqual({ pass: false, reason: 'forbidden schedule_workouts' });
+    expect(() => parseScenarios('{"prompt":"x","expect":{"tool":["list_workouts","create_workout"]},"forbid":["create_workout"]}')).toThrow(
       'line 1: create_workout is both expected and forbidden',
     );
   });
@@ -92,8 +95,10 @@ describe('eval-tools', () => {
     expect(scenarios.some((s) => /[ąćęłńóśźż]/i.test(s.prompt))).toBe(true);
     expect(scenarios.some((s) => s.expect.tool === null)).toBe(true);
     const tools = new Set(scenarios.flatMap((s) => expectedTools(s)));
-    for (const name of ['preview_workout', 'create_workout', 'schedule_workouts', 'get_load', 'get_readiness', 'get_thresholds', 'set_threshold']) {
+    for (const name of ['create_workout', 'schedule_workouts', 'get_load', 'get_readiness', 'get_thresholds', 'set_threshold']) {
       expect(tools).toContain(name);
     }
+    // A workout request is first shown with dry_run, never saved straight away.
+    expect(scenarios.some((s) => s.expect.args_include?.dry_run === true || s.expect.args_include?.create_workout?.dry_run === true)).toBe(true);
   });
 });
