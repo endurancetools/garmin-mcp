@@ -284,6 +284,16 @@ export class GarminService {
     return this.#dailyGap(dailyScope(kinds), kinds, from, to);
   }
 
+  /**
+   * What the cache lacks of a reference table (`referenceFetchedAt` never set), as the `meta`
+   * fields of a read: `sync_hint` with `scope: "reference"`, plus a note when auto fetch is off;
+   * nothing once the table was fetched. The same gap `getProfile`, `getGear` and `getDevices`
+   * report, for computations that build their own envelope on top of the service.
+   */
+  referenceCoverage(kind: ReferenceKind): Partial<ResponseMeta> {
+    return this.#referenceGap(kind);
+  }
+
   #referenceGap(kind: ReferenceKind): Partial<ResponseMeta> {
     if (this.store.referenceFetchedAt(kind) !== undefined) return {};
     const meta = this.#gap('reference', this.today(), this.today(), kind.replace('_', ' '));

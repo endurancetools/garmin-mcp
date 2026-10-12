@@ -161,6 +161,17 @@ function readMeta(results: readonly EnsureResult[], gap: Partial<ResponseMeta>, 
   return compact({ ...gap, source, note: all.length ? all.join(' ') : undefined });
 }
 
+/**
+ * A read's data gap joined with the profile gap: one `sync_hint` (both missing: `scope: "all"`
+ * over the data range, which includes the reference sync), notes in that order.
+ */
+function withProfileGap(data: Partial<ResponseMeta>, profile: Partial<ResponseMeta>): Partial<ResponseMeta> {
+  if (!profile.sync_hint) return data;
+  if (!data.sync_hint) return profile;
+  const note = data.note ? `${data.note} The Garmin profile is missing too.` : profile.note;
+  return compact({ ...data, note, sync_hint: { ...data.sync_hint, scope: 'all' as const } });
+}
+
 const inRanges = (set: RangeSet, date: IsoDate): boolean => set.some(([a, b]) => date >= a && date <= b);
 
 /** Finite-number overrides for the known keys; the rest is reported in a note. */
@@ -199,8 +210,10 @@ const historyOf = (r: Pick<ThresholdRow, 'date' | 'param' | 'value' | 'source' |
  * Use cases of the analytics tools and CLI commands: read the cache through `GarminService`
  * (never the Garmin client), compute with the pure functions of this package, and answer
  * with the `{ data, meta }` envelope of the other tools. `meta.sync_hint` comes from
- * `GarminService.coverage`, and each read goes through `withAutoSync`. Every call first
- * records changed Garmin profile thresholds (`recordProfileThresholds`, offline).
+ * `GarminService.coverage`, and each read goes through `withAutoSync`. Every read first makes
+ * sure the Garmin profile is cached (`ensureReference`, as `get_profile`; without auto fetch a
+ * missing profile is a `sync_hint` with `scope: "reference"`), then records its changed
+ * thresholds (`recordProfileThresholds`, offline), as `setThreshold` does without the fetch.
  */
 export class AnalyticsService {
   readonly garmin: GarminService;
@@ -219,6 +232,13 @@ export class AnalyticsService {
 
   #recordProfile(): void {
     recordProfileThresholds(this.#store, this.#now(), this.garmin.timeZone);
+  }
+
+  /** Fetch the Garmin profile when missing or stale (only with `fetchOnDemand`), then record its thresholds. */
+  async #profile(): Promise<{ ensured: EnsureResult; gap: Partial<ResponseMeta> }> {
+    const ensured = await this.garmin.syncer.ensureReference('profile', this.#budget);
+    this.#recordProfile();
+    return { ensured, gap: this.garmin.referenceCoverage('profile') };
   }
 
   /**
@@ -257,10 +277,10 @@ export class AnalyticsService {
     if (!LOAD_SOURCES.includes(source)) throw new InputError(`Unknown load source "${String(source)}"`, `Use one of: ${LOAD_SOURCES.join(', ')}.`);
     const flagInput = overrides(q.flags, DEFAULT_LOAD_FLAGS, 'flags');
     const flags = resolveLoadFlags(flagInput.values);
-    this.#recordProfile();
     const today = this.garmin.today();
     const end = to > today ? to : today;
-    const ensured = await Promise.all([
+    const [profile, ...ensured] = await Promise.all([
+      this.#profile(),
       this.garmin.syncer.ensureActivities(from, to, this.#budget),
       this.garmin.syncer.ensureDaily(['daily_summary'], addDays(from, -RHR_WINDOW_DAYS), to, this.#budget),
     ]);
@@ -311,7 +331,8 @@ export class AnalyticsService {
       efficiency: q.include_efficiency ? efficiencyTrend(inRange, 'month') : undefined,
       note,
     };
-    return { data: compact(data), meta: readMeta(ensured, this.garmin.coverage('period', from, to, ['daily_summary']), [...allNotes]) };
+    const gap = withProfileGap(this.garmin.coverage('period', from, to, ['daily_summary']), profile.gap);
+    return { data: compact(data), meta: readMeta([profile.ensured, ...ensured], gap, [...allNotes]) };
   }
 
   // ------------------------------------------------------------ get_readiness
@@ -326,10 +347,10 @@ export class AnalyticsService {
     const date = q.date ? assertIsoDate(q.date, 'date') : today;
     if (date > today) throw new InputError(`date (${date}) is in the future`, `Readiness needs the night and morning of the day; use a date up to ${today}.`);
     const ruleInput = overrides(q.rules, DEFAULT_READINESS_RULES, 'rules');
-    this.#recordProfile();
     const from = addDays(date, -READINESS_WINDOW_DAYS);
     const kinds: readonly DailyKind[] = SCOPE_DAILY.all;
-    const ensured = await Promise.all([
+    const [profile, ...ensured] = await Promise.all([
+      this.#profile(),
       this.garmin.syncer.ensureDaily(kinds, from, date, this.#budget),
       this.garmin.syncer.ensureActivities(from, date, this.#budget),
     ]);
@@ -349,7 +370,8 @@ export class AnalyticsService {
       rules: ruleInput.values,
     });
     const allNotes = ruleInput.note ? [...notes, ruleInput.note] : notes;
-    return { data: compact(result), meta: readMeta(ensured, this.garmin.coverage('period', from, date, kinds), allNotes) };
+    const gap = withProfileGap(this.garmin.coverage('period', from, date, kinds), profile.gap);
+    return { data: compact(result), meta: readMeta([profile.ensured, ...ensured], gap, allNotes) };
   }
 
   // ------------------------------------------------------------ get_thresholds
@@ -362,9 +384,11 @@ export class AnalyticsService {
   async #thresholds(q: ThresholdsQuery): Promise<Envelope<ThresholdsData>> {
     const date = q.date ? assertIsoDate(q.date, 'date') : this.garmin.today();
     const param = q.param === undefined ? undefined : assertParam(q.param);
-    this.#recordProfile();
     const window = { from: addDays(date, -RHR_WINDOW_DAYS), to: addDays(date, -1) };
-    const ensured = await this.garmin.syncer.ensureDaily(['daily_summary'], window.from, window.to, this.#budget);
+    const [profile, ensured] = await Promise.all([
+      this.#profile(),
+      this.garmin.syncer.ensureDaily(['daily_summary'], window.from, window.to, this.#budget),
+    ]);
 
     const rows = this.#store.listThresholds();
     const effective: ThresholdsData['effective'] = {};
@@ -385,7 +409,8 @@ export class AnalyticsService {
       hrmax: hrmaxOn(rows, date),
       rhr_28d: { value: rhr.value, samples, note: rhrNote },
     };
-    return { data: compact(data), meta: readMeta([ensured], this.garmin.coverage('daily', window.from, window.to, ['daily_summary'])) };
+    const gap = withProfileGap(this.garmin.coverage('daily', window.from, window.to, ['daily_summary']), profile.gap);
+    return { data: compact(data), meta: readMeta([profile.ensured, ensured], gap) };
   }
 
   // ------------------------------------------------------------ set_threshold
