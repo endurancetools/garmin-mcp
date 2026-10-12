@@ -39,6 +39,10 @@ export function loadMarkdown({ data, meta }: Envelope<LoadData>): string {
   const l = data.latest;
   const out = [`# Load ${data.from}..${data.to} (${data.source})`, ''];
   out.push(l ? mdTable([l], ['date', 'tss', 'ctl', 'atl', 'tsb', 'acwr', 'monotony', 'strain']) : `No activity up to ${data.to}.`);
+  if (data.by_sport) {
+    const rows = Object.entries(data.by_sport).map(([sport, s]) => ({ sport, ...s }));
+    out.push('', `## By sport on ${data.to}`, '', mdTable(rows, ['sport', 'ctl', 'atl', 'tsb', 'acwr']));
+  }
   if (data.flags?.length) out.push('', '## Flags', '', ...data.flags.map((f) => `- **${f.code}**: ${f.text}`));
   out.push('', '## Weeks', '', mdTable(data.weeks ?? [], ['week', 'sport', 'sessions', 'hours', 'km', 'elev_m', 'tss', 'hrtss', 'g_load', 'z12_h', 'z3_h', 'z45_h']));
   const i = data.intensity;

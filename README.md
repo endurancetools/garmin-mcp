@@ -96,7 +96,7 @@ garmin status [--json]
 garmin sync [--scope ...] [--from --to] [--force] [--pause <s>]   # default: last 7 days
 garmin activities [--from --to --type --limit --json]
 garmin health <metric> [--from --to --week --json]
-garmin load [--from --to] [--source auto|hrtss|garmin_load] [--flags <file.json>] [--series] [--activities] [--efficiency] [--json]
+garmin load [--from --to] [--source auto|hrtss|garmin_load] [--flags <file.json>] [--series] [--activities] [--efficiency] [--by-sport] [--json]
 garmin readiness [date] [--rules <file.json>] [--json]          # GO / MODIFY / REST for the morning
 garmin thresholds [--date --param --history --json]             # LTHR, LT1, HRmax ... in effect, per sport
 garmin thresholds add <date> <param> <value> [--source test|manual] [--note]
