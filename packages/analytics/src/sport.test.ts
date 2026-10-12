@@ -39,6 +39,7 @@ const CONTROL: Record<Exclude<SportGroup, 'other'>, string[]> = {
     'backcountry_skiing',
     'backcountry_skiing_snowboarding_ws',
     'snowshoeing',
+    'snow_shoe_ws',
   ],
   row: ['rowing', 'indoor_rowing', 'rowing_v2'],
 };

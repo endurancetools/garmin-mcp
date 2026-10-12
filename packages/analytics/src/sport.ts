@@ -10,7 +10,7 @@ const RULES: readonly (readonly [RegExp, SportGroup])[] = [
   [/cycling|biking|bike|ride|bmx|gravel|cyclocross/, 'bike'],
   [/swim/, 'swim'],
   [/strength|cardio|hiit|yoga|pilates|stretch|mobility|breath/, 'strength'],
-  [/cross_country|skate_ski|classic_ski|backcountry_ski|snowshoe/, 'nordic'],
+  [/cross_country|skate_ski|classic_ski|backcountry_ski|snowshoe|snow_shoe/, 'nordic'],
   [/rowing/, 'row'],
   [/hik|walk|mountaineer|climb|ski/, 'hike'],
 ];

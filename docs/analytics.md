@@ -55,12 +55,12 @@ Thresholds, zones and weekly volume use a coarse sport group from the Garmin act
 | `bike` | `cycling`, `biking`, `bike`, `ride`, `bmx`, `gravel`, `cyclocross` |
 | `swim` | `swim` |
 | `strength` | `strength`, `cardio`, `hiit`, `yoga`, `pilates`, `stretch`, `mobility`, `breath` |
-| `nordic` | `cross_country`, `skate_ski`, `classic_ski`, `backcountry_ski`, `snowshoe` |
+| `nordic` | `cross_country`, `skate_ski`, `classic_ski`, `backcountry_ski`, `snowshoe`, `snow_shoe` |
 | `row` | `rowing` |
 | `hike` | `hik`, `walk`, `mountaineer`, `climb`, `ski` |
 | `other` | everything else, and activities without a type |
 
-So `trail_running` is `run`, `e_bike_fitness` is `bike`, `skate_skiing` and `snowshoeing` are `nordic`, `indoor_rowing` is `row`, and `resort_skiing` (downhill) is `hike`. `nordic` and `row` have no threshold of their own: they use the running LTHR and LT1.
+So `trail_running` is `run`, `e_bike_fitness` is `bike`, `skate_skiing`, `snowshoeing` and `snow_shoe_ws` are `nordic`, `indoor_rowing` is `row`, and `resort_skiing` (downhill) is `hike`. `nordic` and `row` have no threshold of their own: they use the running LTHR and LT1.
 
 ## Per-activity metrics
 
