@@ -7,6 +7,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { readinessMarkdown } from './analytics.js';
 import { buildProgram, VERSION, type ProgramDeps } from './commands.js';
 import { table } from './io.js';
 import { anonymize, RECORDABLE } from './record.js';
@@ -376,6 +377,27 @@ describe('garmin readiness', () => {
     expect(res.data.rules_used.sleep_h_red).toBe(9);
     expect(res.data.signals.find((s) => s.name === 'sleep')?.rating).toBe('red');
     await expect(run(deps, 'readiness', '2099-01-01')).rejects.toThrow('is in the future');
+  });
+
+  it('shows info signals in their own line, not in the table', () => {
+    const md = readinessMarkdown({
+      data: {
+        date: '2026-10-07',
+        decision: 'GO',
+        counts: { red: 0, yellow: 0, ok: 1, info: 1, unknown: 0 },
+        signals: [
+          { name: 'hrv', rating: 'ok', value: { last_night_ms: 60 }, detail: 'HRV 60 ms within the baseline and the averages.' },
+          { name: 'training_readiness', rating: 'info', value: { score: 20, level: 'LOW' }, detail: "Garmin's own score, shown for reference, not counted" },
+        ],
+        partial: false,
+        rules_used: {} as never,
+        recommendation: [],
+      },
+      meta: { source: 'cache' },
+    });
+    expect(md).toContain('| hrv | ok | ');
+    expect(md).not.toContain('| training_readiness |');
+    expect(md).toContain("training_readiness: score 20, level LOW. Garmin's own score, shown for reference, not counted.");
   });
 });
 

@@ -121,11 +121,11 @@ export const loadOutput = envelope({
 export const readinessOutput = envelope({
   date: str,
   decision: z.enum(['GO', 'MODIFY', 'REST']).optional(),
-  counts: obj({ ok: num, yellow: num, red: num, unknown: num }),
+  counts: obj({ ok: num, yellow: num, red: num, info: num, unknown: num }),
   signals: list(
     z.looseObject({
       name: z.string(),
-      rating: z.enum(['ok', 'yellow', 'red', 'unknown']),
+      rating: z.enum(['ok', 'yellow', 'red', 'info', 'unknown']),
       value: values,
       reference: values,
       detail: str,

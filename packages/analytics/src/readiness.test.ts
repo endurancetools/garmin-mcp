@@ -78,11 +78,11 @@ const signal = (i: ReadinessInput, name: ReadinessSignalName) => readiness(i).si
 const rating = (i: ReadinessInput, name: ReadinessSignalName) => signal(i, name).rating;
 
 describe('readiness', () => {
-  it('all signals ok: GO with seven ok signals in a fixed order', () => {
+  it('all signals ok: GO with six ok signals and Training Readiness as info, in a fixed order', () => {
     const r = readiness(input());
     expect(r.decision).toBe('GO');
     expect(r.signals.map((s) => s.name)).toEqual(READINESS_SIGNALS);
-    expect(r.counts).toEqual({ red: 0, yellow: 0, ok: 7, unknown: 0 });
+    expect(r.counts).toEqual({ red: 0, yellow: 0, ok: 6, info: 1, unknown: 0 });
     expect(r.partial).toBe(false);
     expect(r.rules_used).toEqual(DEFAULT_READINESS_RULES);
     expect(r.recommendation[0]).toMatch(/^Follow the planned microcycle/);
@@ -164,14 +164,30 @@ describe('readiness', () => {
   });
 
   describe('training_readiness', () => {
-    it('red below readiness_red, yellow below readiness_yellow', () => {
-      expect(rating(input({ training: trainingRow(29) }), 'training_readiness')).toBe('red');
-      expect(rating(input({ training: trainingRow(49) }), 'training_readiness')).toBe('yellow');
-      expect(rating(input({ training: trainingRow(50) }), 'training_readiness')).toBe('ok');
+    it.each([20, 49, 70])('score %i is info, shown and never rated', (score) => {
+      const s = signal(input({ training: trainingRow(score) }), 'training_readiness');
+      expect(s.rating).toBe('info');
+      expect(s.value).toEqual({ score, level: 'HIGH', recovery_h: 10 });
+      expect(s.detail).toBe("Garmin's own score, shown for reference, not counted");
+    });
+    it('a score of 20 alone does not change the decision', () => {
+      const r = readiness(input({ training: trainingRow(20) }));
+      expect(r.decision).toBe('GO');
+      expect(r.counts).toEqual({ red: 0, yellow: 0, ok: 6, info: 1, unknown: 0 });
+      // With the strictest count rule a single red or yellow would decide; info still does not.
+      const strict = readiness(input({ training: trainingRow(20), rules: { decision_red_min: 1, decision_yellow_min: 1 } }));
+      expect(strict.decision).toBe('GO');
     });
     it('falls back to the stored column without readiness snapshots, unknown without both', () => {
-      expect(rating(input({ training: trainingRow(20, { raw: {} }) }), 'training_readiness')).toBe('red');
+      expect(signal(input({ training: trainingRow(20, { raw: {} }) }), 'training_readiness')).toMatchObject({ rating: 'info', value: { score: 20 } });
       expect(rating(input({ training: trainingRow(20, { raw: {}, readiness_score: null }) }), 'training_readiness')).toBe('unknown');
+    });
+    it('readiness_red and readiness_yellow are no longer rules', () => {
+      expect(DEFAULT_READINESS_RULES).not.toHaveProperty('readiness_red');
+      expect(DEFAULT_READINESS_RULES).not.toHaveProperty('readiness_yellow');
+      const r = readiness(input({ training: trainingRow(20), rules: { readiness_red: 90 } as ReadinessInput['rules'] }));
+      expect(r.rules_used).toEqual(DEFAULT_READINESS_RULES);
+      expect(rating(input({ training: trainingRow(20) }), 'training_readiness')).toBe('info');
     });
   });
 
@@ -240,7 +256,7 @@ describe('readiness', () => {
 
   it('without any data: every signal unknown, GO, nothing counted', () => {
     const r = readiness({ date: D, today: '2026-05-12', timeZone: 'UTC', daily: [], hrv: [], sleep: [], training: [] });
-    expect(r.counts).toEqual({ red: 0, yellow: 0, ok: 0, unknown: 7 });
+    expect(r.counts).toEqual({ red: 0, yellow: 0, ok: 0, info: 0, unknown: 7 });
     expect(r.signals.every((s) => s.rating === 'unknown' && Object.keys(s.value).length === 0)).toBe(true);
     expect(r.decision).toBe('GO');
     expect(r.partial).toBe(false);
@@ -253,7 +269,7 @@ describe('readiness', () => {
       const twoYellow = input({ day: { body_battery_high: 40 }, sleep: { score: 70 } });
       const r = readiness(twoYellow);
       expect(r.decision).toBe('MODIFY');
-      expect(r.counts).toEqual({ red: 0, yellow: 2, ok: 5, unknown: 0 });
+      expect(r.counts).toEqual({ red: 0, yellow: 2, ok: 4, info: 1, unknown: 0 });
       expect(r.recommendation).toHaveLength(2);
     });
     it('decision_yellow_min and decision_red_min come from the rules', () => {
@@ -283,7 +299,7 @@ describe('readiness', () => {
         rhr_red_delta: 6,
       });
     });
-    it('defaults match the spec 5.7 table', () => {
+    it('defaults match the spec 5.7 table without the Training Readiness thresholds (E6-28)', () => {
       expect(DEFAULT_READINESS_RULES).toEqual({
         hrv_red_base_factor: 0.9,
         hrv_red_mean28_factor: 0.85,
@@ -296,8 +312,6 @@ describe('readiness', () => {
         sleep_h_yellow: 7,
         bb_red: 30,
         bb_yellow: 50,
-        readiness_red: 30,
-        readiness_yellow: 50,
         stress_yellow: 50,
         acwr_red: 1.5,
         acwr_yellow: 1.3,

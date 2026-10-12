@@ -154,36 +154,37 @@ Below LT1 heart rate and pace are close to steady state, so EF reflects aerobic 
 
 ## Morning readiness
 
-`get_readiness` rates seven signals of day D (default today) and turns them into a decision. Each signal is `ok`, `yellow`, `red`, or `unknown` when its data is missing; unknown signals do not count.
+`get_readiness` reports seven signals of day D (default today) and turns six of them into a decision. A counted signal is `ok`, `yellow`, `red`, or `unknown` when its data is missing; Garmin's Training Readiness is `info`: shown, never rated. Neither `unknown` nor `info` signals count (`counts.info`, `counts.unknown`).
 
-| Signal | Value | Compared with | Red | Yellow |
-| --- | --- | --- | --- | --- |
-| `hrv` | overnight HRV of D | Garmin's 7-day average and baseline of D, mean of the 28 nights before | Garmin status `LOW` or `POOR`, or below `hrv_red_base_factor` × baseline low, or below `hrv_red_mean28_factor` × 28-night mean | status `UNBALANCED`, or below the baseline low, or below `hrv_yellow_weekly_factor` × 7-day average |
-| `rhr` | resting heart rate of D | mean of the 28 days before | ≥ mean + `rhr_red_delta` | ≥ mean + `rhr_yellow_delta` |
-| `sleep` | sleep score and hours of the night before D | | score below `sleep_score_red` or hours below `sleep_h_red` | score below `sleep_score_yellow` or hours below `sleep_h_yellow` |
-| `body_battery` | Body Battery high of D | | below `bb_red` | below `bb_yellow` |
-| `training_readiness` | Garmin Training Readiness of D: the newest morning (after wake-up) value, else the newest of the day; with level and recovery time | | below `readiness_red` | below `readiness_yellow` |
-| `stress` | average stress of D − 1 (D itself is still running) | | never | above `stress_yellow` |
-| `load` | TSB and ACWR of the load model on D, summed from hrTSS (as `source: "hrtss"` of `get_load`); `unknown` while the model warms up (fewer than 42 days since the first activity, detail "load model warming up (N of 42 days)") | | ACWR above `acwr_red` or TSB below `tsb_red` | ACWR above `acwr_yellow` or TSB below `tsb_yellow` |
+| Signal | Counted | Value | Compared with | Red | Yellow |
+| --- | --- | --- | --- | --- | --- |
+| `hrv` | yes | overnight HRV of D | Garmin's 7-day average and baseline of D, mean of the 28 nights before | Garmin status `LOW` or `POOR`, or below `hrv_red_base_factor` × baseline low, or below `hrv_red_mean28_factor` × 28-night mean | status `UNBALANCED`, or below the baseline low, or below `hrv_yellow_weekly_factor` × 7-day average |
+| `rhr` | yes | resting heart rate of D | mean of the 28 days before | ≥ mean + `rhr_red_delta` | ≥ mean + `rhr_yellow_delta` |
+| `sleep` | yes | sleep score and hours of the night before D | | score below `sleep_score_red` or hours below `sleep_h_red` | score below `sleep_score_yellow` or hours below `sleep_h_yellow` |
+| `body_battery` | yes | Body Battery high of D | | below `bb_red` | below `bb_yellow` |
+| `training_readiness` | no (`info`) | Garmin Training Readiness of D: the newest morning (after wake-up) value, else the newest of the day; with level and recovery time | | never | never |
+| `stress` | yes | average stress of D − 1 (D itself is still running) | | never | above `stress_yellow` |
+| `load` | yes | TSB and ACWR of the load model on D, summed from hrTSS (as `source: "hrtss"` of `get_load`); `unknown` while the model warms up (fewer than 42 days since the first activity, detail "load model warming up (N of 42 days)") | | ACWR above `acwr_red` or TSB below `tsb_red` | ACWR above `acwr_yellow` or TSB below `tsb_yellow` |
 
-Decision: at least `decision_red_min` red signals is **REST**; else at least `decision_yellow_min` yellow signals is **MODIFY**; else **GO**. `partial` is true when D is today or later, or when a row of D was downloaded before the day had ended, so a later sync may change the answer. `recommendation` gives short advice for the decision.
+Decision: at least `decision_red_min` red signals is **REST**; else at least `decision_yellow_min` yellow signals is **MODIFY**; else **GO**.
+
+Garmin's Training Readiness does not vote because it is itself a blend of overnight HRV, sleep, recovery time and recent load. Those inputs are already rated on their own here, so counting Garmin's score as well would count the same night twice: one poor night could give a red Training Readiness on top of a red HRV and a yellow sleep. The decision is built from your own data against your own baselines; Garmin's score stays in `signals` with its level and recovery time so you can compare. `partial` is true when D is today or later, or when a row of D was downloaded before the day had ended, so a later sync may change the answer. `recommendation` gives short advice for the decision.
 
 ### Readiness rules
 
-Override any of them with `rules`, e.g. `{"sleep_h_yellow": 7.5, "decision_yellow_min": 3}`.
+Override any of them with `rules`, e.g. `{"sleep_h_yellow": 7.5, "decision_yellow_min": 3}`. Unknown keys, including the former `readiness_red` and `readiness_yellow`, are ignored with a note.
 
 | Key | Default | Key | Default |
 | --- | --- | --- | --- |
 | `hrv_red_base_factor` | 0.9 | `bb_red` | 30 |
 | `hrv_red_mean28_factor` | 0.85 | `bb_yellow` | 50 |
-| `hrv_yellow_weekly_factor` | 0.9 | `readiness_red` | 30 |
-| `rhr_red_delta` | 5 bpm | `readiness_yellow` | 50 |
-| `rhr_yellow_delta` | 3 bpm | `stress_yellow` | 50 |
-| `sleep_score_red` | 60 | `acwr_red` | 1.5 |
-| `sleep_score_yellow` | 75 | `acwr_yellow` | 1.3 |
-| `sleep_h_red` | 6 h | `tsb_red` | −30 |
-| `sleep_h_yellow` | 7 h | `tsb_yellow` | −20 |
-| `decision_red_min` | 1 | `decision_yellow_min` | 2 |
+| `hrv_yellow_weekly_factor` | 0.9 | `stress_yellow` | 50 |
+| `rhr_red_delta` | 5 bpm | `acwr_red` | 1.5 |
+| `rhr_yellow_delta` | 3 bpm | `acwr_yellow` | 1.3 |
+| `sleep_score_red` | 60 | `tsb_red` | −30 |
+| `sleep_score_yellow` | 75 | `tsb_yellow` | −20 |
+| `sleep_h_red` | 6 h | `decision_red_min` | 1 |
+| `sleep_h_yellow` | 7 h | `decision_yellow_min` | 2 |
 
 The HRV rules follow day-to-day HRV-guided training, which compares the night with the athlete's own recent baseline rather than with population norms (Kiviniemi et al. 2007; Plews et al. 2013; Javaloyes et al. 2019); resting heart rate is read the same way (Buchheit 2014).
 
