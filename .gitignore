@@ -13,3 +13,9 @@ coverage/
 PLAN.md
 SPEC.md
 .claude/
+docs/_site/
+docs/.jekyll-cache/
+docs/.jekyll-metadata
+docs/Gemfile.lock
+docs/vendor/
+docs/.bundle/
