@@ -60,7 +60,7 @@
     { "name": "download_activity_file", "description": "Save an activity as FIT, GPX, TCX, KML or CSV" },
     { "name": "query_health", "description": "Daily health metrics over a range with trends" },
     { "name": "get_sleep", "description": "Sleep stages, score, SpO2 and respiration" },
-    { "name": "get_training_status", "description": "VO2max, readiness, Garmin status, CTL/ATL/TSB and race predictions" },
+    { "name": "get_training_status", "description": "VO2max, readiness, Garmin status and load focus, CTL/ATL/TSB from Garmin's training load, race predictions" },
     { "name": "get_body_composition", "description": "Weigh-ins and trend" },
     { "name": "get_period_summary", "description": "A week, a month or any date range at a glance" },
     { "name": "list_workouts", "description": "Workout library, scheduled workouts, races and events" },
@@ -70,7 +70,7 @@
     { "name": "schedule_workouts", "description": "Put workouts on the calendar or take them off" },
     { "name": "get_gear", "description": "Shoes and bikes with distance" },
     { "name": "get_devices", "description": "Devices, last sync and settings" },
-    { "name": "get_load", "description": "Own heart-rate load model: hrTSS, CTL/ATL/TSB, ACWR, monotony, weekly volume and intensity split" },
+    { "name": "get_load", "description": "Own load model (TSS from power, pace or HR): form (CTL/ATL/TSB), ACWR, monotony, weekly volume and intensity split" },
     { "name": "get_readiness", "description": "Morning GO/MODIFY/REST decision from HRV, resting HR, sleep, body battery and load" },
     { "name": "get_thresholds", "description": "LTHR, LT1, HRmax, FTP and resting HR in effect on a date, with history" },
     { "name": "set_threshold", "description": "Record a field test result (LTHR, LT1, HRmax, FTP) in the local database" }

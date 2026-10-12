@@ -48,7 +48,7 @@ describe('training load', () => {
 
   it('explains that form bands are scaled to CTL, not Coggan\'s absolute TSB bands', () => {
     const note = trainingOverview([], [{ date: day(0), training_load: 80 }], day(0), day(0), false).note;
-    expect(note).toContain('TSB bands scaled to CTL');
+    expect(note).toContain('garmin_load_model.form uses TSB bands scaled to CTL');
     expect(note).toContain('not Coggan\'s absolute TSB bands, because Garmin training load is on an EPOC scale');
   });
 });

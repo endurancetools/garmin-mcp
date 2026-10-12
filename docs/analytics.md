@@ -15,7 +15,7 @@ The defaults below are starting points taken from the literature, not personal p
 | `get_thresholds` | Which thresholds apply on a date? | `effective` (value, since, source per parameter), `by_sport` (LTHR and LT1 for run, bike, swim), `hrmax`, `rhr_28d`; optional `history` |
 | `set_threshold` | Record a field test result | `added`, `row`, `effective` (the value in use from now on) |
 
-`get_load` is a model of its own built from power, pace and heart rate. Garmin's status, its EPOC-based load and load focus stay in `get_training_status`, whose `computed_load` runs the same CTL/ATL averages on Garmin's training load instead of TSS. `get_load` with `source: "garmin_load"` reproduces that input.
+`get_load` is a model of its own built from power, pace and heart rate. Garmin's status, its EPOC-based load and load focus stay in `get_training_status`, whose `garmin_load_model` runs the same CTL/ATL averages on Garmin's training load instead of TSS (see [Load model](#load-model) for the two models).
 
 ## Thresholds with history
 
@@ -106,6 +106,13 @@ Each activity gets one training stress `tss` from the first candidate that gives
 - `hrtss` stays on every activity as the heart-rate candidate, and `get_load` with `source: "hrtss"` sums it alone, as the model did before power and pace were added.
 
 ## Load model
+
+There are two CTL/ATL/TSB models, with the same averages and different daily stress:
+
+- **`get_load`**: the own model below, from TSS per activity (power, pace, heart rate, RPE) with your thresholds. Use it for "what is my form", TSB, ACWR and load flags; the readiness `load` signal uses it with `source: "hrtss"`.
+- **`garmin_load_model`** in `get_training_status` (and at the end of a `get_period_summary` period): the same 42/7-day averages on Garmin's per-activity training load (EPOC), with form bands scaled to CTL because EPOC is not in TSS points. Use it next to Garmin's own status, acute/chronic load and load focus. `get_load` with `source: "garmin_load"` gives the same input with the own flags.
+
+The two read differently in absolute numbers; compare directions, not values.
 
 - **Daily stress.** `source: "auto"` (default) sums the `tss` of the day's activities (load sources above; activities without load count 0); `source: "hrtss"` sums their hrTSS only; `source: "garmin_load"` sums Garmin's per-activity training load (activities without one, including imported ones, count 0). The series runs from the first stored activity to the later of `to` and today; days without activities are 0. The full history is always used, whatever `from` is.
 - **CTL, ATL, TSB.** Exponentially weighted averages of the daily stress over 42 days (CTL, fitness) and 7 days (ATL, fatigue), with `k = 1 − e^(−1/N)`; TSB (form) is CTL − ATL at the start of the day (Banister 1991; Allen, Coggan, McGregor 2019). CTL needs about 42 days of history before `from` to settle; with less, the answer says so. Every day of the series, `latest` included, carries `warming_up`: true while fewer than 42 days have passed since the first activity.

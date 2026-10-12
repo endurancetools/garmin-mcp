@@ -195,7 +195,7 @@ export const trainingStatusOutput = envelope({
   garmin_load: obj({ acute: num, chronic: num, ratio: num, acwr_status: str }),
   recovery: obj({ remaining_h: num, as_of: str }),
   load_focus: obj({ feedback: str, aerobic_low: any, aerobic_high: any, anaerobic: any }),
-  computed_load: obj({ ...loadPoint, form: str }),
+  garmin_load_model: obj({ ...loadPoint, form: str }),
   load_series: list(z.looseObject(loadPoint)),
   metrics: obj({
     as_of: str,
@@ -238,7 +238,7 @@ export const periodSummaryOutput = envelope({
     longest: any,
     hardest: any,
   }),
-  load_at_end: obj({ ...loadPoint, form: str }),
+  garmin_load_model: obj({ ...loadPoint, form: str }),
   health: z.record(z.string(), z.looseObject({ avg: num, min: num, max: num, total: num })).optional(),
   energy: obj({ avg_total_kcal: num, avg_resting_kcal: num, avg_active_kcal: num }),
 });
