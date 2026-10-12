@@ -106,6 +106,17 @@ export interface ProfileZoneFloors {
   CYCLING?: ZoneFloors;
 }
 
+/** Bounds [floor, ceiling] of Garmin's zones 1–5 in bpm; zone 5 ends at HRmax. */
+export function zoneBounds(f: ZoneFloors): [number, number][] {
+  const edges = [f.zone1Floor, f.zone2Floor, f.zone3Floor, f.zone4Floor, f.zone5Floor, f.maxHeartRateUsed];
+  return edges.slice(0, 5).map((lo, i) => [lo, edges[i + 1] ?? lo]);
+}
+
+/** Zone bounds of a sport group: cycling uses the CYCLING zones when the profile has them, every other group the DEFAULT ones. */
+export function zoneFloorsFor(floors: ProfileZoneFloors, sport: string): ZoneFloors | undefined {
+  return sport === 'bike' ? (floors.CYCLING ?? floors.DEFAULT) : floors.DEFAULT;
+}
+
 const ZONE_FLOOR_KEYS = ['zone1Floor', 'zone2Floor', 'zone3Floor', 'zone4Floor', 'zone5Floor', 'maxHeartRateUsed'] as const;
 
 /**

@@ -3,7 +3,7 @@ import { round } from 'garmin-mcp-domain';
 import { DEFAULT_LOAD_FLAGS } from './load.js';
 import { seilerZoneByHr, type Session } from './session.js';
 import type { SportGroup } from './sport.js';
-import { lt1For, type ProfileZoneFloors, type ThresholdPoint, type ZoneFloors } from './thresholds.js';
+import { lt1For, zoneBounds, zoneFloorsFor, type ProfileZoneFloors, type ThresholdPoint } from './thresholds.js';
 
 /** Sport groups whose time the intensity distribution counts: the endurance sports measured by HR. */
 export const INTENSITY_SPORTS: readonly SportGroup[] = ['run', 'bike', 'nordic', 'row'];
@@ -36,12 +36,6 @@ export function seilerShares(lo: number, hi: number, lt1: number, lthr: number):
   const width = hi - lo;
   const part = (from: number, to: number) => Math.max(0, Math.min(hi, to) - Math.max(lo, from)) / width;
   return [part(-Infinity, a), part(a, lthr), part(lthr, Infinity)];
-}
-
-/** Bounds [floor, ceiling] of Garmin's zones 1–5; zone 5 ends at HRmax. */
-function zoneBounds(f: ZoneFloors): [number, number][] {
-  const edges = [f.zone1Floor, f.zone2Floor, f.zone3Floor, f.zone4Floor, f.zone5Floor, f.maxHeartRateUsed];
-  return edges.slice(0, 5).map((lo, i) => [lo, edges[i + 1] ?? lo]);
 }
 
 export const FIXED_ZONE_MAPPING_NOTE =
@@ -78,7 +72,7 @@ export function intensityDistribution(
     if (s.date < from || s.date > to || !INTENSITY_SPORTS.includes(s.sport)) continue;
     const secs = [s.z1_s ?? 0, s.z2_s ?? 0, s.z3_s ?? 0, s.z4_s ?? 0, s.z5_s ?? 0];
     if (secs.some((t) => t > 0)) {
-      const f = s.sport === 'bike' ? (floors.CYCLING ?? floors.DEFAULT) : floors.DEFAULT;
+      const f = zoneFloorsFor(floors, s.sport);
       if (f) {
         const lt1 = lt1For(thresholds, s.sport, s.date).value;
         zoneBounds(f).forEach(([lo, hi], i) => {

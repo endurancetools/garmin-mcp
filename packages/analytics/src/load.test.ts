@@ -28,6 +28,7 @@ function sess(date: string, extra: Partial<Session> = {}): Session {
     if: 1,
     load_source: 'hr',
     hrtss: 100,
+    hr_method: 'avg',
     lthr_used: 170,
     lt1_used: 153,
     rhr_used: 50,
@@ -212,6 +213,12 @@ describe('loadFlags', () => {
     expect(codes(day({ acwr: 1.25, tsb: -11 }), flags)).toEqual(['acwr_high', 'tsb_low']);
     expect(resolveLoadFlags({ acwr_high: Number.NaN, acwr_warn: undefined })).toEqual(DEFAULT_LOAD_FLAGS);
     expect(resolveLoadFlags()).toEqual(DEFAULT_LOAD_FLAGS);
+  });
+
+  it('hr_method is zones by default and takes only zones or avg', () => {
+    expect(DEFAULT_LOAD_FLAGS.hr_method).toBe('zones');
+    expect(resolveLoadFlags({ hr_method: 'avg' }).hr_method).toBe('avg');
+    expect(resolveLoadFlags({ hr_method: 'peak', acwr_high: 'x' })).toEqual(DEFAULT_LOAD_FLAGS);
   });
 
   it('adds the week jump of the day', () => {

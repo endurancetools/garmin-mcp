@@ -9,7 +9,7 @@ const row = (date: string, param: ThresholdParam, value: number): ThresholdPoint
 const THR = [row('2026-01-01', 'lthr_run', 170), row('2026-01-01', 'lt1_hr', 150)];
 
 function sess(date: string, extra: Partial<Session> = {}): Session {
-  return { id: date, date, week: '', sport: 'run', duration_s: 3600, load_source: 'none', hrtss: 0, lthr_used: 170, lt1_used: 153, rhr_used: 50, source: 'db', ...extra };
+  return { id: date, date, week: '', sport: 'run', duration_s: 3600, load_source: 'none', hrtss: 0, hr_method: 'avg', lthr_used: 170, lt1_used: 153, rhr_used: 50, source: 'db', ...extra };
 }
 
 const zones = (z1: number, z2: number, z3: number, z4: number, z5: number) => ({ z1_s: z1, z2_s: z2, z3_s: z3, z4_s: z4, z5_s: z5 });

@@ -51,6 +51,7 @@ const session = z.looseObject({
   if: num,
   load_source: str,
   hrtss: num,
+  hr_method: str,
   ef: num,
   ef_gap: num,
   gap_mps: num,

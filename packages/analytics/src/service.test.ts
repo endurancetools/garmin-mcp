@@ -152,6 +152,26 @@ describe('AnalyticsService.getLoad', () => {
     expect(hr.data.latest?.tss).toBe(0);
   });
 
+  it('heart rate from the time in zones with the profile zone bounds; flags.hr_method "avg" forces the average', async () => {
+    const t = setup();
+    const zones = { zone1Floor: 94, zone2Floor: 134, zone3Floor: 154, zone4Floor: 163, zone5Floor: 174 };
+    t.store.setProfile({ ...profile(170), heartRateZones: [{ sport: 'DEFAULT', maxHeartRateUsed: 185, lactateThresholdHeartRateUsed: 170, ...zones }] }, NOW);
+    // 5 × 3 min in zone 5, 32 min in zone 1, average HR 135.
+    const run = activity(9200, TODAY, { duration: 2820, averageHR: 135, hrTimeInZone_1: 1920, hrTimeInZone_5: 900 });
+    t.activities([run], addDays(TODAY, -1), TODAY);
+    t.daily('daily_summary', addDays(TODAY, -40), TODAY, () => ({ resting_hr: 50 }));
+    const byZones = await t.analytics.getLoad({ from: TODAY, include_activities: true });
+    expect(loadOutput.safeParse(byZones).success).toBe(true);
+    expect(byZones.data.activities?.[0]).toMatchObject({ load_source: 'hr', hr_method: 'zones', tss: 44.3, hrtss: 44.3 });
+    expect(byZones.data.flags_used.hr_method).toBe('zones');
+    const byAvg = await t.analytics.getLoad({ from: TODAY, include_activities: true, flags: { hr_method: 'avg' } });
+    expect(byAvg.data.activities?.[0]).toMatchObject({ load_source: 'hr', hr_method: 'avg', tss: 39.3, hrtss: 39.3 });
+    expect(byAvg.data.flags_used.hr_method).toBe('avg');
+    const bad = await t.analytics.getLoad({ from: TODAY, flags: { hr_method: 'peak' } });
+    expect(bad.data.flags_used.hr_method).toBe('zones');
+    expect(bad.meta.note).toMatch(/Ignored flags \(unknown key or invalid value\): hr_method/);
+  });
+
   it('marks a week of history as warming up: no TSB flag in get_load, load signal unknown in get_readiness', async () => {
     const t = setup();
     t.store.markReferenceFetched('profile', NOW);

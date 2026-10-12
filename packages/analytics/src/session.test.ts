@@ -1,3 +1,4 @@
+import { round } from 'garmin-mcp-domain';
 import type { ActivityRow, ImportedActivityRow, ThresholdParam } from 'garmin-mcp-store';
 import { describe, expect, it } from 'vitest';
 import {
@@ -5,6 +6,7 @@ import {
   efficiencyFactor,
   efficiencyFactorGap,
   hrTss,
+  hrZonesCandidate,
   intensityFactor,
   NO_FTP_NOTE,
   NO_THRESHOLD_PACE_NOTE,
@@ -20,7 +22,7 @@ import {
   type SessionInput,
 } from './session.js';
 import { RPE_LOAD_CALIBRATION } from './load.js';
-import type { ThresholdPoint } from './thresholds.js';
+import { zoneBounds, type ProfileZoneFloors, type ThresholdPoint } from './thresholds.js';
 
 const row = (date: string, param: ThresholdParam, value: number): ThresholdPoint => ({ date, param, value });
 const CTX: SessionContext = {
@@ -197,6 +199,68 @@ describe('load sources: power, then pace, then heart rate', () => {
     expect(sessionMetrics(ride({ date: '2026-05-31' }), ctx).tss).toBe(64);
     expect(sessionMetrics(ride({ date: '2026-06-01' }), ctx)).toMatchObject({ tss: 100, if: 1 });
     expect(sessionMetrics(run({ date: '2026-06-01' }), ctx)).toMatchObject({ tss: 100, if: 1 });
+  });
+});
+
+describe('heart rate from the time in zones (hrTSS by zones)', () => {
+  const DEFAULT = { zone1Floor: 94, zone2Floor: 134, zone3Floor: 154, zone4Floor: 163, zone5Floor: 174, maxHeartRateUsed: 185 };
+  const CYCLING = { zone1Floor: 90, zone2Floor: 120, zone3Floor: 140, zone4Floor: 150, zone5Floor: 160, maxHeartRateUsed: 175 };
+  const floors: ProfileZoneFloors = { DEFAULT, CYCLING };
+  const ZONES: SessionContext = { ...CTX, floors };
+  // 20 min of warm-up and cool-down plus 4 × 3 min of recovery in zone 1, 5 × 3 min in zone 5; average HR 135.
+  const intervals = input({ duration_s: 2820, avg_hr: 135, zones_s: [1920, 0, 0, 0, 900] });
+
+  it('IF_z from the middle of each zone (zone 5 up to HRmax), hrTSS = Σ hours_z × IF_z² × 100', () => {
+    const c = hrZonesCandidate([1920, 0, 0, 0, 900], zoneBounds(DEFAULT), 50, 170);
+    const if1 = (114 - 50) / 120;
+    const if5 = (179.5 - 50) / 120;
+    expect(c?.source).toBe('hr');
+    expect(c?.tss).toBeCloseTo(((1920 * if1 ** 2 + 900 * if5 ** 2) / 3600) * 100, 10);
+    expect(c?.if).toBeCloseTo(Math.sqrt((1920 * if1 ** 2 + 900 * if5 ** 2) / 2820), 10);
+    // a zone whose middle is at or below RHR adds time but no stress
+    expect(hrZonesCandidate([3600, 0, 0, 0, 0], zoneBounds(DEFAULT), 120, 170)).toEqual({ source: 'hr', tss: 0, if: 0 });
+  });
+
+  it('no candidate without time in zones, without bounds, or when LTHR ≤ RHR', () => {
+    expect(hrZonesCandidate(undefined, zoneBounds(DEFAULT), 50, 170)).toBeUndefined();
+    expect(hrZonesCandidate([0, 0, 0, 0, 0], zoneBounds(DEFAULT), 50, 170)).toBeUndefined();
+    expect(hrZonesCandidate([600, 0, 0, 0, 0], undefined, 50, 170)).toBeUndefined();
+    expect(hrZonesCandidate([600, 0, 0, 0, 0], zoneBounds(DEFAULT), 170, 170)).toBeUndefined();
+  });
+
+  it('intervals 5 × 3 min in zone 5 with recoveries in zone 1 score clearly more than from the average HR', () => {
+    const zones = sessionMetrics(intervals, ZONES);
+    const avg = sessionMetrics(intervals, CTX);
+    expect(zones).toMatchObject({ hr_method: 'zones', load_source: 'hr', tss: 44.3, if: 0.752, hrtss: 44.3 });
+    expect(avg).toMatchObject({ hr_method: 'avg', load_source: 'hr', tss: 39.3, if: 0.708, hrtss: 39.3 });
+    expect(zones.hrtss).toBeGreaterThan(avg.hrtss * 1.1);
+  });
+
+  it('a steady session scores almost the same as from the average HR', () => {
+    const steady = input({ avg_hr: 145, zones_s: [120, 3360, 120, 0, 0] });
+    const zones = sessionMetrics(steady, ZONES);
+    const avg = sessionMetrics(steady, CTX);
+    expect(zones.hr_method).toBe('zones');
+    expect(Math.abs(zones.hrtss - avg.hrtss) / avg.hrtss).toBeLessThan(0.05);
+  });
+
+  it('falls back to the average HR without zones, without profile bounds, or with hr_method avg', () => {
+    expect(sessionMetrics(input(), ZONES)).toMatchObject({ hr_method: 'avg', hrtss: 69.4 });
+    expect(sessionMetrics(intervals, { ...CTX, floors: {} })).toMatchObject({ hr_method: 'avg', hrtss: 39.3 });
+    expect(sessionMetrics(intervals, { ...ZONES, hr_method: 'avg' })).toMatchObject({ hr_method: 'avg', hrtss: 39.3 });
+    expect(sessionMetrics(input({ avg_hr: undefined, zones_s: undefined }), ZONES)).toMatchObject({ hr_method: 'avg', hrtss: 0, load_source: 'none' });
+  });
+
+  it('cycling uses the CYCLING bounds with the cycling LTHR, other sports the DEFAULT ones', () => {
+    const ride = input({ type: 'road_biking', duration_s: 3600, avg_hr: 145, zones_s: [0, 0, 0, 3600, 0] });
+    // zone 4 of CYCLING is 150-160: IF = (155 - 50) / (160 - 50)
+    expect(sessionMetrics(ride, ZONES).hrtss).toBe(round(((155 - 50) / 110) ** 2 * 100, 1));
+    expect(sessionMetrics(ride, { ...ZONES, floors: { DEFAULT } }).hrtss).toBe(round(((168.5 - 50) / 110) ** 2 * 100, 1));
+  });
+
+  it('power and pace still come before the zone-based heart rate', () => {
+    const full: SessionContext = { ...ZONES, thresholds: [...CTX.thresholds, row('2026-01-01', 'run_threshold_pace_s_per_km', 250)] };
+    expect(sessionMetrics({ ...intervals, gap_mps: 3.5 }, full)).toMatchObject({ load_source: 'pace', hr_method: 'zones', hrtss: 44.3 });
   });
 });
 

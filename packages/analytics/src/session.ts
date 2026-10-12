@@ -1,9 +1,9 @@
 import { isoWeek, type IsoDate } from 'garmin-mcp-config';
 import { round } from 'garmin-mcp-domain';
 import type { ActivityRow, ImportedActivityRow } from 'garmin-mcp-store';
-import { RPE_LOAD_CALIBRATION } from './load.js';
+import { RPE_LOAD_CALIBRATION, type HrMethod } from './load.js';
 import { sportGroup, type SportGroup } from './sport.js';
-import { lt1For, lthrFor, restingHrOn, thresholdOn, type ThresholdPoint } from './thresholds.js';
+import { lt1For, lthrFor, restingHrOn, thresholdOn, zoneBounds, zoneFloorsFor, type ProfileZoneFloors, type ThresholdPoint } from './thresholds.js';
 
 /** Where the training stress of a session comes from (first positive candidate wins); `none` = no load. */
 export type SessionLoadSource = 'power' | 'pace' | 'hr' | 'rpe' | 'none';
@@ -69,11 +69,13 @@ export interface Session {
   feel?: number;
   /** Training stress of the session from `load_source`, 1 place; absent (never 0) when no candidate is positive. */
   tss?: number;
-  /** Intensity factor of `load_source` (NP/FTP, GAP/threshold speed or HR reserve), 3 places; absent with `rpe` and `none`. */
+  /** Intensity factor of `load_source` (NP/FTP, GAP/threshold speed or HR reserve, from zones or the average), 3 places; absent with `rpe` and `none`. */
   if?: number;
   load_source: SessionLoadSource;
   /** The heart-rate candidate (0 without heart rate); `get_load` with `source: "hrtss"` sums it. */
   hrtss: number;
+  /** How `hrtss` was computed: `zones` (time in HR zones) or `avg` (average heart rate, also when there is no heart rate). */
+  hr_method: HrMethod;
   ef?: number;
   ef_gap?: number;
   gap_mps?: number;
@@ -183,6 +185,34 @@ export function hrTss(durationS: number | undefined, ifValue: number): number {
   return ((durationS ?? 0) / 3600) * ifValue * ifValue * 100;
 }
 
+/**
+ * Zone-based heart-rate candidate (TrainingPeaks' hrTSS from the time in zones derived from
+ * LTHR; Friel's estimate of TSS per hour in each zone): with `midHR_z` the middle of Garmin
+ * zone z (zone 5 up to HRmax), `IF_z = (midHR_z − RHR) / (LTHR − RHR)` (0 at or below RHR) and
+ * `hrTSS = Σ_z (t_z / 3600) × IF_z² × 100`. The returned IF is √(Σ t_z × IF_z² / Σ t_z), the IF
+ * of a steady effort with the same stress per hour in zones. `undefined` without time in zones,
+ * without bounds, or when LTHR ≤ RHR.
+ */
+export function hrZonesCandidate(
+  zonesS: readonly number[] | undefined,
+  bounds: readonly (readonly [number, number])[] | undefined,
+  rhr: number,
+  lthr: number,
+): LoadCandidate | undefined {
+  if (!zonesS || !bounds || bounds.length < zonesS.length || !(lthr > rhr)) return undefined;
+  let time = 0;
+  let weighted = 0;
+  zonesS.forEach((t, i) => {
+    const [lo, hi] = bounds[i] ?? [0, 0];
+    if (!(t > 0)) return;
+    const ifZone = Math.max(0, ((lo + hi) / 2 - rhr) / (lthr - rhr));
+    time += t;
+    weighted += t * ifZone * ifZone;
+  });
+  if (!(time > 0)) return undefined;
+  return { source: 'hr', tss: (weighted / 3600) * 100, if: Math.sqrt(weighted / time) };
+}
+
 /** One load candidate: stress in the scale where an hour at threshold is 100, and its intensity factor (both unrounded; no IF for `rpe`). */
 export interface LoadCandidate {
   source: Exclude<SessionLoadSource, 'none'>;
@@ -287,6 +317,10 @@ export interface SessionContext {
   daily: readonly { date: IsoDate; resting_hr: number | null }[];
   /** Multiplier of the session RPE candidate; default {@link RPE_LOAD_CALIBRATION}. */
   rpe_calibration?: number;
+  /** HR zone bounds of the Garmin profile, for the zone-based heart-rate candidate. */
+  floors?: ProfileZoneFloors;
+  /** `zones` (default): heart-rate candidate from the time in zones when the session has zones and the profile bounds; `avg`: always from the average heart rate. */
+  hr_method?: HrMethod;
 }
 
 /** Optional note sink: each default or approximation used is reported once. */
@@ -299,7 +333,8 @@ export const NO_THRESHOLD_PACE_NOTE =
 /**
  * Metrics of one session with the thresholds valid on its date (LTHR, LT1, FTP and threshold
  * pace of its sport, rolling resting HR). Load candidates in order: `power` (bike with NP and
- * `ftp_w`), `pace` (run with GAP and `run_threshold_pace_s_per_km`), `hr` (hrTSS), `rpe`
+ * `ftp_w`), `pace` (run with GAP and `run_threshold_pace_s_per_km`), `hr` (hrTSS from the time
+ * in zones with the profile's zone bounds, else from the average HR; `hr_method`), `rpe`
  * (session RPE, any sport); the first positive one gives `tss`, `if` and `load_source`. LT1 notes are not reported: `get_load`
  * takes them from `thresholds_used`. Rounding: IF, EF, EF-GAP, GAP 3 places; TSS, hrTSS,
  * Garmin load, TE, RHR 1 place; durations, distances, HR, power, cadence, calories whole numbers.
@@ -311,8 +346,10 @@ export function sessionMetrics(input: SessionInput, ctx: SessionContext, onNote?
   const rhr = restingHrOn(ctx.daily, ctx.thresholds, input.date);
   if (lthr.note) onNote?.(lthr.note);
   if (rhr.note) onNote?.(rhr.note);
-  const hrIf = intensityFactor(input.avg_hr, rhr.value, lthr.value);
-  const hrStress = hrTss(input.duration_s, hrIf);
+  const bounds = (ctx.hr_method ?? 'zones') === 'zones' ? zoneFloorsFor(ctx.floors ?? {}, sport) : undefined;
+  const hrZones = bounds ? hrZonesCandidate(input.zones_s, zoneBounds(bounds), rhr.value, lthr.value) : undefined;
+  const hrAvgIf = intensityFactor(input.avg_hr, rhr.value, lthr.value);
+  const hr: LoadCandidate = hrZones ?? { source: 'hr', tss: hrTss(input.duration_s, hrAvgIf), if: hrAvgIf };
   const ftp = sport === 'bike' ? thresholdOn(ctx.thresholds, 'ftp_w', input.date) : undefined;
   const pace = sport === 'run' ? thresholdOn(ctx.thresholds, 'run_threshold_pace_s_per_km', input.date) : undefined;
   if (sport === 'bike' && ftp === undefined && input.np_w !== undefined && input.np_w > 0) onNote?.(NO_FTP_NOTE);
@@ -320,7 +357,7 @@ export function sessionMetrics(input: SessionInput, ctx: SessionContext, onNote?
   const load = resolveLoad([
     sport === 'bike' ? powerCandidate(input.np_w, ftp, input.duration_s) : undefined,
     sport === 'run' ? paceCandidate(input.gap_mps, pace, input.duration_s) : undefined,
-    { source: 'hr', tss: hrStress, if: hrIf },
+    hr,
     rpeCandidate(input.rpe, input.duration_s, ctx.rpe_calibration),
   ]);
   const z = input.zones_s;
@@ -352,7 +389,8 @@ export function sessionMetrics(input: SessionInput, ctx: SessionContext, onNote?
     tss: load.tss,
     if: load.if,
     load_source: load.load_source,
-    hrtss: round(hrStress, 1) ?? 0,
+    hrtss: round(hr.tss, 1) ?? 0,
+    hr_method: hrZones ? 'zones' : 'avg',
     ef: round(efficiencyFactor(sport, input), 3),
     ef_gap: round(efficiencyFactorGap(sport, input.avg_hr, input.gap_mps), 3),
     gap_mps: round(input.gap_mps, 3),
