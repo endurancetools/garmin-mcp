@@ -91,14 +91,16 @@ describe('readiness', () => {
   it('reports values and references of a signal', () => {
     const hrv = signal(input(), 'hrv');
     expect(hrv.value).toEqual({ last_night_ms: 60, status: 'BALANCED' });
-    expect(hrv.reference).toEqual({ weekly_avg_ms: 60, baseline_low_ms: 50, baseline_high_ms: 70, mean28_ms: 60 });
+    expect(hrv.reference).toEqual({ garmin_weekly_avg_ms: 60, garmin_baseline_low_ms: 50, garmin_baseline_high_ms: 70, mean28_ms: 60 });
     expect(signal(input(), 'training_readiness').value).toEqual({ score: 70, level: 'HIGH', recovery_h: 10 });
     expect(signal(input(), 'rhr').reference).toEqual({ mean28_bpm: 50 });
   });
 
   describe('hrv', () => {
-    it.each(['LOW', 'POOR'])('red on Garmin status %s', (status) => {
-      expect(rating(input({ hrv: { status } }), 'hrv')).toBe('red');
+    it.each(['LOW', 'POOR', 'UNBALANCED'])('Garmin status %s with the numbers in range: ok, status kept in value', (status) => {
+      const s = signal(input({ hrv: { status } }), 'hrv');
+      expect(s.rating).toBe('ok');
+      expect(s.value).toEqual({ last_night_ms: 60, status });
     });
     it('red below hrv_red_base_factor × baseline low', () => {
       // Baseline low 60: 52 < 0.9 × 60 = 54, while 52 ≥ 0.85 × 28-day mean 60 = 51.
@@ -112,14 +114,25 @@ describe('readiness', () => {
       expect(signal(i, 'hrv')).toMatchObject({ rating: 'red', detail: expect.stringContaining('28-day mean 60') });
       expect(rating(input({ hrv: { last_night_avg: 52, weekly_avg: 52, baseline_low: 40 } }), 'hrv')).toBe('ok');
     });
-    it('yellow on UNBALANCED, below the baseline low or below hrv_yellow_weekly_factor × weekly', () => {
-      expect(rating(input({ hrv: { status: 'UNBALANCED' } }), 'hrv')).toBe('yellow');
+    it('yellow below the baseline low or below hrv_yellow_weekly_factor × weekly', () => {
       expect(rating(input({ hrv: { baseline_low: 62 } }), 'hrv')).toBe('yellow');
       expect(rating(input({ hrv: { weekly_avg: 70 } }), 'hrv')).toBe('yellow');
       expect(rating(input({ hrv: { weekly_avg: 66 } }), 'hrv')).toBe('ok');
     });
     it('unknown without the night value', () => {
       expect(rating(input({ hrv: { last_night_avg: null } }), 'hrv')).toBe('unknown');
+    });
+    it('compares with the own mean only from 7 nights in the 28 before', () => {
+      // 50 < 0.85 × 60 = 51 (red from the mean alone); baseline low 40 and weekly 50 do not fire.
+      const withNights = (n: number): ReadinessInput => {
+        const i = input({ hrv: { last_night_avg: 50, weekly_avg: 50, baseline_low: 40 } });
+        return { ...i, hrv: [...history.slice(-n).map((d) => hrvRow(d)), i.hrv.at(-1)!] };
+      };
+      const six = signal(withNights(6), 'hrv');
+      expect(six.rating).toBe('ok');
+      expect(six.detail).toContain('28-day mean not compared: 6 of 7 nights needed.');
+      expect(six.reference).not.toHaveProperty('mean28_ms');
+      expect(signal(withNights(7), 'hrv')).toMatchObject({ rating: 'red', detail: expect.stringContaining('28-day mean 60') });
     });
   });
 

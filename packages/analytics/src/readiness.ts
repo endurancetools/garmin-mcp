@@ -177,41 +177,50 @@ function rate(red: string | undefined, yellow: string | undefined): { rating: Re
   return { rating: 'ok', detail: undefined };
 }
 
-function hrvSignal(row: ReadinessInput['hrv'][number] | undefined, mean28: number | undefined, r: ReadinessRules): ReadinessSignal {
+/** Nights in [D − 28, D) the own HRV mean needs before the HRV rule compares with it. */
+export const HRV_MEAN_MIN_NIGHTS = 7;
+
+/**
+ * HRV rated from the numbers only. Garmin's HRV status stays in `value` for reference and never
+ * sets the rating; Garmin's 7-day average and baseline are its rolling averages of the raw nights,
+ * kept as references. The own mean of the previous nights counts from `HRV_MEAN_MIN_NIGHTS` on.
+ */
+function hrvSignal(row: ReadinessInput['hrv'][number] | undefined, previous: readonly number[], r: ReadinessRules): ReadinessSignal {
   const hrv = row?.last_night_avg;
   if (!row || !finite(hrv)) return unknown('hrv', 'No overnight HRV for the day.');
   const status = row.status ?? undefined;
   const low = finite(row.baseline_low) ? row.baseline_low : undefined;
   const weekly = finite(row.weekly_avg) ? row.weekly_avg : undefined;
-  const m28 = mean28 !== undefined && mean28 > 0 ? mean28 : undefined;
+  const enough = previous.length >= HRV_MEAN_MIN_NIGHTS;
+  const m = enough ? mean(previous) : undefined;
+  const m28 = m !== undefined && m > 0 ? m : undefined;
   const red =
-    status === 'LOW' || status === 'POOR'
-      ? `Garmin HRV status ${status}.`
-      : low !== undefined && hrv < low * r.hrv_red_base_factor
-        ? `HRV ${hrv} ms < ${r.hrv_red_base_factor} × baseline low ${low} ms.`
-        : m28 !== undefined && hrv < m28 * r.hrv_red_mean28_factor
-          ? `HRV ${hrv} ms < ${r.hrv_red_mean28_factor} × 28-day mean ${round(m28, 0)} ms.`
-          : undefined;
+    low !== undefined && hrv < low * r.hrv_red_base_factor
+      ? `HRV ${hrv} ms < ${r.hrv_red_base_factor} × baseline low ${low} ms.`
+      : m28 !== undefined && hrv < m28 * r.hrv_red_mean28_factor
+        ? `HRV ${hrv} ms < ${r.hrv_red_mean28_factor} × 28-day mean ${round(m28, 0)} ms.`
+        : undefined;
   const yellow =
-    status === 'UNBALANCED'
-      ? 'Garmin HRV status UNBALANCED.'
-      : low !== undefined && hrv < low
-        ? `HRV ${hrv} ms below the baseline low ${low} ms.`
-        : weekly !== undefined && hrv < weekly * r.hrv_yellow_weekly_factor
-          ? `HRV ${hrv} ms < ${r.hrv_yellow_weekly_factor} × 7-day average ${weekly} ms.`
-          : undefined;
+    low !== undefined && hrv < low
+      ? `HRV ${hrv} ms below the baseline low ${low} ms.`
+      : weekly !== undefined && hrv < weekly * r.hrv_yellow_weekly_factor
+        ? `HRV ${hrv} ms < ${r.hrv_yellow_weekly_factor} × 7-day average ${weekly} ms.`
+        : undefined;
   const { rating, detail } = rate(red, yellow);
+  const skipped = enough
+    ? ''
+    : ` 28-day mean not compared: ${previous.length} of ${HRV_MEAN_MIN_NIGHTS} nights needed.`;
   return {
     name: 'hrv',
     rating,
     value: vals({ last_night_ms: hrv, status }),
     reference: vals({
-      weekly_avg_ms: weekly,
-      baseline_low_ms: low,
-      baseline_high_ms: row.baseline_high,
+      garmin_weekly_avg_ms: weekly,
+      garmin_baseline_low_ms: low,
+      garmin_baseline_high_ms: row.baseline_high,
       mean28_ms: round(m28, 0),
     }),
-    detail: detail ?? `HRV ${hrv} ms within the baseline and the averages.`,
+    detail: (detail ?? `HRV ${hrv} ms within the baseline and the averages.`) + skipped,
   };
 }
 
@@ -359,7 +368,7 @@ export function readiness(input: ReadinessInput): Readiness {
   const training = on(input.training, d);
 
   const signals = [
-    hrvSignal(hrv, mean(input.hrv.filter(before).map((r) => r.last_night_avg)), rules),
+    hrvSignal(hrv, input.hrv.filter(before).map((r) => r.last_night_avg).filter(finite), rules),
     rhrSignal(daily?.resting_hr, mean(input.daily.filter(before).map((r) => r.resting_hr)), rules),
     sleepSignal(sleep, rules),
     bodyBatterySignal(daily?.body_battery_high, rules),
