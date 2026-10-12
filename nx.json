@@ -2,7 +2,10 @@
   "$schema": "./node_modules/nx/schemas/nx-schema.json",
   "defaultBase": "main",
   "namedInputs": {
-    "default": ["{projectRoot}/**/*", "sharedGlobals"],
+    "default": [
+      "{projectRoot}/**/*",
+      "sharedGlobals"
+    ],
     "production": [
       "default",
       "!{projectRoot}/**/*.test.ts",
@@ -11,27 +14,49 @@
       "!{projectRoot}/.oxlintrc.json",
       "!{projectRoot}/fixtures/**"
     ],
-    "sharedGlobals": ["{workspaceRoot}/tsconfig.base.json", "{workspaceRoot}/pnpm-lock.yaml"]
+    "sharedGlobals": [
+      "{workspaceRoot}/tsconfig.base.json",
+      "{workspaceRoot}/pnpm-lock.yaml"
+    ]
   },
   "targetDefaults": {
     "build": {
       "executor": "nx:run-commands",
-      "options": { "command": "tsc -b tsconfig.lib.json", "cwd": "{projectRoot}" },
-      "dependsOn": ["^build"],
-      "inputs": ["production", "^production"],
-      "outputs": ["{projectRoot}/dist"],
+      "options": {
+        "command": "tsc -b tsconfig.lib.json",
+        "cwd": "{projectRoot}"
+      },
+      "dependsOn": [
+        "^build"
+      ],
+      "inputs": [
+        "production",
+        "^production"
+      ],
+      "outputs": [
+        "{projectRoot}/dist"
+      ],
       "cache": true
     },
     "typecheck": {
       "executor": "nx:run-commands",
-      "options": { "command": "tsc -p tsconfig.json", "cwd": "{projectRoot}" },
-      "inputs": ["default", "^production"],
+      "options": {
+        "command": "tsc -p tsconfig.json",
+        "cwd": "{projectRoot}"
+      },
+      "inputs": [
+        "default",
+        "^production"
+      ],
       "cache": true
     },
     "lint": {
       "executor": "nx:run-commands",
       "options": {
-        "commands": ["oxlint --deny-warnings src", "eslint src"],
+        "commands": [
+          "oxlint --deny-warnings src",
+          "eslint src"
+        ],
         "parallel": false,
         "cwd": "{projectRoot}"
       },
@@ -39,19 +64,34 @@
         "default",
         "{workspaceRoot}/.oxlintrc.json",
         "{workspaceRoot}/eslint.config.mjs",
-        { "externalDependencies": ["oxlint", "eslint"] }
+        {
+          "externalDependencies": [
+            "oxlint",
+            "eslint"
+          ]
+        }
       ],
       "cache": true
     },
     "test": {
       "executor": "nx:run-commands",
-      "options": { "command": "vitest run", "cwd": "{projectRoot}" },
-      "inputs": ["default", "^production", "{workspaceRoot}/vitest.shared.ts"],
+      "options": {
+        "command": "vitest run",
+        "cwd": "{projectRoot}"
+      },
+      "inputs": [
+        "default",
+        "^production",
+        "{workspaceRoot}/vitest.shared.ts"
+      ],
       "cache": true
     }
   },
   "release": {
-    "projects": ["packages/*", "apps/*"],
+    "projects": [
+      "packages/*",
+      "apps/*"
+    ],
     "projectsRelationship": "fixed",
     "version": {
       "conventionalCommits": true,
@@ -60,7 +100,11 @@
     },
     "changelog": {
       "automaticFromRef": true,
-      "workspaceChangelog": { "createRelease": "github" }
+      "workspaceChangelog": {
+        "createRelease": "github",
+        "file": false
+      }
     }
-  }
+  },
+  "analytics": false
 }

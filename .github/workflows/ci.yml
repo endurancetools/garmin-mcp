@@ -81,6 +81,19 @@ jobs:
         run: pnpm nx release ${{ inputs.version }} --skip-publish
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # CHANGELOG.md is written by hand (nx.json: workspaceChangelog.file false) and must have a
+      # `## <version>` section before the release; it replaces the commit list nx put in the GitHub
+      # release, and the Claude Desktop extension of that version is attached to the release.
+      - name: Release notes and Claude Desktop extension
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          version="$(node -p 'require("./apps/mcp-server/package.json").version')"
+          awk -v v="$version" '/^## / { on = ($2 == v) } on' CHANGELOG.md > release-notes.md
+          if [ ! -s release-notes.md ]; then echo "CHANGELOG.md has no '## $version' section" >&2; exit 1; fi
+          ./scripts/build-mcpb.sh
+          gh release edit "v$version" --notes-file release-notes.md
+          gh release upload "v$version" "dist/garmin-mcp-$version.mcpb" --clobber
       # Docker image on GHCR, tagged with the released version (all packages share it: fixed release group)
       # and latest. Built from the release commit, before the MCP registry steps, so a registry_only re-run
       # rebuilds and re-pushes the same tag. arm64 runs under QEMU: the image needs no compiler (Dockerfile).

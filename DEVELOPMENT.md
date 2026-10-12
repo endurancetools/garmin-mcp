@@ -78,13 +78,14 @@ The eval needs a signed-in Claude Code (`claude` on `PATH`), not an API key. Eac
 
 ## Release
 
-Versions are fixed across all packages (`nx release`, conventional commits). Three steps:
+Versions are fixed across all packages (`nx release`). `CHANGELOG.md` is written by hand in English for users, not generated from commits (`nx.json`: `workspaceChangelog.file` is `false`); `docs/changelog.md` is the same text for the documentation site, with front matter and a relative link to `analytics.md`. Four steps:
 
-1. `gh workflow run CI -f version=<x.y.z>` (or a keyword such as `minor`; empty = bump from conventional commits). The `release` job versions all packages together, writes `CHANGELOG.md`, commits, tags `v<x.y.z>` and creates the GitHub release. Pushes and pull requests never release.
-2. `git pull && pnpm nx run-many -t build && pnpm -r publish --access public --no-git-checks` on your machine, signed in to npm with 2FA. npm publishes new packages through a staged publish that a maintainer approves with 2FA, and granular tokens are losing direct publish, so npm is not published from CI. `pnpm publish` rewrites `workspace:*` to the released versions when it packs; `npm publish` would not.
-3. MCP registry, once the npm version exists: `gh workflow run CI -f registry_only=true` (GitHub OIDC), or locally `mcp-publisher login github --token "$(gh auth token)" && mcp-publisher publish`. The registry grants the organization namespace `io.github.endurancetools/*` only to an org owner whose role it can read, so the token must carry `read:org`; the interactive `login github` lacks that scope and only grants the personal namespace. `scripts/build-mcpb.sh` builds the Claude Desktop extension for that version (`npx -y garmin-mcp-server@<version>`, validated with `mcpb validate`) and the `mcpb` CI job publishes it as a workflow artifact.
+1. Add a `## <x.y.z> (<date>)` section to `CHANGELOG.md` and `docs/changelog.md`, commit and push. The release job fails without that section.
+2. `gh workflow run CI -f version=<x.y.z>` (or a keyword such as `minor`; empty = bump from conventional commits). The `release` job versions all packages together, commits, tags `v<x.y.z>`, creates the GitHub release with the `CHANGELOG.md` section as its notes, attaches `garmin-mcp-<x.y.z>.mcpb` (`scripts/build-mcpb.sh`: the Claude Desktop extension, which runs `npx -y garmin-mcp-server@<x.y.z>`, validated with `mcpb validate`) and pushes the Docker image to GHCR. It then tries the MCP registry, which fails until the npm version exists (step 4). Pushes and pull requests never release; the `mcpb` job only keeps the extension as a workflow artifact.
+3. `git pull && pnpm install && pnpm nx run-many -t build && pnpm -r publish --access public --no-git-checks` on your machine, signed in to npm with 2FA. npm publishes new packages through a staged publish that a maintainer approves with 2FA, and granular tokens are losing direct publish, so npm is not published from CI. `pnpm publish` rewrites `workspace:*` to the released versions when it packs; `npm publish` would not. The `.mcpb` attached in step 2 works from this moment.
+4. MCP registry, once the npm version exists: `gh workflow run CI -f registry_only=true` (GitHub OIDC), or locally `mcp-publisher login github --token "$(gh auth token)" && mcp-publisher publish`. The registry grants the organization namespace `io.github.endurancetools/*` only to an org owner whose role it can read, so the token must carry `read:org`; the interactive `login github` lacks that scope and only grants the personal namespace.
 
-The server and CLI currently report their version from constants in code (`apps/mcp-server/src/server.ts`, `apps/cli/src/commands.ts`); keep them in step with `package.json` until they read it.
+The server and CLI read their version from `package.json`, so `serverInfo.version` and `garmin --version` follow the release.
 
 ## Conventions
 
