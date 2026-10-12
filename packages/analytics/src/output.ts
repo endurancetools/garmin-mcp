@@ -73,7 +73,7 @@ export const loadOutput = envelope({
   from: str,
   to: str,
   source: str,
-  latest: obj(loadDay),
+  latest: obj({ ...loadDay, load_ratio_28d: num, load_ratio_usual: num }),
   flags: list(z.looseObject({ code: z.string(), text: z.string() })),
   flags_used: numbers,
   weeks: list(

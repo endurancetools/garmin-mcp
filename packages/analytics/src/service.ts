@@ -19,6 +19,7 @@ import {
   LOAD_SOURCES,
   loadFlags,
   loadOn,
+  loadRatio,
   loadSeries,
   resolveLoadFlags,
   weeklyBySport,
@@ -72,12 +73,20 @@ export interface ThresholdsUsed {
   rhr: number;
 }
 
+/** The load model on `to` with the own vs Garmin load ratio (`loadRatio`; absent with `source: "garmin_load"`). */
+export interface LatestLoad extends LoadDay {
+  /** Σ own load / Σ Garmin training load of the 28 days ending on `to`, on days that have both. */
+  load_ratio_28d?: number;
+  /** Median of that ratio over the earlier 28-day windows (needs at least 8). */
+  load_ratio_usual?: number;
+}
+
 export interface LoadData {
   from: IsoDate;
   to: IsoDate;
   source: LoadSource;
   /** The load model on `to` (absent without any activity up to `to`). */
-  latest?: LoadDay;
+  latest?: LatestLoad;
   flags: LoadFlag[];
   flags_used: LoadFlags;
   weeks: WeekSport[];
@@ -288,7 +297,9 @@ export class AnalyticsService {
 
     const { sessions, notes, thresholds, daily } = this.#sessions(end, flags.rpe_calibration);
     const series = loadSeries(sessions, source, end);
-    const latest = loadOn(series, to);
+    const day = loadOn(series, to);
+    const ratio = day && source !== 'garmin_load' ? loadRatio(sessions, source, to) : undefined;
+    const latest: LatestLoad | undefined = day && { ...day, load_ratio_28d: ratio?.ratio_28d, load_ratio_usual: ratio?.usual };
     const inRange = sessions.filter((s) => s.date >= from && s.date <= to);
     const last28 = addDays(to, -(DEFAULT_LOAD_DAYS - 1));
     const floors = profileZoneFloors(this.#store.getProfile()?.raw);
@@ -314,6 +325,9 @@ export class AnalyticsService {
     const firstDay = series[0]?.date;
     if (firstDay !== undefined && firstDay > addDays(from, -CTL_WARMUP_DAYS)) {
       allNotes.add(`The activity history starts on ${firstDay}; CTL needs about ${CTL_WARMUP_DAYS} days before ${from} to settle, so it reads low until then.`);
+    }
+    if (ratio?.drifted) {
+      allNotes.add(`Own load vs Garmin load drifted (ratio ${ratio.ratio_28d} vs usual ${ratio.usual}): check thresholds or the HR strap.`);
     }
     if (intensityNote) allNotes.add(intensityNote);
     if (flagInput.note) allNotes.add(flagInput.note);
