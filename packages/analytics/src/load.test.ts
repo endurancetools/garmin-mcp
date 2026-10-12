@@ -4,7 +4,9 @@ import {
   DEFAULT_LOAD_FLAGS,
   dailyTss,
   loadFlags,
+  LOAD_RATIO_DAYS,
   loadOn,
+  loadRatio,
   loadSeries,
   resolveLoadFlags,
   sampleSd,
@@ -300,5 +302,43 @@ describe('weeklyBySport', () => {
       ['nordic', 1.5, 20],
       ['row', 0.5, 6],
     ]);
+  });
+});
+
+describe('loadRatio', () => {
+  const TO = '2026-10-10';
+  const currentFrom = addDays(TO, -(LOAD_RATIO_DAYS - 1));
+  /** Daily sessions with Garmin load 100 from `from`: own TSS 70 before the current window, `current` inside it. */
+  const history = (from: string, current: number) =>
+    eachDay(from, TO).map((d) => sess(d, { g_load: 100, tss: d < currentFrom ? 70 : current, hrtss: 70 }));
+  const nineWindows = addDays(currentFrom, -9 * LOAD_RATIO_DAYS);
+
+  it('flags a drift upwards against the median of the earlier 28-day windows', () => {
+    expect(loadRatio(history(nineWindows, 100), 'auto', TO)).toEqual({ ratio_28d: 1, usual: 0.7, windows: 9, drifted: true });
+  });
+
+  it('flags a drift downwards', () => {
+    expect(loadRatio(history(nineWindows, 50), 'auto', TO)).toMatchObject({ ratio_28d: 0.5, usual: 0.7, drifted: true });
+  });
+
+  it('stays quiet within 25 % of the usual ratio and reads hrTSS with source hrtss', () => {
+    expect(loadRatio(history(nineWindows, 80), 'auto', TO)).toMatchObject({ ratio_28d: 0.8, usual: 0.7, drifted: false });
+    expect(loadRatio(history(nineWindows, 100), 'hrtss', TO)).toMatchObject({ ratio_28d: 0.7, usual: 0.7, drifted: false });
+  });
+
+  it('has no usual ratio and no drift without 8 earlier windows', () => {
+    const r = loadRatio(history(addDays(currentFrom, -7 * LOAD_RATIO_DAYS), 100), 'auto', TO);
+    expect(r).toEqual({ ratio_28d: 1, windows: 7, drifted: false });
+    expect(loadRatio([], 'auto', TO)).toEqual({ windows: 0, drifted: false });
+  });
+
+  it('counts only days that have both loads and ignores sessions after to', () => {
+    const sessions = [
+      sess(TO, { tss: 80, g_load: 100 }),
+      sess(addDays(TO, -1), { tss: 500, g_load: undefined }),
+      sess(addDays(TO, -2), { tss: undefined, load_source: 'none', g_load: 300 }),
+      sess(addDays(TO, 1), { tss: 10, g_load: 100 }),
+    ];
+    expect(loadRatio(sessions, 'auto', TO)).toMatchObject({ ratio_28d: 0.8, windows: 0 });
   });
 });

@@ -316,3 +316,65 @@ export function loadFlags(
   if (jump) out.push(jump);
   return out;
 }
+
+/** Length of the windows of the own vs Garmin load ratio (days). */
+export const LOAD_RATIO_DAYS = 28;
+/** Earlier windows with a ratio needed before the usual ratio (their median) exists. */
+export const LOAD_RATIO_MIN_WINDOWS = 8;
+/** Relative distance of the current ratio from the usual one above which the load has drifted. */
+export const LOAD_RATIO_DRIFT = 0.25;
+
+/** Own daily load against Garmin's training load (EPOC): the current window, the usual ratio and whether it drifted. */
+export interface LoadRatio {
+  /** Σ own load / Σ Garmin load of the 28 days ending on `to`, on days that have both; 2 places. */
+  ratio_28d?: number;
+  /** Median of the same ratio over the consecutive 28-day windows before the current one; only with ≥ 8 such windows. */
+  usual?: number;
+  /** Earlier windows that have a ratio. */
+  windows: number;
+  /** The current ratio is more than {@link LOAD_RATIO_DRIFT} away from the usual one (relative). */
+  drifted: boolean;
+}
+
+const median = (xs: readonly number[]): number => {
+  const s = xs.toSorted((a, b) => a - b);
+  const mid = Math.floor(s.length / 2);
+  return s.length % 2 ? (s[mid] ?? 0) : ((s[mid - 1] ?? 0) + (s[mid] ?? 0)) / 2;
+};
+
+/**
+ * Ratio of own daily load (`source`: the hierarchy `tss` or `hrtss`) to Garmin's daily training
+ * load on the days that have both, over the 28 days ending on `to`, and its median over the
+ * consecutive 28-day windows before that back to the first session (windows without a day
+ * with both are skipped). A ratio that moves away from its usual value says that the own
+ * model or Garmin's changed: outdated thresholds, a new HR strap, a power meter or pace source.
+ */
+export function loadRatio(sessions: readonly LoadSession[], source: Exclude<LoadSource, 'garmin_load'>, to: IsoDate): LoadRatio {
+  const upTo = sessions.filter((s) => s.date <= to);
+  const own = dailyTss(upTo, source);
+  const garmin = dailyTss(upTo, 'garmin_load');
+  const first = upTo.reduce<IsoDate | undefined>((m, s) => (m === undefined || s.date < m ? s.date : m), undefined);
+  const ratioOf = (end: IsoDate): number | undefined => {
+    const start = addDays(end, -(LOAD_RATIO_DAYS - 1));
+    let o = 0;
+    let g = 0;
+    for (const [date, v] of own) {
+      const gv = garmin.get(date) ?? 0;
+      if (date < start || date > end || v <= 0 || gv <= 0) continue;
+      o += v;
+      g += gv;
+    }
+    return g > 0 ? o / g : undefined;
+  };
+  const current = ratioOf(to);
+  const earlier: number[] = [];
+  // Window k ends on to − 28k; the oldest one may start before the first session.
+  const windows = first === undefined ? 0 : Math.max(0, Math.floor(daysBetween(first, to) / LOAD_RATIO_DAYS));
+  for (let k = 1; k <= windows; k++) {
+    const r = ratioOf(addDays(to, -k * LOAD_RATIO_DAYS));
+    if (r !== undefined) earlier.push(r);
+  }
+  const usual = earlier.length >= LOAD_RATIO_MIN_WINDOWS ? median(earlier) : undefined;
+  const drifted = current !== undefined && usual !== undefined && usual > 0 && Math.abs(current / usual - 1) > LOAD_RATIO_DRIFT;
+  return { ratio_28d: round(current, 2), usual: round(usual, 2), windows: earlier.length, drifted };
+}

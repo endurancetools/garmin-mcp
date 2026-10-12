@@ -50,7 +50,7 @@ describe('AnalyticsService.getLoad', () => {
       from: '2026-09-11',
       to: TODAY,
       source: 'auto',
-      latest: { date: TODAY, tss: 69.4, acwr: 1, monotony: 0, strain: 0, warming_up: false },
+      latest: { date: TODAY, tss: 69.4, acwr: 1, monotony: 0, strain: 0, warming_up: false, load_ratio_28d: 0.69 },
       thresholds_used: {
         date: TODAY,
         by_sport: {
@@ -72,6 +72,9 @@ describe('AnalyticsService.getLoad', () => {
     expect(res.data.weeks?.at(-1)).toMatchObject({ week: '2026-W41', sport: 'run', sessions: 4, hours: 4, km: 40 });
     expect(res.data.note).toMatch(/differs from computed_load/);
     expect(res.meta.note).toMatch(/LT1 approximated/);
+    // Four months of history: fewer than 8 earlier 28-day windows, so no usual ratio and no drift note.
+    expect(res.data.latest?.load_ratio_usual).toBeUndefined();
+    expect(res.meta.note).not.toMatch(/drifted/);
     expect(calls).toEqual([]);
   });
 
@@ -82,6 +85,24 @@ describe('AnalyticsService.getLoad', () => {
     expect(res.data.flags?.map((f) => f.code)).toEqual(['tsb_fresh']);
     expect(res.data.flags_used).toMatchObject({ tsb_fresh: -100, acwr_warn: 1.3 });
     expect(res.meta.note).toMatch(/Ignored flags .*: nope, acwr_warn/);
+  });
+
+  it('notes a drift of own load against Garmin load from the usual ratio; none with source garmin_load', async () => {
+    const t = setup();
+    t.store.markReferenceFetched('profile', NOW);
+    const recent = addDays(TODAY, -27);
+    const before = t.dailyRuns('2025-12-01', addDays(recent, -1));
+    const last28 = t.dailyRuns(recent, TODAY, before.length + 1, { activityTrainingLoad: 60 });
+    t.activities([...before, ...last28], '2025-12-01', TODAY);
+    t.daily('daily_summary', '2025-11-01', TODAY, () => ({ resting_hr: 50 }));
+    t.store.addThreshold({ date: '2025-01-01', param: 'lthr_run', value: 170, source: 'manual', created_at: NOW });
+    const res = await t.analytics.getLoad();
+    expect(loadOutput.safeParse(res).success).toBe(true);
+    expect(res.data.latest).toMatchObject({ load_ratio_28d: 1.16, load_ratio_usual: 0.69 });
+    expect(res.meta.note).toContain('Own load vs Garmin load drifted (ratio 1.16 vs usual 0.69): check thresholds or the HR strap.');
+    const garmin = await t.analytics.getLoad({ source: 'garmin_load' });
+    expect(garmin.data.latest?.load_ratio_28d).toBeUndefined();
+    expect(garmin.meta.note).not.toMatch(/drifted/);
   });
 
   it('auto takes power and pace before heart rate; source hrtss keeps the heart-rate numbers', async () => {
