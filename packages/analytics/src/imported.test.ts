@@ -3,6 +3,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { csvLine, parseCsv } from './csv.js';
 import { activityTypeKey, csvDuration, csvNumber, importActivities, importedActivityId, parseGarminConnectCsv } from './imported.js';
+import { sportGroup } from './sport.js';
 import { NOW, setup } from './test-utils/fake.js';
 
 const FIXTURES = path.resolve(import.meta.dirname, '../fixtures');
@@ -54,6 +55,36 @@ describe('cell values', () => {
     expect(activityTypeKey('Kolarstwo szosowe')).toBe('cycling');
     expect(activityTypeKey('Pływanie w basenie')).toBe('swimming');
     expect(activityTypeKey('Paddleboarding')).toBe('paddleboarding');
+  });
+
+  // The Polish fixture has only Bieg, Kolarstwo szosowe and Pływanie w basenie: the labels below are
+  // the expected Garmin Connect names and their variants, not checked on a real Polish export.
+  it.each([
+    ['Narciarstwo biegowe', 'nordic'],
+    ['Narciarstwo biegowe – styl klasyczny', 'nordic'],
+    ['Narciarstwo biegowe – styl łyżwowy', 'nordic'],
+    ['Narciarstwo łyżwowe', 'nordic'],
+    ['Narciarstwo klasyczne', 'nordic'],
+    ['Bieg narciarski', 'nordic'],
+    ['Narciarstwo skiturowe', 'nordic'],
+    ['Skitury', 'nordic'],
+    ['Rakiety śnieżne', 'nordic'],
+    ['Chodzenie w rakietach śnieżnych', 'nordic'],
+    ['Wioślarstwo', 'row'],
+    ['Wioślarstwo w pomieszczeniu', 'row'],
+    ['Narciarstwo', 'hike'],
+    ['Narciarstwo zjazdowe', 'hike'],
+    ['Narty', 'hike'],
+    ['Łyżwiarstwo', 'other'],
+    ['Bieg na bieżni', 'run'],
+  ])('maps the Polish label %s to the %s group', (label, group) => {
+    expect(sportGroup(activityTypeKey(label))).toBe(group);
+  });
+
+  it('keeps English labels of the new groups as their own keys', () => {
+    expect(activityTypeKey('Cross Country Classic Skiing')).toBe('cross_country_classic_skiing');
+    expect(activityTypeKey('Indoor Rowing')).toBe('indoor_rowing');
+    expect(activityTypeKey('Backcountry Skiing')).toBe('backcountry_skiing');
   });
 });
 
