@@ -1,11 +1,12 @@
 import { isoWeek, type IsoDate } from 'garmin-mcp-config';
 import { round } from 'garmin-mcp-domain';
 import type { ActivityRow, ImportedActivityRow } from 'garmin-mcp-store';
+import { RPE_LOAD_CALIBRATION } from './load.js';
 import { sportGroup, type SportGroup } from './sport.js';
 import { lt1For, lthrFor, restingHrOn, thresholdOn, type ThresholdPoint } from './thresholds.js';
 
 /** Where the training stress of a session comes from (first positive candidate wins); `none` = no load. */
-export type SessionLoadSource = 'power' | 'pace' | 'hr' | 'none';
+export type SessionLoadSource = 'power' | 'pace' | 'hr' | 'rpe' | 'none';
 
 /** One activity, normalized from an `activities` row or an `imported_activities` row. */
 export interface SessionInput {
@@ -30,6 +31,7 @@ export interface SessionInput {
   g_load?: number;
   aerobic_te?: number;
   anaerobic_te?: number;
+  /** Perceived effort on Foster's CR-10 scale (1–10); Garmin stores it × 10. */
   rpe?: number;
   feel?: number;
   /** Grade adjusted speed (m/s). */
@@ -67,7 +69,7 @@ export interface Session {
   feel?: number;
   /** Training stress of the session from `load_source`, 1 place; absent (never 0) when no candidate is positive. */
   tss?: number;
-  /** Intensity factor of `load_source` (NP/FTP, GAP/threshold speed or HR reserve), 3 places; absent with `none`. */
+  /** Intensity factor of `load_source` (NP/FTP, GAP/threshold speed or HR reserve), 3 places; absent with `rpe` and `none`. */
   if?: number;
   load_source: SessionLoadSource;
   /** The heart-rate candidate (0 without heart rate); `get_load` with `source: "hrtss"` sums it. */
@@ -105,13 +107,17 @@ function zonesFrom(raw: Obj | undefined): SessionInput['zones_s'] {
 /**
  * Session input from a stored activity: columns, plus `normPower`, `avgGradeAdjustedSpeed`,
  * `hrTimeInZone_N`, cadence, moving time, elevation loss and event type from the activity
- * list entry, and RPE/feel from `activity_details(kind=summary).raw.metadataDTO` when given.
+ * list entry, and RPE/feel from the summary detail (`activity_details(kind=summary).raw`) when
+ * given: `summaryDTO.directWorkoutRpe/Feel`, which `get_activity` and `update_activity` use,
+ * else `metadataDTO.workoutRpe/Feel`. Garmin's RPE 10–100 becomes CR-10 (/10).
  * `undefined` for a row without a date.
  */
 export function sessionFromActivity(a: ActivityRow, summaryRaw?: unknown): SessionInput | undefined {
   if (!a.date) return undefined;
   const raw = obj(a.raw);
+  const summary = obj(obj(summaryRaw)?.['summaryDTO']);
   const meta = obj(obj(summaryRaw)?.['metadataDTO']);
+  const rpe10 = num(summary?.['directWorkoutRpe']) ?? num(meta?.['workoutRpe']);
   return {
     id: a.id,
     date: a.date,
@@ -133,8 +139,8 @@ export function sessionFromActivity(a: ActivityRow, summaryRaw?: unknown): Sessi
     g_load: opt(a.training_load),
     aerobic_te: opt(a.training_effect_aerobic),
     anaerobic_te: opt(a.training_effect_anaerobic),
-    rpe: num(meta?.['workoutRpe']),
-    feel: num(meta?.['workoutFeel']),
+    rpe: rpe10 === undefined ? undefined : rpe10 / 10,
+    feel: num(summary?.['directWorkoutFeel']) ?? num(meta?.['workoutFeel']),
     gap_mps: num(raw?.['avgGradeAdjustedSpeed']),
     zones_s: zonesFrom(raw),
     source: 'db',
@@ -177,11 +183,11 @@ export function hrTss(durationS: number | undefined, ifValue: number): number {
   return ((durationS ?? 0) / 3600) * ifValue * ifValue * 100;
 }
 
-/** One load candidate: stress in the scale where an hour at threshold is 100, and its intensity factor (both unrounded). */
+/** One load candidate: stress in the scale where an hour at threshold is 100, and its intensity factor (both unrounded; no IF for `rpe`). */
 export interface LoadCandidate {
   source: Exclude<SessionLoadSource, 'none'>;
   tss: number;
-  if: number;
+  if?: number;
 }
 
 /** Stress of a session at a constant intensity factor: hours × IF² × 100 (TSS, rTSS and hrTSS alike). */
@@ -205,6 +211,21 @@ export function paceCandidate(gapMps: number | undefined, thresholdPaceSPerKm: n
   }
   const ifValue = gapMps / (1000 / thresholdPaceSPerKm);
   return { source: 'pace', tss: stress(durationS, ifValue), if: ifValue };
+}
+
+/** Foster's CR-10 scale of session RPE. */
+const RPE_MIN = 1;
+const RPE_MAX = 10;
+
+/**
+ * Session RPE candidate (Foster): stress = RPE (CR-10) × minutes × `calibration`, the
+ * calibration bringing it to the scale where an hour at threshold is 100 (an approximation);
+ * no intensity factor. `undefined` with an RPE outside 1–10 (an entry error, not an effort)
+ * or without duration.
+ */
+export function rpeCandidate(rpe: number | undefined, durationS: number | undefined, calibration: number = RPE_LOAD_CALIBRATION): LoadCandidate | undefined {
+  if (!(rpe !== undefined && rpe >= RPE_MIN && rpe <= RPE_MAX && durationS !== undefined && durationS > 0)) return undefined;
+  return { source: 'rpe', tss: rpe * (durationS / 60) * calibration };
 }
 
 /** The resolved load of a session: rounded `tss` and `if` of the winning candidate, or `none`. */
@@ -264,6 +285,8 @@ export interface SessionContext {
   thresholds: readonly ThresholdPoint[];
   /** Daily resting HR for the 28-day rolling mean. */
   daily: readonly { date: IsoDate; resting_hr: number | null }[];
+  /** Multiplier of the session RPE candidate; default {@link RPE_LOAD_CALIBRATION}. */
+  rpe_calibration?: number;
 }
 
 /** Optional note sink: each default or approximation used is reported once. */
@@ -276,8 +299,8 @@ export const NO_THRESHOLD_PACE_NOTE =
 /**
  * Metrics of one session with the thresholds valid on its date (LTHR, LT1, FTP and threshold
  * pace of its sport, rolling resting HR). Load candidates in order: `power` (bike with NP and
- * `ftp_w`), `pace` (run with GAP and `run_threshold_pace_s_per_km`), `hr` (hrTSS); the first
- * positive one gives `tss`, `if` and `load_source`. LT1 notes are not reported: `get_load`
+ * `ftp_w`), `pace` (run with GAP and `run_threshold_pace_s_per_km`), `hr` (hrTSS), `rpe`
+ * (session RPE, any sport); the first positive one gives `tss`, `if` and `load_source`. LT1 notes are not reported: `get_load`
  * takes them from `thresholds_used`. Rounding: IF, EF, EF-GAP, GAP 3 places; TSS, hrTSS,
  * Garmin load, TE, RHR 1 place; durations, distances, HR, power, cadence, calories whole numbers.
  */
@@ -298,6 +321,7 @@ export function sessionMetrics(input: SessionInput, ctx: SessionContext, onNote?
     sport === 'bike' ? powerCandidate(input.np_w, ftp, input.duration_s) : undefined,
     sport === 'run' ? paceCandidate(input.gap_mps, pace, input.duration_s) : undefined,
     { source: 'hr', tss: hrStress, if: hrIf },
+    rpeCandidate(input.rpe, input.duration_s, ctx.rpe_calibration),
   ]);
   const z = input.zones_s;
   return {

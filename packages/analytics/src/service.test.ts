@@ -110,6 +110,27 @@ describe('AnalyticsService.getLoad', () => {
     expect(hr.data.latest?.ctl).toBeLessThan(auto.data.latest?.ctl ?? 0);
   });
 
+  it('auto counts strength without heart rate from the session RPE of its summary detail; flags.rpe_calibration overrides 0.23', async () => {
+    const t = setup();
+    t.store.markReferenceFetched('profile', NOW);
+    const lift = activity(9100, TODAY, { activityType: { typeKey: 'strength_training' }, averageHR: undefined, duration: 2700, distance: 0 });
+    t.activities([lift], addDays(TODAY, -1), TODAY);
+    t.store.putActivityDetail(9100, 'summary', { activityId: 9100, summaryDTO: { directWorkoutRpe: 60 } }, NOW);
+    t.daily('daily_summary', addDays(TODAY, -40), TODAY, () => ({ resting_hr: 50 }));
+    const auto = await t.analytics.getLoad({ from: TODAY, include_activities: true });
+    expect(loadOutput.safeParse(auto).success).toBe(true);
+    expect(auto.data.activities?.[0]).toMatchObject({ sport: 'strength', rpe: 6, tss: 62.1, load_source: 'rpe', hrtss: 0 });
+    expect(auto.data.activities?.[0]?.if).toBeUndefined();
+    expect(auto.data.latest?.tss).toBe(62.1);
+    expect(auto.data.flags_used.rpe_calibration).toBe(0.23);
+    expect(auto.data.note).toMatch(/else session RPE/);
+    const own = await t.analytics.getLoad({ from: TODAY, include_activities: true, flags: { rpe_calibration: 0.2 } });
+    expect(own.data.activities?.[0]).toMatchObject({ tss: 54, load_source: 'rpe' });
+    expect(own.data.flags_used.rpe_calibration).toBe(0.2);
+    const hr = await t.analytics.getLoad({ from: TODAY, source: 'hrtss' });
+    expect(hr.data.latest?.tss).toBe(0);
+  });
+
   it('marks a week of history as warming up: no TSB flag in get_load, load signal unknown in get_readiness', async () => {
     const t = setup();
     t.store.markReferenceFetched('profile', NOW);

@@ -11,6 +11,7 @@ import {
   paceCandidate,
   powerCandidate,
   resolveLoad,
+  rpeCandidate,
   seilerZoneByHr,
   sessionFromActivity,
   sessionFromImported,
@@ -18,6 +19,7 @@ import {
   type SessionContext,
   type SessionInput,
 } from './session.js';
+import { RPE_LOAD_CALIBRATION } from './load.js';
 import type { ThresholdPoint } from './thresholds.js';
 
 const row = (date: string, param: ThresholdParam, value: number): ThresholdPoint => ({ date, param, value });
@@ -228,6 +230,45 @@ describe('seilerZoneByHr', () => {
   });
 });
 
+describe('load source: session RPE last (Foster)', () => {
+  const strength = (extra: Partial<SessionInput> = {}) => input({ type: 'strength_training', avg_hr: undefined, rpe: 6, ...extra });
+
+  it('RPE × minutes × 0.23, no IF; the default calibration lives in load.ts', () => {
+    expect(rpeCandidate(6, 3600)).toEqual({ source: 'rpe', tss: 6 * 60 * RPE_LOAD_CALIBRATION });
+    expect(RPE_LOAD_CALIBRATION).toBe(0.23);
+    const s = sessionMetrics(strength({ duration_s: 2700 }), CTX);
+    expect(s).toMatchObject({ tss: 62.1, load_source: 'rpe', hrtss: 0, rpe: 6 });
+    expect(s.if).toBeUndefined();
+  });
+
+  it('strength without heart rate gets a load only from RPE', () => {
+    expect(sessionMetrics(strength({ rpe: undefined }), CTX)).toMatchObject({ load_source: 'none' });
+    expect(sessionMetrics(strength(), CTX)).toMatchObject({ tss: 82.8, load_source: 'rpe' });
+  });
+
+  it('comes after every measured source: heart rate, power and pace win', () => {
+    expect(sessionMetrics(input({ rpe: 9 }), CTX)).toMatchObject({ tss: 69.4, load_source: 'hr' });
+    const full: SessionContext = { ...CTX, thresholds: [...CTX.thresholds, row('2026-01-01', 'ftp_w', 250)] };
+    expect(sessionMetrics(input({ type: 'road_biking', np_w: 200, avg_hr: undefined, rpe: 9 }), full)).toMatchObject({ tss: 64, load_source: 'power' });
+    // a measured source that gives 0 falls through to RPE
+    expect(sessionMetrics(input({ avg_hr: 40, rpe: 5 }), CTX)).toMatchObject({ tss: 69, load_source: 'rpe', hrtss: 0 });
+  });
+
+  it('the calibration is overridable through the context', () => {
+    expect(sessionMetrics(strength(), { ...CTX, rpe_calibration: 0.2 })).toMatchObject({ tss: 72, load_source: 'rpe' });
+    expect(sessionMetrics(strength(), { ...CTX, rpe_calibration: 0 })).toMatchObject({ load_source: 'none' });
+  });
+
+  it('RPE outside CR-10 1–10, or no duration, is no candidate', () => {
+    expect(rpeCandidate(0, 3600)).toBeUndefined();
+    expect(rpeCandidate(11, 3600)).toBeUndefined();
+    expect(rpeCandidate(Number.NaN, 3600)).toBeUndefined();
+    expect(rpeCandidate(5, 0)).toBeUndefined();
+    expect(rpeCandidate(5, undefined)).toBeUndefined();
+    expect(sessionMetrics(strength({ rpe: 60 }), CTX).load_source).toBe('none');
+  });
+});
+
 describe('sessionFromActivity', () => {
   it('reads columns, list-entry fields and RPE/feel from the summary detail', () => {
     const a = activity(
@@ -259,7 +300,7 @@ describe('sessionFromActivity', () => {
       avg_cadence: 172.6,
       gap_mps: 3.4,
       g_load: 88.26,
-      rpe: 60,
+      rpe: 6,
       feel: 75,
       zones_s: [100.4, 900, 1200, 700, 100],
       source: 'db',
@@ -281,6 +322,12 @@ describe('sessionFromActivity', () => {
       z1_s: 100,
       z5_s: 100,
     });
+  });
+
+  it('reads RPE/feel from summaryDTO first (as get_activity does), RPE 10–100 as CR-10', () => {
+    const both = { summaryDTO: { directWorkoutRpe: 70, directWorkoutFeel: 25 }, metadataDTO: { workoutRpe: 30, workoutFeel: 100 } };
+    expect(sessionFromActivity(activity(), both)).toMatchObject({ rpe: 7, feel: 25 });
+    expect(sessionFromActivity(activity(), { summaryDTO: { directWorkoutRpe: 100 } })?.rpe).toBe(10);
   });
 
   it('falls back to biking cadence; no zones when Garmin gave none; no row without a date', () => {

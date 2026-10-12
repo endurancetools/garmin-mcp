@@ -245,9 +245,9 @@ export class AnalyticsService {
   /**
    * Every session up to `to`: stored activities (RPE/feel from their summary detail, when
    * fetched) plus imported CSV activities on dates outside `activities:covered`, with the
-   * thresholds valid on each date.
+   * thresholds valid on each date; `rpeCalibration` overrides the session RPE multiplier.
    */
-  #sessions(to: IsoDate): { sessions: Session[]; notes: string[]; thresholds: ThresholdRow[]; daily: { date: IsoDate; resting_hr: number | null }[] } {
+  #sessions(to: IsoDate, rpeCalibration?: number): { sessions: Session[]; notes: string[]; thresholds: ThresholdRow[]; daily: { date: IsoDate; resting_hr: number | null }[] } {
     const store = this.#store;
     const inputs: SessionInput[] = store
       .queryActivities({ to, sort: 'asc' })
@@ -261,7 +261,7 @@ export class AnalyticsService {
     const daily = store
       .getDaily('daily_summary', addDays(first !== undefined && first < to ? first : to, -RHR_WINDOW_DAYS), to)
       .map((d) => ({ date: d.date, resting_hr: d.resting_hr }));
-    const { sessions, notes } = buildSessions(inputs, { thresholds, daily });
+    const { sessions, notes } = buildSessions(inputs, { thresholds, daily, rpe_calibration: rpeCalibration });
     return { sessions, notes, thresholds, daily };
   }
 
@@ -286,7 +286,7 @@ export class AnalyticsService {
       this.garmin.syncer.ensureDaily(['daily_summary'], addDays(from, -RHR_WINDOW_DAYS), to, this.#budget),
     ]);
 
-    const { sessions, notes, thresholds, daily } = this.#sessions(end);
+    const { sessions, notes, thresholds, daily } = this.#sessions(end, flags.rpe_calibration);
     const series = loadSeries(sessions, source, end);
     const latest = loadOn(series, to);
     const inRange = sessions.filter((s) => s.date >= from && s.date <= to);
@@ -323,7 +323,7 @@ export class AnalyticsService {
       "It differs from computed_load in get_training_status, which runs the same EWMA on Garmin's EPOC training load.";
     const note =
       source === 'auto'
-        ? `Own load model: daily TSS, per activity from power (cycling NP / FTP), else pace (running grade adjusted speed / threshold pace), else heart rate (hrTSS), with the thresholds valid on each date; load_source per activity says which. ${model}`
+        ? `Own load model: daily TSS, per activity from power (cycling NP / FTP), else pace (running grade adjusted speed / threshold pace), else heart rate (hrTSS), else session RPE × minutes × rpe_calibration (Foster, approximate), with the thresholds valid on each date; load_source per activity says which. ${model}`
         : source === 'hrtss'
           ? `Own load model: daily hrTSS from heart rate only, with the thresholds valid on each date (LTHR per sport, 28-day resting HR). ${model}`
           : "Daily load is the sum of Garmin's per-activity training load (EPOC), as in computed_load of get_training_status; imported activities have no Garmin load and count 0.";

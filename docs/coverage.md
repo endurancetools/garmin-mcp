@@ -201,7 +201,7 @@ Not Garmin Connect reads: these are computed by garmin-mcp from data already in 
 
 | Computed data | garmin-mcp | Built from |
 | --- | --- | --- |
-| Own load model: TSS per activity (power, pace or heart rate), CTL/ATL/TSB, ACWR, monotony, strain, flags | `get_load` | activities (normalized power, grade adjusted speed, heart rate, duration), daily resting heart rate, threshold history |
+| Own load model: TSS per activity (power, pace, heart rate or RPE), CTL/ATL/TSB, ACWR, monotony, strain, flags | `get_load` | activities (normalized power, grade adjusted speed, heart rate, duration), daily resting heart rate, threshold history |
 | Weekly volume per sport, 3-zone intensity split, efficiency trend | `get_load` `include_activities`, `include_efficiency` | activities (HR zones, speed, grade adjusted speed, normalized power) |
 | Morning GO / MODIFY / REST decision | `get_readiness` | HRV, resting heart rate, sleep, Body Battery, stress, training readiness, the load model |
 | Threshold history (LTHR per sport, LT1, HRmax, FTP, VO2max...) | `get_thresholds`, `set_threshold` | Garmin profile values recorded on each change, plus your own test results |
