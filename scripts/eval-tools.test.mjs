@@ -86,12 +86,14 @@ describe('eval-tools', () => {
     expect(firstToolCall('{"type":"result","subtype":"error_during_execution","is_error":true,"errors":["Not logged in"]}\n')).toEqual({ call: null, error: 'Not logged in' });
   });
 
-  it('ships at least 25 valid scenarios, Polish and English, with the delete case', () => {
+  it('ships at least 25 valid scenarios, Polish and English, with the delete case and every analytics tool', () => {
     const scenarios = parseScenarios(readFileSync(new URL('../docs/evals/tool-selection.jsonl', import.meta.url), 'utf8'));
     expect(scenarios.length).toBeGreaterThanOrEqual(25);
     expect(scenarios.some((s) => /[ąćęłńóśźż]/i.test(s.prompt))).toBe(true);
     expect(scenarios.some((s) => s.expect.tool === null)).toBe(true);
     const tools = new Set(scenarios.flatMap((s) => expectedTools(s)));
-    for (const name of ['preview_workout', 'create_workout', 'schedule_workouts']) expect(tools).toContain(name);
+    for (const name of ['preview_workout', 'create_workout', 'schedule_workouts', 'get_load', 'get_readiness', 'get_thresholds', 'set_threshold']) {
+      expect(tools).toContain(name);
+    }
   });
 });

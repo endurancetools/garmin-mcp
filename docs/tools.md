@@ -19,6 +19,10 @@ You do not need to call tools by name; the assistant does. This page tells you w
 | `preview_workout`, `create_workout`, `schedule_workouts` | build a workout from a preset (run intervals, walk/run, easy zone 2, strength circuit) or from typed steps with repeats and heart rate, pace or power targets; preview before saving; put it on the calendar or take it off |
 | `get_gear`, `get_devices` | gear with distance, devices with firmware, last sync and settings |
 | `garmin_sync` | download a scope (activities, health, training, reference or all) and date range explicitly, with progress |
+| `get_load` | your own training load model from heart rate: CTL/ATL/TSB, ACWR, monotony and strain, warning flags, weekly volume per sport, the 3-zone intensity split, optionally per-activity hrTSS and the efficiency trend ([formulas](analytics.md)) |
+| `get_readiness` | a morning GO / MODIFY / REST decision from HRV, resting heart rate, sleep, Body Battery, training readiness, stress and load, with your own thresholds if you give them |
+| `get_thresholds` | the thresholds in use on a date (LTHR and LT1 per sport, HRmax, 28-day resting heart rate) and their history |
+| `set_threshold` | record a field test result (LTHR, LT1, HRmax, FTP...) from a date; stored locally, never sent to Garmin |
 
 With `GARMIN_ENABLE_DESTRUCTIVE=true` there are also `delete_activity`, `delete_workout`, `delete_weigh_in`, and `create_workout` can overwrite a saved workout.
 
@@ -27,6 +31,10 @@ With `GARMIN_ENABLE_DESTRUCTIVE=true` there are also `delete_activity`, `delete_
 Resources the client can read directly: your profile, gear, devices, the list of activity type keys, and the sync status; plus `garmin://activity/{id}` and `garmin://workout/{id}` for one item.
 
 Prompts: `weekly_review` and `plan_next_week`, ready-made conversation starters some clients show in a menu.
+
+## Training analytics
+
+How the four analytics tools compute their numbers, their defaults and their limits: [Training analytics](analytics.md).
 
 ## Which Garmin data is covered
 

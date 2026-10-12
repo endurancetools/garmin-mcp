@@ -34,6 +34,8 @@ docs:
     children:
       - title: "Tools reference"
         url: /tools/
+      - title: "Training analytics"
+        url: /analytics/
       - title: "Coverage map"
         url: /coverage/
       - title: "How it works"

@@ -73,6 +73,9 @@ Measured on a real account after a 90-day sync (433 requests in about an hour): 
 | `preview_workout`, `create_workout`, `schedule_workouts` | workouts from presets (run intervals, walk/run, easy Z2, strength circuit) or a typed definition (nestable repeats, HR/pace/power targets); `preview_workout` shows the steps and estimated duration without saving; `schedule_workouts` puts workouts on the calendar and takes them off again |
 | `get_gear`, `get_devices` | gear with distance, devices with last sync and settings |
 | `garmin_sync` | explicit download of a scope (all/activities/health/training/reference) and date range, with progress notifications |
+| `get_load` | own load model from heart rate (hrTSS with the thresholds valid on each date): CTL/ATL/TSB, ACWR 7:28, monotony and strain, flags with overridable thresholds, ISO weeks per sport, 3-zone intensity split; optional daily series, per-activity IF/hrTSS/EF, monthly EF trend |
+| `get_readiness` | morning GO / MODIFY / REST from HRV, resting HR, sleep, body battery, training readiness, stress and load; overridable `rules`, every signal with value, reference and rating |
+| `get_thresholds`, `set_threshold` | threshold history per date (LTHR per sport, LT1, HRmax, FTP, VO2max...; Garmin profile changes recorded automatically) and recording a test result, locally only |
 
 `delete_activity`, `delete_workout`, `delete_weigh_in` and overwriting a saved workout (`create_workout` with `workout_id`) are only available with `GARMIN_ENABLE_DESTRUCTIVE=true`.
 
@@ -80,7 +83,7 @@ Resources: `garmin://profile`, `garmin://gear`, `garmin://devices`, `garmin://ac
 
 Every response is `{ data, meta: { source: cache|live|partial|local, fetched_at, coverage?, sync_hint? } }`, as JSON text and as `structuredContent` matching the tool's `outputSchema`; failures are `{ error: { code, message, hint } }`.
 
-Which Garmin Connect data is covered, and what is still missing: [docs/coverage.md](docs/coverage.md).
+Formulas, defaults and limits of the analytics tools: [docs/analytics.md](docs/analytics.md). Which Garmin Connect data is covered, and what is still missing: [docs/coverage.md](docs/coverage.md).
 
 ## CLI
 
