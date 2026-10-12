@@ -498,6 +498,20 @@ describe('GarminService', () => {
     expect(res.data).not.toHaveProperty('training');
   });
 
+  it('reports cache coverage like the reads do: a sync hint for a gap, nothing once covered', async () => {
+    const { service, calls } = setup({ autoFetch: false, activities: [summary(1, '2026-09-10')] });
+    const gap = service.coverage('period', '2026-09-01', '2026-09-30');
+    expect(calls).toEqual([]);
+    expect(gap.sync_hint).toEqual({ scope: 'all', from: '2026-09-01', to: '2026-09-30' });
+    const summaryMeta = (await service.getPeriodSummary('month', { anchor_date: '2026-09-15' })).meta;
+    expect(gap).toEqual({ note: summaryMeta.note, sync_hint: summaryMeta.sync_hint });
+    expect(service.coverage('daily', '2026-09-01', '2026-09-30', ['training_status']).sync_hint).toEqual({ scope: 'training', from: '2026-09-01', to: '2026-09-30' });
+    await service.sync('all', '2026-09-01', '2026-09-30');
+    expect(service.coverage('period', '2026-09-01', '2026-09-30')).toEqual({});
+    expect(service.coverage('daily', '2026-09-01', '2026-09-30')).toEqual({});
+    expect(service.coverage('activities', '2026-09-01', '2026-09-30')).toEqual({});
+  });
+
   it('resolves the activity type of an edit from the cached type list', async () => {
     const { service, calls, count } = setup({ activities: [summary(1, '2026-10-07')] });
     await service.getActivityTypes();
