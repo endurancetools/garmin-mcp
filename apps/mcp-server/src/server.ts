@@ -1,6 +1,7 @@
 import { McpServer, ResourceTemplate, type ServerContext } from '@modelcontextprotocol/server';
 import { InputError } from 'garmin-mcp-config';
 import type { GarminService } from 'garmin-mcp-domain';
+import { readFileSync } from 'node:fs';
 import { z } from 'zod';
 import { toToolError } from './errors.js';
 import type { Runtime, SyncProgressOptions } from 'garmin-mcp-domain';
@@ -8,7 +9,8 @@ import type { SyncJobProgress } from 'garmin-mcp-store';
 import { inputSchema, selectTools, type ToolDef } from './tools.js';
 
 export const SERVER_NAME = 'garmin-mcp';
-export const SERVER_VERSION = '0.1.0';
+/** Read from the package's own package.json (src/ in tests, dist/ when installed), so `nx release` bumps it. */
+export const SERVER_VERSION: string = (JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as { version: string }).version;
 
 const INSTRUCTIONS = `Garmin Connect data for the signed-in user, served from a local cache. Read tools download data that is not in the cache yet by themselves (within the daily Garmin request limit), so just call them and answer; there is no need to ask about or describe syncing. If auto fetch is turned off (GARMIN_AUTO_FETCH=false), missing data comes back as meta.sync_hint; then ask the user before calling garmin_sync with it.
 - Dates are YYYY-MM-DD in the user's local time zone; "today" is resolved by the server.

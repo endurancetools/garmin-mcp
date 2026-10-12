@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { buildProgram, type ProgramDeps } from './commands.js';
+import { buildProgram, VERSION, type ProgramDeps } from './commands.js';
 import { table } from './io.js';
 import { anonymize, RECORDABLE } from './record.js';
 
@@ -174,6 +174,12 @@ describe('cli', () => {
     ]);
     const thresholds = buildProgram().commands.find((c) => c.name() === 'thresholds');
     expect(thresholds?.commands.map((c) => c.name())).toEqual(['list', 'add', 'export', 'import']);
+  });
+
+  it('reports the version from its own package.json', () => {
+    const pkg = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as { version: string };
+    expect(VERSION).toBe(pkg.version);
+    expect(buildProgram().version()).toBe(pkg.version);
   });
 
   it('renders tables', () => {
