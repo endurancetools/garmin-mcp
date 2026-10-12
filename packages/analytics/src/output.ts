@@ -125,12 +125,14 @@ export const readinessOutput = envelope({
 
 const effective = { value: num, since: str, source: str, note: str };
 const thresholdRow = z.looseObject({ date: str, param: str, value: num, source: str, note: str });
+const sportThresholds = obj({ lthr: num, lt1: num, lthr_note: str, lt1_note: str });
 
 export const thresholdsOutput = envelope({
   date: str,
   effective: z.record(z.string(), z.looseObject(effective)).optional(),
   history: list(thresholdRow),
-  lt1_note: str,
+  by_sport: obj({ run: sportThresholds, bike: sportThresholds, swim: sportThresholds }),
+  hrmax: obj({ value: num, note: str }),
   rhr_28d: obj({ value: num, samples: num, note: str }),
 });
 

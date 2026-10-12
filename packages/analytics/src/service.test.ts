@@ -181,10 +181,36 @@ describe('AnalyticsService thresholds', () => {
       vo2max_run: { value: 52 },
     });
     expect(res.data.rhr_28d).toEqual({ value: 50, samples: 28 });
-    expect(res.data.lt1_note).toMatch(/151 bpm/);
+    expect(res.data.hrmax).toEqual({ value: 192 });
+    // No lthr_bike or lthr_swim row: both use the running LTHR, LT1 is 0.90 x 168 (bike 7 lower).
+    expect(res.data.by_sport).toEqual({
+      run: { lthr: 168, lt1: 151, lt1_note: expect.stringMatching(/LT1 approximated/) },
+      bike: { lthr: 168, lt1: 144, lthr_note: expect.stringMatching(/No lthr_bike/), lt1_note: expect.stringMatching(/LT1 approximated/) },
+      swim: { lthr: 168, lt1: 151, lthr_note: expect.stringMatching(/No lthr_swim/), lt1_note: expect.stringMatching(/LT1 approximated/) },
+    });
     // The profile did not change: a second read adds nothing.
     await analytics.getThresholds();
     expect(store.listThresholds().filter((r) => r.source === 'garmin-auto')).toHaveLength(4);
+  });
+
+  it('resolves by_sport from own bike LTHR and a tested LT1, filtered by param or not', async () => {
+    const { analytics, store } = trained();
+    store.addThreshold({ date: '2026-08-01', param: 'lthr_bike', value: 160, source: 'test', created_at: NOW });
+    store.addThreshold({ date: '2026-08-01', param: 'lt1_hr', value: 150, source: 'test', created_at: NOW });
+    store.addThreshold({ date: '2026-08-01', param: 'hrmax', value: 190, source: 'manual', created_at: NOW });
+    const res = await analytics.getThresholds({ date: TODAY, param: 'lthr_bike' });
+    fits(thresholdsOutput, res);
+    expect(thresholdsOutput.safeParse(res).success).toBe(true);
+    expect(Object.keys(res.data.effective)).toEqual(['lthr_bike']);
+    expect(res.data.by_sport).toEqual({
+      run: { lthr: 170, lt1: 150 },
+      bike: { lthr: 160, lt1: 143 },
+      swim: { lthr: 170, lt1: 150, lthr_note: expect.stringMatching(/No lthr_swim/) },
+    });
+    expect(res.data.hrmax).toEqual({ value: 190 });
+    // Before the bike and LT1 tests the history carries them back: the first row applies.
+    const early = await analytics.getThresholds({ date: '2026-07-01' });
+    expect(early.data.by_sport.bike).toEqual({ lthr: 160, lt1: 143 });
   });
 
   it('set_threshold is visible in get_thresholds and in the load model', async () => {
@@ -249,5 +275,13 @@ describe('AnalyticsService thresholds', () => {
     const res = await analytics.getThresholds();
     expect(res.meta.sync_hint).toEqual({ scope: 'health', from: '2026-09-10', to: '2026-10-07' });
     expect(res.data.rhr_28d).toMatchObject({ value: 50, samples: 0, note: expect.stringMatching(/default 50/) });
+    expect(res.data.by_sport.run).toEqual({
+      lthr: 170,
+      lt1: 153,
+      lthr_note: expect.stringMatching(/default 170/),
+      lt1_note: expect.stringMatching(/default 170 .*LT1 approximated/),
+    });
+    expect(res.data.by_sport.bike.lthr_note).toMatch(/default 170/);
+    expect(res.data.hrmax).toEqual({ note: expect.stringMatching(/No HRmax/) });
   });
 });

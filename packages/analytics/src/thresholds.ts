@@ -144,3 +144,39 @@ export function restingHrOn(
   if (value !== undefined) return { value };
   return { value: DEFAULT_RHR, note: `No resting HR history; default ${DEFAULT_RHR} bpm used.` };
 }
+
+/** Sports `by_sport` of `get_thresholds` resolves; other groups use the running thresholds. */
+export const THRESHOLD_SPORTS = ['run', 'bike', 'swim'] as const satisfies readonly SportGroup[];
+export type ThresholdSport = (typeof THRESHOLD_SPORTS)[number];
+
+/** LTHR and LT1 of one sport; a note says when a value is a fallback, a default or an approximation. */
+export interface SportThresholds {
+  lthr: number;
+  lt1: number;
+  lthr_note?: string;
+  lt1_note?: string;
+}
+
+/**
+ * LTHR and LT1 of run, bike and swim on `date` through `lthrFor` and `lt1For`. Bike and swim
+ * without their own LTHR row note that the running LTHR is used.
+ */
+export function thresholdsBySport(rows: readonly ThresholdPoint[], date: IsoDate): Record<ThresholdSport, SportThresholds> {
+  const one = (sport: ThresholdSport): SportThresholds => {
+    const lthr = lthrFor(rows, sport, date);
+    const lt1 = lt1For(rows, sport, date);
+    const own = sport === 'run' ? undefined : (`lthr_${sport}` as const);
+    const fallback =
+      own && !lthr.note && thresholdOn(rows, own, date) === undefined ? `No ${own} in the threshold history; the running LTHR is used.` : undefined;
+    const lthrNote = lthr.note ?? fallback;
+    return { lthr: lthr.value, lt1: lt1.value, ...(lthrNote && { lthr_note: lthrNote }), ...(lt1.note && { lt1_note: lt1.note }) };
+  };
+  return { run: one('run'), bike: one('bike'), swim: one('swim') };
+}
+
+/** HRmax on `date` from the threshold history (Garmin profile or a test); no row, no value and a note. */
+export function hrmaxOn(rows: readonly ThresholdPoint[], date: IsoDate): Partial<Resolved> {
+  const value = thresholdOn(rows, 'hrmax', date);
+  if (value !== undefined) return { value };
+  return { note: 'No HRmax in the threshold history (Garmin profile or set_threshold); no default is assumed.' };
+}

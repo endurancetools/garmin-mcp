@@ -423,7 +423,7 @@ export const TOOLS: ToolDef[] = [
     title: 'Get training thresholds',
     description:
       'Thresholds the analytics use on `date` (default today): per param its value, the date it applies since and its source (garmin-auto from the Garmin profile, test, manual, import), ' +
-      'the 28-day resting HR, and a note when LT1 is approximated from LTHR. history adds every recorded row. Example: {"param":"lthr_run","history":true}.',
+      'by_sport (run, bike, swim: LTHR and LT1 with a note when a fallback, default or approximation), HRmax and the 28-day resting HR. history adds every recorded row. Example: {"param":"lthr_run","history":true}.',
     input: {
       date: date.optional(),
       param: z.enum(THRESHOLD_PARAMS).optional(),
