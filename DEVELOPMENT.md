@@ -18,19 +18,23 @@ pnpm nx test garmin-mcp-domain --skip-nx-cache  # one project, fresh
 ## Layout
 
 ```
-apps/mcp-server  garmin-mcp-server  MCP adapter (@modelcontextprotocol/server 2.x): tools, resources, prompts, stdio + streamable HTTP
-apps/cli         garmin-mcp-cli     login, sync, previews, doctor, record
-packages/domain  garmin-mcp-domain  GarminService use cases, metrics (CTL/ATL/TSB, trends), workout builder, runtime wiring
-packages/store   garmin-mcp-store   SQLite (better-sqlite3, WAL), migrations, TTL rules, Syncer
-packages/client  garmin-mcp-client  typed connectapi client, zod schemas, retries, pool of 4
-packages/auth    garmin-mcp-auth    browser sign-in (DevTools Protocol), mobile SSO + MFA, DI OAuth2, refresh mutex, curl/fetch/import
-packages/config  garmin-mcp-config  config loading, hosts, paths and permissions, logger, dates
-scripts/         garmin-mcp-scripts eval harness (see Evals), mcpb build
+apps/mcp-server    garmin-mcp-server     MCP adapter (@modelcontextprotocol/server 2.x): tools, resources, prompts, stdio + streamable HTTP
+apps/cli           garmin-mcp-cli        login, sync, previews, analytics commands, doctor, record
+packages/analytics garmin-mcp-analytics  training analytics: threshold history, hrTSS, CTL/ATL/TSB, ACWR, readiness, CSV import
+packages/domain    garmin-mcp-domain     GarminService use cases, metrics (CTL/ATL/TSB, trends), workout builder, runtime wiring
+packages/store     garmin-mcp-store      SQLite (better-sqlite3, WAL), migrations, TTL rules, Syncer
+packages/client    garmin-mcp-client     typed connectapi client, zod schemas, retries, pool of 4
+packages/auth      garmin-mcp-auth       browser sign-in (DevTools Protocol), mobile SSO + MFA, DI OAuth2, refresh mutex, curl/fetch/import
+packages/config    garmin-mcp-config     config loading, hosts, paths and permissions, logger, dates
+scripts/           garmin-mcp-scripts    eval harness (see Evals), mcpb build
 ```
 
 ```mermaid
 flowchart TD
     cli[garmin-mcp-cli] --> server[garmin-mcp-server]
+    cli --> analytics
+    server --> analytics[garmin-mcp-analytics]
+    analytics --> domain
     cli --> domain
     server --> domain[garmin-mcp-domain]
     domain --> store[garmin-mcp-store]
@@ -43,7 +47,7 @@ flowchart TD
     auth -. "browser (CDP), cuimp" .-> sso[(Garmin sign-in)]
 ```
 
-Imports only go downward (apps → domain → store → client → auth → config); the diagram shows the direct `dependencies` of each package (every package also depends on the ones below its direct ones). Both oxlint (`no-restricted-imports` per package) and `@nx/enforce-module-boundaries` (tags `scope:*`, `type:*`) fail the lint on a violation. The single exception is `garmin serve` importing `garmin-mcp-server`.
+Imports only go downward (apps → analytics → domain → store → client → auth → config; `analytics` also imports `store` and `config` directly and is computed from the cache only, never from the Garmin client); the diagram shows the direct `dependencies` of each package (every package also depends on the ones below its direct ones). Both oxlint (`no-restricted-imports` per package) and `@nx/enforce-module-boundaries` (tags `scope:*`, `type:*`) fail the lint on a violation. The single exception is `garmin serve` importing `garmin-mcp-server`.
 
 Checked on 2026-10-08 (oxlint 1.87, ESLint 10.12, Nx 23.3): a deliberate `import { GarminService } from 'garmin-mcp-domain'` in `packages/store/src` makes `pnpm nx lint garmin-mcp-store` exit 1. oxlint reports first (`no-restricted-imports`: "Layer violation: garmin-mcp-store may only import garmin-mcp-client, garmin-mcp-config"); `nx lint` stops there, because the two linters run in sequence. ESLint on its own reports the same import as `@nx/enforce-module-boundaries`: "Circular dependency between garmin-mcp-store and garmin-mcp-domain".
 
@@ -70,7 +74,7 @@ pnpm nx build garmin-mcp-server
 node scripts/eval-tools.mjs [scenarios.jsonl]
 ```
 
-The eval needs a signed-in Claude Code (`claude` on `PATH`), not an API key. Each scenario is one `claude -p` call with `--output-format stream-json`, `--max-turns 1`, no built-in tools (`--tools ""`), no settings files (`--setting-sources ""`) and only one MCP server (`--strict-mcp-config`): `scripts/eval-fake-server.mjs`, the real server over stdio with a fake `GarminService` that returns empty envelopes, so nothing reaches Garmin or your cache. `claude` runs in a fresh temporary directory, so this repo's files do not reach the prompt. Only the first tool call of the first reply counts: it must be `expect.tool` (or one of the list) with `args_include`, and must not be one of `forbid`. It prints a table and the pass rate. `EVAL_MODEL` is passed as `--model` (default `sonnet`), `EVAL_MIN_PASS` sets the threshold (default `0.9`). Exit code 0 at or above the threshold, 1 below it, 2 when `claude` is not on `PATH`; the eval uses your Claude Code plan limits and is not part of `pnpm check` or CI. The scenario parser, the matcher and the `stream-json` parser have offline tests in `scripts/eval-tools.test.mjs` (Nx project `garmin-mcp-scripts`). Last run (2026-10-12, sonnet): 31/31.
+The eval needs a signed-in Claude Code (`claude` on `PATH`), not an API key. Each scenario is one `claude -p` call with `--output-format stream-json`, `--max-turns 1`, no built-in tools (`--tools ""`), no settings files (`--setting-sources ""`) and only one MCP server (`--strict-mcp-config`): `scripts/eval-fake-server.mjs`, the real server over stdio with a fake `GarminService` that returns empty envelopes, so nothing reaches Garmin or your cache. `claude` runs in a fresh temporary directory, so this repo's files do not reach the prompt. Only the first tool call of the first reply counts: it must be `expect.tool` (or one of the list) with `args_include`, and must not be one of `forbid`. It prints a table and the pass rate. `EVAL_MODEL` is passed as `--model` (default `sonnet`), `EVAL_MIN_PASS` sets the threshold (default `0.9`). Exit code 0 at or above the threshold, 1 below it, 2 when `claude` is not on `PATH`; the eval uses your Claude Code plan limits and is not part of `pnpm check` or CI. The scenario parser, the matcher and the `stream-json` parser have offline tests in `scripts/eval-tools.test.mjs` (Nx project `garmin-mcp-scripts`). Last run (2026-10-12, sonnet): 31/31, before the 8 scenarios of the analytics tools were added (39 in the file now).
 
 ## Release
 

@@ -18,7 +18,7 @@
 {"prompt": "How many calories and intensity minutes did I log this week?", "expect": {"tool": "query_health", "args_include": {"metrics": ["calories", "intensity_minutes"]}}, "forbid": ["garmin_sync"]}
 {"prompt": "Show me my sleep stages for the night of 2026-10-08.", "expect": {"tool": "get_sleep", "args_include": {"date": "2026-10-08"}}, "forbid": ["query_health"]}
 {"prompt": "Jaki mam teraz VO2max i gotowość treningową?", "expect": {"tool": "get_training_status"}, "forbid": ["query_health"]}
-{"prompt": "Am I fatigued? What is my form (TSB) right now?", "expect": {"tool": "get_training_status"}}
+{"prompt": "Am I fatigued? What is my form (TSB) right now?", "expect": {"tool": ["get_training_status", "get_load"]}}
 {"prompt": "Jak zmieniała się moja waga i tkanka tłuszczowa od lipca?", "expect": {"tool": "get_body_composition"}, "forbid": ["query_health"]}
 {"prompt": "Give me a review of my training week.", "expect": {"tool": "get_period_summary", "args_include": {"period": "week"}}, "forbid": ["garmin_sync"]}
 {"prompt": "Podsumuj mój wrzesień 2026.", "expect": {"tool": "get_period_summary", "args_include": {"period": "month"}}}
@@ -29,3 +29,11 @@
 {"prompt": "Pobierz plik GPX aktywności 21001.", "expect": {"tool": "download_activity_file", "args_include": {"id": 21001, "format": "gpx"}}}
 {"prompt": "Rename activity 21001 to \"Parkrun PB\".", "expect": {"tool": "update_activity", "args_include": {"id": 21001, "name": "Parkrun PB"}}}
 {"prompt": "Zsynchronizuj moje dane zdrowotne z września 2026.", "expect": {"tool": "garmin_sync", "args_include": {"scope": "health", "from": "2026-09-01", "to": "2026-09-30"}}}
+{"prompt": "Jak się dziś mam? Czy mogę zrobić dziś mocny akcent?", "expect": {"tool": "get_readiness"}, "forbid": ["get_training_status", "query_health", "garmin_sync"]}
+{"prompt": "How am I this morning? Should I do my hard interval session today or take it easy?", "expect": {"tool": "get_readiness"}, "forbid": ["get_training_status", "query_health", "garmin_sync"]}
+{"prompt": "Jaki mam teraz CTL i ACWR?", "expect": {"tool": "get_load"}, "forbid": ["query_health", "garmin_sync"]}
+{"prompt": "What were my ACWR and training monotony over the last four weeks?", "expect": {"tool": "get_load"}, "forbid": ["get_training_status", "query_health", "garmin_sync"]}
+{"prompt": "Ile procent czasu biegania i roweru spędziłem w tym miesiącu w Z1, poniżej LT1?", "expect": {"tool": "get_load"}, "forbid": ["get_training_status", "query_health", "garmin_sync"]}
+{"prompt": "Zrobiłem dziś test progowy, LTHR wyszło 171. Zapisz to jako mój próg biegowy od 2026-10-12, zgadzam się na zapis.", "expect": {"tool": "set_threshold", "args_include": {"date": "2026-10-12", "param": "lthr_run", "value": 171}}, "forbid": ["update_activity"]}
+{"prompt": "My cycling FTP test on 2026-10-10 gave 265 W. Please record it, I confirm.", "expect": {"tool": "set_threshold", "args_include": {"date": "2026-10-10", "param": "ftp_w", "value": 265}}, "forbid": ["update_activity"]}
+{"prompt": "Which LTHR and LT1 do you use for my bike rides?", "expect": {"tool": "get_thresholds"}, "forbid": ["get_training_status", "set_threshold"]}

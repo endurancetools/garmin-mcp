@@ -194,3 +194,15 @@ garmin-mcp deliberately has few writes; listed so nothing disappears silently.
 | Hydration, nutrition settings, custom foods, food log | — () |
 
 Workout templates are served by the presets of `create_workout` and the `plan_next_week` prompt.
+
+## Computed analytics
+
+Not Garmin Connect reads: these are computed by garmin-mcp from data already in the local cache, so they are not part of the totals above. Formulas and defaults: [Training analytics](analytics.md).
+
+| Computed data | garmin-mcp | Built from |
+| --- | --- | --- |
+| Own load model: hrTSS per activity, CTL/ATL/TSB, ACWR, monotony, strain, flags | `get_load` | activities (heart rate, duration), daily resting heart rate, threshold history |
+| Weekly volume per sport, 3-zone intensity split, efficiency trend | `get_load` `include_activities`, `include_efficiency` | activities (HR zones, speed, grade adjusted speed, normalized power) |
+| Morning GO / MODIFY / REST decision | `get_readiness` | HRV, resting heart rate, sleep, Body Battery, stress, training readiness, the load model |
+| Threshold history (LTHR per sport, LT1, HRmax, FTP, VO2max...) | `get_thresholds`, `set_threshold` | Garmin profile values recorded on each change, plus your own test results |
+| Activities from Garmin Connect CSV exports | `garmin import-activities` (CLI) | for dates the synced activities do not cover |
