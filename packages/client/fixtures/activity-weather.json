@@ -1,0 +1,23 @@
+{
+  "issueDate": "2026-10-10T06:00:00.000+00:00",
+  "temp": 53,
+  "apparentTemp": 53,
+  "dewPoint": 47,
+  "relativeHumidity": 82,
+  "windDirection": 0,
+  "windDirectionCompassPoint": "n",
+  "windSpeed": 0,
+  "windGust": null,
+  "weatherStationDTO": {
+    "id": "anon-weatherStation",
+    "name": "anon-weatherStation",
+    "timezone": null
+  },
+  "weatherTypeDTO": {
+    "weatherTypePk": null,
+    "desc": "Cloudy",
+    "image": null
+  },
+  "latitude": 0.86556,
+  "longitude": 0.58413
+}

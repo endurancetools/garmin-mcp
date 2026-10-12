@@ -1,0 +1,38 @@
+{
+  "name": "garmin-mcp-domain",
+  "version": "0.1.1",
+  "description": "Training metrics, trends, summaries and workout builder for Garmin data",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/endurancetools/garmin-mcp.git",
+    "directory": "packages/domain"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "exports": {
+    ".": {
+      "garmin-mcp-source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "!dist/**/*.test.*",
+    "!dist/**/*.tsbuildinfo",
+    "!dist/test-utils"
+  ],
+  "dependencies": {
+    "garmin-mcp-store": "workspace:*",
+    "garmin-mcp-client": "workspace:*",
+    "garmin-mcp-auth": "workspace:*",
+    "garmin-mcp-config": "workspace:*",
+    "zod": "^4.6.5"
+  }
+}

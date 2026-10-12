@@ -1,0 +1,37 @@
+{
+  "name": "garmin-mcp-client",
+  "version": "0.1.1",
+  "description": "Typed Garmin Connect API client with zod schemas, retries and rate limits",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/endurancetools/garmin-mcp.git",
+    "directory": "packages/client"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "exports": {
+    ".": {
+      "garmin-mcp-source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "!dist/**/*.test.*",
+    "!dist/**/*.tsbuildinfo",
+    "!dist/test-utils"
+  ],
+  "dependencies": {
+    "garmin-mcp-auth": "workspace:*",
+    "garmin-mcp-config": "workspace:*",
+    "p-limit": "^7.3.3",
+    "zod": "^4.6.5"
+  }
+}

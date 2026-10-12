@@ -1,0 +1,52 @@
+{
+  "activityId": 24606850835,
+  "exerciseSets": [
+    {
+      "setType": "ACTIVE",
+      "exercises": [
+        {
+          "category": "LATERAL_RAISE",
+          "name": null,
+          "probability": 39.453125
+        },
+        {
+          "category": "LUNGE",
+          "name": null,
+          "probability": 34.765625
+        },
+        {
+          "category": "CURL",
+          "name": null,
+          "probability": 23.828125
+        }
+      ],
+      "repetitionCount": 8,
+      "weight": null,
+      "duration": 1970.331,
+      "startTime": "2026-10-04T17:44:52.0",
+      "wktStepIndex": null,
+      "messageIndex": 0,
+      "minimalViableThreshold": null,
+      "avgConcentricMeanVelocity": null,
+      "maxConcentricMeanVelocity": null,
+      "avgEccentricMeanVelocity": null,
+      "maxEccentricMeanVelocity": null,
+      "avgConcentricPeakVelocity": null,
+      "maxConcentricPeakVelocity": null,
+      "avgEccentricPeakVelocity": null,
+      "maxEccentricPeakVelocity": null,
+      "avgMeanPropulsiveVelocity": null,
+      "maxMeanPropulsiveVelocity": null,
+      "avgConcentricMeanPower": null,
+      "maxConcentricMeanPower": null,
+      "avgConcentricPeakPower": null,
+      "maxConcentricPeakPower": null,
+      "avgConcentricDuration": null,
+      "maxConcentricDuration": null,
+      "avgEccentricDuration": null,
+      "maxEccentricDuration": null,
+      "avgConcentricRom": null,
+      "maxConcentricRom": null
+    }
+  ]
+}

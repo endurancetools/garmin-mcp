@@ -1,0 +1,39 @@
+{
+  "name": "garmin-mcp-store",
+  "version": "0.1.1",
+  "description": "SQLite store and synchronisation for Garmin Connect data",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/endurancetools/garmin-mcp.git",
+    "directory": "packages/store"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "exports": {
+    ".": {
+      "garmin-mcp-source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "!dist/**/*.test.*",
+    "!dist/**/*.tsbuildinfo",
+    "!dist/test-utils"
+  ],
+  "dependencies": {
+    "garmin-mcp-client": "workspace:*",
+    "garmin-mcp-config": "workspace:*",
+    "better-sqlite3": "^13.0.3"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^9.6.0"
+  }
+}

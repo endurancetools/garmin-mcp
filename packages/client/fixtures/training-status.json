@@ -1,0 +1,105 @@
+{
+  "mostRecentVO2Max": {
+    "generic": {
+      "calendarDate": "2026-10-07",
+      "vo2MaxPreciseValue": 53.9,
+      "vo2MaxValue": 54,
+      "fitnessAge": null,
+      "fitnessAgeDescription": null,
+      "maxMetCategory": 0
+    },
+    "cycling": null,
+    "userId": 90001,
+    "heatAltitudeAcclimation": {
+      "calendarDate": "2026-10-10",
+      "altitudeAcclimationDate": "2026-10-10",
+      "previousAltitudeAcclimationDate": "2026-10-10",
+      "heatAcclimationDate": "2026-10-10",
+      "previousHeatAcclimationDate": "2026-10-10",
+      "altitudeAcclimation": 0,
+      "previousAltitudeAcclimation": 0,
+      "heatAcclimationPercentage": 0,
+      "previousHeatAcclimationPercentage": 0,
+      "heatTrend": null,
+      "altitudeTrend": null,
+      "currentAltitude": 364,
+      "previousAltitude": 0,
+      "acclimationPercentage": 0,
+      "previousAcclimationPercentage": 0,
+      "altitudeAcclimationLocalTimestamp": "2026-10-10T23:55:59.0"
+    }
+  },
+  "mostRecentTrainingStatus": {
+    "latestTrainingStatusData": {
+      "3621149661": {
+        "calendarDate": "2026-10-10",
+        "trainingStatus": 7,
+        "trainingStatusFeedbackPhrase": "PRODUCTIVE_10",
+        "primaryTrainingDevice": true,
+        "sport": "RUNNING",
+        "acuteTrainingLoadDTO": {
+          "acwrPercent": 66,
+          "acwrStatus": "HIGH",
+          "dailyTrainingLoadAcute": 1081,
+          "dailyTrainingLoadChronic": 692,
+          "dailyAcuteChronicWorkloadRatio": 1.5,
+          "acwrStatusFeedback": "FEEDBACK_4",
+          "maxTrainingLoadChronic": 1038,
+          "minTrainingLoadChronic": 553.6
+        },
+        "sinceDate": "2026-10-10",
+        "weeklyTrainingLoad": null,
+        "timestamp": 1791639283000,
+        "deviceId": 3621149661,
+        "loadTunnelMin": null,
+        "loadTunnelMax": null,
+        "loadLevelTrend": null,
+        "subSport": "GENERIC",
+        "fitnessTrendSport": "RUNNING",
+        "fitnessTrend": 3,
+        "trainingPaused": false
+      }
+    },
+    "userId": 90001,
+    "recordedDevices": [
+      {
+        "deviceId": 3621149661,
+        "imageURL": "https://res.garmin.com/en/products/010-02906-11/v/c1_01_md.png",
+        "deviceName": "anon-deviceName",
+        "category": 0
+      }
+    ],
+    "showSelector": false,
+    "lastPrimarySyncDate": "2026-10-10"
+  },
+  "mostRecentTrainingLoadBalance": {
+    "userId": 90001,
+    "metricsTrainingLoadBalanceDTOMap": {
+      "3621149661": {
+        "calendarDate": "2026-10-10",
+        "deviceId": 3621149661,
+        "monthlyLoadAerobicLow": 590.2721,
+        "monthlyLoadAerobicHigh": 2219.3672,
+        "monthlyLoadAnaerobic": 137.26068,
+        "monthlyLoadAerobicLowTargetMin": 526,
+        "monthlyLoadAerobicLowTargetMax": 1179,
+        "monthlyLoadAerobicHighTargetMin": 670,
+        "monthlyLoadAerobicHighTargetMax": 1323,
+        "monthlyLoadAnaerobicTargetMin": 217,
+        "monthlyLoadAnaerobicTargetMax": 652,
+        "trainingBalanceFeedbackPhrase": "ANAEROBIC_SHORTAGE",
+        "primaryTrainingDevice": true
+      }
+    },
+    "recordedDevices": [
+      {
+        "deviceId": 3621149661,
+        "imageURL": "https://res.garmin.com/en/products/010-02906-11/v/c1_01_md.png",
+        "deviceName": "anon-deviceName",
+        "category": 0
+      }
+    ]
+  },
+  "userId": 90001,
+  "heatAltitudeAcclimationDTO": null
+}

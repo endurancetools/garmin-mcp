@@ -1,0 +1,19 @@
+<p class="page__footer-copyright">Author: Marcin Milewicz (<a href="https://www.linkedin.com/in/marcinmilewicz/">LinkedIn</a>). Garmin MCP is not affiliated with Garmin; your data stays on your machine.</p>
+<script type="module">
+  // Diagrams: ```mermaid fences come out of kramdown as <pre><code class="language-mermaid">.
+  const blocks = document.querySelectorAll("pre > code.language-mermaid");
+  if (blocks.length > 0) {
+    const { default: mermaid } = await import("https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.esm.min.mjs");
+    for (const block of blocks) {
+      const holder = document.createElement("pre");
+      holder.className = "mermaid";
+      holder.style.background = "transparent";
+      holder.style.border = "0";
+      holder.style.textAlign = "center";
+      holder.textContent = block.textContent;
+      block.parentElement.replaceWith(holder);
+    }
+    mermaid.initialize({ startOnLoad: false, theme: "neutral" });
+    await mermaid.run({ querySelector: "pre.mermaid" });
+  }
+</script>

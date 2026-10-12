@@ -1,0 +1,39 @@
+{
+  "name": "garmin-mcp-auth",
+  "version": "0.1.1",
+  "description": "Garmin Connect SSO, MFA, DI OAuth2 tokens and refresh",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/endurancetools/garmin-mcp.git",
+    "directory": "packages/auth"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "exports": {
+    ".": {
+      "garmin-mcp-source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "scripts",
+    "!dist/**/*.test.*",
+    "!dist/**/*.tsbuildinfo",
+    "!dist/test-utils"
+  ],
+  "dependencies": {
+    "garmin-mcp-config": "workspace:*",
+    "zod": "^4.6.5"
+  },
+  "optionalDependencies": {
+    "cuimp": "^2.1.1"
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "name": "garmin-mcp-client",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "packages/client/src",
+  "projectType": "library",
+  "tags": [
+    "scope:client",
+    "type:lib"
+  ],
+  "targets": {
+    "build": {},
+    "typecheck": {},
+    "lint": {},
+    "test": {}
+  }
+}

@@ -1,0 +1,237 @@
+[
+  {
+    "workoutId": 1722598507,
+    "workoutName": "anon-workoutName",
+    "description": null,
+    "sportType": {
+      "sportTypeId": 1,
+      "sportTypeKey": "running",
+      "displayOrder": 1
+    },
+    "createdDate": "2026-10-07T13:58:40.0",
+    "estimatedDurationInSecs": null,
+    "estimatedDistanceInMeters": 5000,
+    "ownerId": 90001,
+    "updateDate": "2026-10-07T14:18:02.0",
+    "trainingPlanId": null,
+    "author": {
+      "userProfilePk": null,
+      "displayName": null,
+      "fullName": null,
+      "profileImgNameLarge": null,
+      "profileImgNameMedium": null,
+      "profileImgNameSmall": null,
+      "userPro": false,
+      "vivokidUser": false
+    },
+    "estimateType": null,
+    "estimatedDistanceUnit": {
+      "unitId": null,
+      "unitKey": null,
+      "factor": null
+    },
+    "poolLength": 0,
+    "poolLengthUnit": {
+      "unitId": null,
+      "unitKey": null,
+      "factor": null
+    },
+    "workoutProvider": "EasyTrackly",
+    "workoutSourceId": "EasyTrackly",
+    "consumer": "c3f9e1d9-72f8-4079-9aab-af7e8dbd0e8c",
+    "atpPlanId": null,
+    "workoutNameI18nKey": null,
+    "descriptionI18nKey": null,
+    "workoutThumbnailUrl": "https://connect.garmin.com/chart-service/workout?data=md:s1,c3=200000.0;s7,c3=200000.0;s2,c3=100000.0;",
+    "shared": false,
+    "estimated": true
+  },
+  {
+    "workoutId": 1707436313,
+    "workoutName": "anon-workoutName",
+    "description": "anon-description",
+    "sportType": {
+      "sportTypeId": 1,
+      "sportTypeKey": "running",
+      "displayOrder": 1
+    },
+    "createdDate": "2026-09-23T09:59:39.0",
+    "estimatedDurationInSecs": null,
+    "estimatedDistanceInMeters": null,
+    "ownerId": 90001,
+    "updateDate": "2026-09-23T09:59:39.0",
+    "trainingPlanId": null,
+    "author": {
+      "userProfilePk": null,
+      "displayName": null,
+      "fullName": null,
+      "profileImgNameLarge": null,
+      "profileImgNameMedium": null,
+      "profileImgNameSmall": null,
+      "userPro": false,
+      "vivokidUser": false
+    },
+    "estimateType": null,
+    "estimatedDistanceUnit": {
+      "unitId": null,
+      "unitKey": null,
+      "factor": null
+    },
+    "poolLength": 0,
+    "poolLengthUnit": {
+      "unitId": null,
+      "unitKey": null,
+      "factor": null
+    },
+    "workoutProvider": null,
+    "workoutSourceId": null,
+    "consumer": null,
+    "atpPlanId": null,
+    "workoutNameI18nKey": null,
+    "descriptionI18nKey": null,
+    "workoutThumbnailUrl": "https://connect.garmin.com/chart-service/workout?data=md:s1,c3=300000.0,t4=v110.0~132.0;2(s3,c3=200000.0,t6=v0.3546~0.3597;s4,c2=180000.0;);s2,c3=150000.0,t4=v110.0~132.0;",
+    "shared": false,
+    "estimated": true
+  },
+  {
+    "workoutId": 1702673547,
+    "workoutName": "anon-workoutName",
+    "description": "anon-description",
+    "sportType": {
+      "sportTypeId": 1,
+      "sportTypeKey": "running",
+      "displayOrder": 1
+    },
+    "createdDate": "2026-09-19T17:03:25.0",
+    "estimatedDurationInSecs": 6540,
+    "estimatedDistanceInMeters": 20203.9,
+    "ownerId": 90001,
+    "updateDate": "2026-09-21T17:55:38.0",
+    "trainingPlanId": null,
+    "author": {
+      "userProfilePk": null,
+      "displayName": null,
+      "fullName": null,
+      "profileImgNameLarge": null,
+      "profileImgNameMedium": null,
+      "profileImgNameSmall": null,
+      "userPro": false,
+      "vivokidUser": false
+    },
+    "estimateType": "TIME_AND_DISTANCE_ESTIMATED",
+    "estimatedDistanceUnit": {
+      "unitId": 1,
+      "unitKey": "meter",
+      "factor": 100
+    },
+    "poolLength": 0,
+    "poolLengthUnit": {
+      "unitId": 1,
+      "unitKey": "meter",
+      "factor": 100
+    },
+    "workoutProvider": null,
+    "workoutSourceId": null,
+    "consumer": null,
+    "atpPlanId": null,
+    "workoutNameI18nKey": null,
+    "descriptionI18nKey": null,
+    "workoutThumbnailUrl": "https://connect.garmin.com/chart-service/workout?data=md:s1,c3=300000.0,t4=v115.0~138.0;10(s3,c3=100000.0,t6=v0.38170000000000004~0.39680000000000004;s4,c2=180000.0;)x;s2,c3=300000.0,t4=v110.0~132.0;",
+    "shared": false,
+    "estimated": true
+  },
+  {
+    "workoutId": 1702671438,
+    "workoutName": "anon-workoutName",
+    "description": "anon-description",
+    "sportType": {
+      "sportTypeId": 1,
+      "sportTypeKey": "running",
+      "displayOrder": 1
+    },
+    "createdDate": "2026-09-19T17:00:34.0",
+    "estimatedDurationInSecs": 9750,
+    "estimatedDistanceInMeters": 26000,
+    "ownerId": 90001,
+    "updateDate": "2026-09-20T07:25:34.0",
+    "trainingPlanId": null,
+    "author": {
+      "userProfilePk": null,
+      "displayName": null,
+      "fullName": null,
+      "profileImgNameLarge": null,
+      "profileImgNameMedium": null,
+      "profileImgNameSmall": null,
+      "userPro": false,
+      "vivokidUser": false
+    },
+    "estimateType": "TIME_ESTIMATED",
+    "estimatedDistanceUnit": {
+      "unitId": 2,
+      "unitKey": "kilometer",
+      "factor": 100000
+    },
+    "poolLength": 0,
+    "poolLengthUnit": {
+      "unitId": 1,
+      "unitKey": "meter",
+      "factor": 100
+    },
+    "workoutProvider": null,
+    "workoutSourceId": null,
+    "consumer": null,
+    "atpPlanId": null,
+    "workoutNameI18nKey": null,
+    "descriptionI18nKey": null,
+    "workoutThumbnailUrl": "https://connect.garmin.com/chart-service/workout?data=md:s1,c3=1000000.0,t6=v0.274~0.2817;s3,c3=700000.0,t4=v128.0~140.0;s3,c3=800000.0,t4=v151.0~162.0;s2,c3=100000.0,t4=v110.0~132.0;",
+    "shared": false,
+    "estimated": true
+  },
+  {
+    "workoutId": 1702430336,
+    "workoutName": "anon-workoutName",
+    "description": "anon-description",
+    "sportType": {
+      "sportTypeId": 1,
+      "sportTypeKey": "running",
+      "displayOrder": 1
+    },
+    "createdDate": "2026-09-19T10:30:50.0",
+    "estimatedDurationInSecs": null,
+    "estimatedDistanceInMeters": 26000,
+    "ownerId": 90001,
+    "updateDate": "2026-09-19T10:30:50.0",
+    "trainingPlanId": null,
+    "author": {
+      "userProfilePk": null,
+      "displayName": null,
+      "fullName": null,
+      "profileImgNameLarge": null,
+      "profileImgNameMedium": null,
+      "profileImgNameSmall": null,
+      "userPro": false,
+      "vivokidUser": false
+    },
+    "estimateType": null,
+    "estimatedDistanceUnit": {
+      "unitId": null,
+      "unitKey": null,
+      "factor": null
+    },
+    "poolLength": 0,
+    "poolLengthUnit": {
+      "unitId": null,
+      "unitKey": null,
+      "factor": null
+    },
+    "workoutProvider": null,
+    "workoutSourceId": null,
+    "consumer": null,
+    "atpPlanId": null,
+    "workoutNameI18nKey": null,
+    "descriptionI18nKey": null,
+    "workoutThumbnailUrl": "https://connect.garmin.com/chart-service/workout?data=md:s1,c3=1000000.0,t6=v0.274~0.2817;s3,c3=600000.0,t4=v128.0~140.0;s3,c3=800000.0,t4=v151.0~162.0;s2,c3=200000.0,t4=v110.0~132.0;",
+    "shared": false,
+    "estimated": true
+  }
+]

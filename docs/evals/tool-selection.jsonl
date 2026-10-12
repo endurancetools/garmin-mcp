@@ -1,0 +1,31 @@
+{"prompt": "Jak spałem w tym tygodniu?", "expect": {"tool": ["query_health", "get_sleep"], "args_include": {"query_health": {"metrics": ["sleep"]}}}, "forbid": ["garmin_sync"]}
+{"prompt": "When is my next race?", "expect": {"tool": "list_workouts"}, "forbid": ["get_activities", "garmin_sync"]}
+{"prompt": "Kiedy mam mój następny start?", "expect": {"tool": "list_workouts"}, "forbid": ["get_activities", "garmin_sync"]}
+{"prompt": "Co mam zaplanowane na ten tydzień?", "expect": {"tool": "list_workouts"}, "forbid": ["garmin_sync"]}
+{"prompt": "Zrób mi trening 6x400 m", "expect": {"tool": ["preview_workout", "get_training_status", "list_workouts"]}, "forbid": ["create_workout", "schedule_workouts"]}
+{"prompt": "Build me an easy 45-minute zone 2 run for tomorrow.", "expect": {"tool": "preview_workout"}, "forbid": ["create_workout", "schedule_workouts"]}
+{"prompt": "Widziałem już podgląd treningu z presetu run_intervals (6 powtórzeń po 400 m, 90 s przerwy) i zgadzam się. Zapisz go w Garmin Connect.", "expect": {"tool": "create_workout", "args_include": {"preset": {"name": "run_intervals", "params": {"repeats": 6, "work_meters": 400}}}}, "forbid": ["schedule_workouts"]}
+{"prompt": "Schedule my saved workout 1727354116 for 2026-10-15.", "expect": {"tool": "schedule_workouts", "args_include": {"items": [{"date": "2026-10-15", "workout_id": 1727354116}]}}, "forbid": ["create_workout"]}
+{"prompt": "Usuń aktywność 123", "expect": {"tool": null}}
+{"prompt": "Delete my saved workout 987654 from Garmin Connect.", "expect": {"tool": null}}
+{"prompt": "Pokaż moje ostatnie 5 aktywności.", "expect": {"tool": "get_activities", "args_include": {"limit": 5}}, "forbid": ["get_period_summary", "garmin_sync"]}
+{"prompt": "What did I do last week?", "expect": {"tool": ["get_activities", "get_period_summary"]}, "forbid": ["garmin_sync"]}
+{"prompt": "Show me the lap splits of activity 21001.", "expect": {"tool": "get_activity", "args_include": {"id": 21001, "detail": "splits"}}, "forbid": ["get_activities"]}
+{"prompt": "Jaka była pogoda podczas aktywności 21002?", "expect": {"tool": "get_activity", "args_include": {"id": 21002, "detail": "weather"}}}
+{"prompt": "Ile czasu spędziłem w poszczególnych strefach tętna na aktywności 21001?", "expect": {"tool": "get_activity", "args_include": {"id": 21001, "detail": "hr_zones"}}}
+{"prompt": "How did my HRV and resting heart rate trend over the last three months?", "expect": {"tool": "query_health", "args_include": {"metrics": ["hrv", "resting_hr"]}}, "forbid": ["get_sleep", "garmin_sync"]}
+{"prompt": "Ile kroków zrobiłem wczoraj?", "expect": {"tool": "query_health", "args_include": {"metrics": ["steps"]}}, "forbid": ["garmin_sync"]}
+{"prompt": "How many calories and intensity minutes did I log this week?", "expect": {"tool": "query_health", "args_include": {"metrics": ["calories", "intensity_minutes"]}}, "forbid": ["garmin_sync"]}
+{"prompt": "Show me my sleep stages for the night of 2026-10-08.", "expect": {"tool": "get_sleep", "args_include": {"date": "2026-10-08"}}, "forbid": ["query_health"]}
+{"prompt": "Jaki mam teraz VO2max i gotowość treningową?", "expect": {"tool": "get_training_status"}, "forbid": ["query_health"]}
+{"prompt": "Am I fatigued? What is my form (TSB) right now?", "expect": {"tool": "get_training_status"}}
+{"prompt": "Jak zmieniała się moja waga i tkanka tłuszczowa od lipca?", "expect": {"tool": "get_body_composition"}, "forbid": ["query_health"]}
+{"prompt": "Give me a review of my training week.", "expect": {"tool": "get_period_summary", "args_include": {"period": "week"}}, "forbid": ["garmin_sync"]}
+{"prompt": "Podsumuj mój wrzesień 2026.", "expect": {"tool": "get_period_summary", "args_include": {"period": "month"}}}
+{"prompt": "Summarise my training block from 2026-08-04 to 2026-09-28.", "expect": {"tool": "get_period_summary", "args_include": {"period": "range", "from": "2026-08-04", "to": "2026-09-28"}}}
+{"prompt": "What are the steps of my saved workout 1727354116?", "expect": {"tool": "get_workout", "args_include": {"id": 1727354116}}, "forbid": ["list_workouts"]}
+{"prompt": "Ile kilometrów mają już moje buty do biegania?", "expect": {"tool": "get_gear"}}
+{"prompt": "Which firmware version is on my watch?", "expect": {"tool": "get_devices"}}
+{"prompt": "Pobierz plik GPX aktywności 21001.", "expect": {"tool": "download_activity_file", "args_include": {"id": 21001, "format": "gpx"}}}
+{"prompt": "Rename activity 21001 to \"Parkrun PB\".", "expect": {"tool": "update_activity", "args_include": {"id": 21001, "name": "Parkrun PB"}}}
+{"prompt": "Zsynchronizuj moje dane zdrowotne z września 2026.", "expect": {"tool": "garmin_sync", "args_include": {"scope": "health", "from": "2026-09-01", "to": "2026-09-30"}}}
