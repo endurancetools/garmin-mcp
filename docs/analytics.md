@@ -158,7 +158,7 @@ Below LT1 heart rate and pace are close to steady state, so EF reflects aerobic 
 
 | Signal | Counted | Value | Compared with | Red | Yellow |
 | --- | --- | --- | --- | --- | --- |
-| `hrv` | yes | overnight HRV of D | Garmin's 7-day average and baseline of D, mean of the 28 nights before | Garmin status `LOW` or `POOR`, or below `hrv_red_base_factor` × baseline low, or below `hrv_red_mean28_factor` × 28-night mean | status `UNBALANCED`, or below the baseline low, or below `hrv_yellow_weekly_factor` × 7-day average |
+| `hrv` | yes | overnight HRV of D; Garmin's HRV status shown, not rated | Garmin's 7-day average and baseline of D (its rolling averages of the raw nights), mean of the 28 nights before (from 7 nights with data; fewer: not compared, noted in the detail) | below `hrv_red_base_factor` × baseline low, or below `hrv_red_mean28_factor` × 28-night mean | below the baseline low, or below `hrv_yellow_weekly_factor` × 7-day average |
 | `rhr` | yes | resting heart rate of D | mean of the 28 days before | ≥ mean + `rhr_red_delta` | ≥ mean + `rhr_yellow_delta` |
 | `sleep` | yes | sleep score and hours of the night before D | | score below `sleep_score_red` or hours below `sleep_h_red` | score below `sleep_score_yellow` or hours below `sleep_h_yellow` |
 | `body_battery` | yes | Body Battery high of D | | below `bb_red` | below `bb_yellow` |
