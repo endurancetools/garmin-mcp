@@ -22,7 +22,8 @@ export interface TrainingOverview {
   recovery?: { remaining_h?: number; as_of?: string };
   /** Garmin load focus: last 4 weeks of load per intensity band against its targets. */
   load_focus?: LoadFocus;
-  computed_load?: LoadPoint & { form: string };
+  /** CTL/ATL/TSB from Garmin's per-activity training load (EPOC); the own TSS model is get_load in garmin-mcp-analytics. */
+  garmin_load_model?: LoadPoint & { form: string };
   load_series?: LoadPoint[];
   /** Current-state metrics from the newest training sync on or before `to`. */
   metrics?: TrainingMetrics;
@@ -54,7 +55,7 @@ export interface TrainingMetrics {
 }
 
 /**
- * VO2max, readiness, Garmin status and our CTL/ATL/TSB side by side.
+ * VO2max, readiness, Garmin status and CTL/ATL/TSB from Garmin's training load side by side.
  * Garmin's acute/chronic are 7-day sums with its own weighting; our CTL/ATL are
  * EWMAs of per-activity load, so absolute values differ while trends agree.
  */
@@ -97,13 +98,14 @@ export function trainingOverview(
     },
     recovery: recovery(latest?.raw),
     load_focus: loadFocus(latest?.raw),
-    computed_load: last && { ...last, form: formState(last).replaceAll('_', ' ') },
+    garmin_load_model: last && { ...last, form: formState(last).replaceAll('_', ' ') },
     load_series: includeSeries ? series : undefined,
     metrics: metrics && trainingMetrics(metrics),
     note:
-      'computed_load uses 42/7-day EWMAs of Garmin per-activity training load (CTL fitness, ATL fatigue, TSB form = CTL-ATL). ' +
+      'garmin_load_model uses 42/7-day EWMAs of Garmin per-activity training load (EPOC; CTL fitness, ATL fatigue, TSB form = CTL-ATL); ' +
+      'the own model from power, pace and heart rate (TSS) is get_load. ' +
       'garmin_load is Garmin\'s own acute/chronic load; scales differ, compare directions rather than absolute numbers. ' +
-      'computed_load.form uses TSB bands scaled to CTL (above +10 % fresh, down to -10 % neutral, down to -30 % optimal training, below that overreaching), ' +
+      'garmin_load_model.form uses TSB bands scaled to CTL (above +10 % fresh, down to -10 % neutral, down to -30 % optimal training, below that overreaching), ' +
       'not Coggan\'s absolute TSB bands, because Garmin training load is on an EPOC scale, not in TSS points.',
   };
 }

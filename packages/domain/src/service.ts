@@ -715,7 +715,7 @@ export class GarminService {
     const metrics: HealthMetric[] = ['sleep', 'resting_hr', 'hrv', 'steps', 'stress', 'body_battery'];
     const table = healthTable(metrics, { daily, sleep: this.store.getDaily('sleep', from, to), hrv: this.store.getDaily('hrv', from, to) }, from, to, 'day');
     const loadActs = this.store.queryActivities({ from: warmup, to, sort: 'asc' }).map((a) => ({ date: a.date ?? '', training_load: a.training_load }));
-    const load = trainingOverview([], loadActs, from, to, false).computed_load;
+    const load = trainingOverview([], loadActs, from, to, false).garmin_load_model;
     const energy = energyBalance(daily);
     // Without synced activities an empty period would read as "no sessions, every day a rest day".
     const activitiesMissing = this.syncer.activityGaps(from, to).length > 0;
@@ -727,7 +727,7 @@ export class GarminService {
         to: fullTo,
         complete: to === fullTo && !activitiesMissing && !healthMissing,
         training: activitiesMissing ? undefined : periodActivitySummary(activities, from, to),
-        load_at_end: load,
+        garmin_load_model: load,
         health: Object.fromEntries(Object.entries(table.summary).map(([k, v]) => [k, { avg: v.avg, min: v.min, max: v.max, total: v.total }])),
         energy: { avg_total_kcal: energy.avg_total_kcal, avg_resting_kcal: energy.avg_resting_kcal, avg_active_kcal: energy.avg_active_kcal },
       }),

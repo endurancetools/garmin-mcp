@@ -74,6 +74,10 @@ describe('GarminService', () => {
         ]),
       },
     });
+    // CTL/ATL/TSB from Garmin's training load go by one name, apart from the own model of get_load.
+    expect(res.data.garmin_load_model).toMatchObject({ date: expect.any(String), ctl: expect.any(Number), atl: expect.any(Number), tsb: expect.any(Number), form: expect.any(String) });
+    expect(res.data).not.toHaveProperty('computed_load');
+    expect(res.data.note).toMatch(/^garmin_load_model uses .* the own model from power, pace and heart rate \(TSS\) is get_load/);
     expect(count('getEnduranceScore')).toBe(1);
     expect(count('getHillScore')).toBe(1);
     // A second question within the 1 h TTL is answered from the cache.
@@ -579,7 +583,8 @@ describe('GarminService', () => {
     const res = await service.getPeriodSummary('range', { from: '2026-09-28', to: '2026-10-07' });
     expect(res.data).toMatchObject({ period: 'range', from: '2026-09-28', to: '2026-10-07' });
     expect(res.data.training).toMatchObject({ from: '2026-09-28', to: '2026-10-07', sessions: 2, active_days: 2, rest_days: 8 });
-    expect(res.data.load_at_end).toBeDefined();
+    expect(res.data.garmin_load_model).toBeDefined();
+    expect(res.data).not.toHaveProperty('load_at_end');
     expect(res.data.health?.sleep).toMatchObject({ avg: 8 });
     expect(res.data.energy).toBeDefined();
     const clipped = await service.getPeriodSummary('range', { from: '2026-10-01', to: '2026-10-20' });

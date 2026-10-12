@@ -360,13 +360,13 @@ export class AnalyticsService {
 
     const model =
       'CTL/ATL are 42/7-day EWMAs, TSB = CTL - ATL at the start of the day, ACWR = 7-day / 28-day mean. ' +
-      "It differs from computed_load in get_training_status, which runs the same EWMA on Garmin's EPOC training load.";
+      "It differs from garmin_load_model in get_training_status and get_period_summary, which runs the same EWMA on Garmin's EPOC training load.";
     const note =
       source === 'auto'
         ? `Own load model: daily TSS, per activity from power (cycling NP / FTP), else pace (running grade adjusted speed / threshold pace; swimming speed / CSS, cubed), else heart rate (hrTSS from the time in HR zones, else from the average; hr_method per activity), else session RPE × minutes × rpe_calibration (Foster, approximate), with the thresholds valid on each date; load_source per activity says which. ${model}`
         : source === 'hrtss'
           ? `Own load model: daily hrTSS from heart rate only (time in HR zones, else the average; hr_method per activity), with the thresholds valid on each date (LTHR per sport, 28-day resting HR). ${model}`
-          : "Daily load is the sum of Garmin's per-activity training load (EPOC), as in computed_load of get_training_status; imported activities have no Garmin load and count 0.";
+          : "Daily load is the sum of Garmin's per-activity training load (EPOC), as in garmin_load_model of get_training_status; imported activities have no Garmin load and count 0.";
 
     const data: LoadData = {
       from,

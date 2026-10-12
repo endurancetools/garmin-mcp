@@ -66,9 +66,9 @@ Measured on a real account after a 90-day sync (433 requests in about an hour): 
 | `download_activity_file` | FIT (unzipped), GPX, TCX, KML, CSV to the download directory (`GARMIN_FIT_DOWNLOAD_DIR`) |
 | `query_health` | steps (with daily distance), resting HR (with daily min/max HR), HRV (with status and baseline), sleep, stress, body battery, respiration, SpO2, intensity minutes, calories, floors; per day or week, with 7/28-day trends |
 | `get_sleep` | one night with stages, or a range with averages |
-| `get_training_status` | VO2max, readiness, recovery time, Garmin status, load and load focus, computed CTL/ATL/TSB (optionally the daily series); race predictions, endurance/hill score, fitness age, personal records, acclimation |
+| `get_training_status` | VO2max, readiness, recovery time, Garmin status, load and load focus, `garmin_load_model` (CTL/ATL/TSB from Garmin's training load, optionally the daily series); race predictions, endurance/hill score, fitness age, personal records, acclimation |
 | `get_body_composition` | weigh-ins in kg with trend |
-| `get_period_summary` | week, month or any `from`..`to` range up to 366 days: volume per sport, HR zones, rest days, longest/hardest, load at the end, health and energy averages |
+| `get_period_summary` | week, month or any `from`..`to` range up to 366 days: volume per sport, HR zones, rest days, longest/hardest, `garmin_load_model` at the end, health and energy averages |
 | `list_workouts`, `get_workout` | workout library, scheduled workouts, races and events from the calendar in any date range (default: next 60 days), readable steps |
 | `preview_workout`, `create_workout`, `schedule_workouts` | workouts from presets (run intervals, walk/run, easy Z2, strength circuit) or a typed definition (nestable repeats, HR/pace/power targets); `preview_workout` shows the steps and estimated duration without saving; `schedule_workouts` puts workouts on the calendar and takes them off again |
 | `get_gear`, `get_devices` | gear with distance, devices with last sync and settings |

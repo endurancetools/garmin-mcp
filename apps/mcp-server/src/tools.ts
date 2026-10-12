@@ -242,7 +242,7 @@ export const TOOLS: ToolDef[] = [
     title: 'Get training status',
     description:
       'Fitness and fatigue: VO2max (running/cycling) with trend, training readiness, remaining recovery time, Garmin training status (productive, maintaining, ...), ' +
-      'Garmin acute/chronic load and load focus (aerobic low/high, anaerobic vs. targets), and computed CTL/ATL/TSB (fitness/fatigue/form). ' +
+      "Garmin acute/chronic load and load focus (aerobic low/high, anaerobic vs. targets), and `garmin_load_model`: CTL/ATL/TSB from Garmin's daily training load (EPOC); the own TSS model (power, pace, HR) is get_load. " +
       '`metrics` holds race predictions (5k to marathon), endurance and hill score, fitness age, personal records and heat/altitude acclimation ' +
       'as of the newest training sync on or before `to`. Set include_series for the daily load curve.',
     input: { from: date.optional().describe('Default: 28 days before `to`'), to: date.optional(), include_series: z.boolean().default(false) },
@@ -264,7 +264,7 @@ export const TOOLS: ToolDef[] = [
     title: 'Summarise a week, month or range',
     description:
       'Training week or month at a glance: sessions and volume per sport, HR zone distribution, active vs rest days, longest and hardest session, ' +
-      'load (CTL/ATL/TSB) at the end, and only avg/min/max of sleep, HRV, resting HR, steps, stress and body battery plus average daily kcal. ' +
+      "`garmin_load_model` at the end (CTL/ATL/TSB from Garmin's daily training load (EPOC); the own TSS model is get_load), and only avg/min/max of sleep, HRV, resting HR, steps, stress and body battery plus average daily kcal. " +
       'Day-by-day values and other metrics (calorie totals, intensity minutes, floors, respiration, SpO2) come from query_health, weight from get_body_composition. Weeks run Monday-Sunday. ' +
       'Period "range" gives the same for any from..to up to 366 days, e.g. a training block: {"period":"range","from":"2026-08-04","to":"2026-09-28"}. ' +
       '`complete` is true when the period is over and all its data is in the cache; `training` is left out while its activities are not. ' +
@@ -385,7 +385,7 @@ export const TOOLS: ToolDef[] = [
     name: 'get_load',
     title: 'Get training load (own model)',
     description:
-      "Own transparent load model (TSS per activity from power, else pace, else heart rate, else session RPE, with date-dependent thresholds), not Garmin's EPOC load; for Garmin's status and load use get_training_status. " +
+      "Own transparent load model (TSS per activity from power, else pace, else heart rate, else session RPE, with date-dependent thresholds), not Garmin's EPOC load; for Garmin's status and CTL/ATL/TSB from Garmin's load (`garmin_load_model`) use get_training_status. " +
       'Returns CTL/ATL/TSB, ACWR, monotony and strain on `to` (`latest`), warning `flags`, ISO weeks per sport (sessions, hours, km, TSS, hrTSS, Garmin load, hours in Z1-2/Z3/Z4-5), ' +
       'the 3-zone intensity split of the last 28 days (Z1/Z2/Z3 minutes and %) and the thresholds used. ' +
       'include_series adds the daily curve, include_activities TSS/IF/load_source/EF per activity, include_efficiency the monthly EF trend, ' +
