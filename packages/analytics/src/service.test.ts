@@ -67,7 +67,7 @@ describe('AnalyticsService.getLoad', () => {
     expect(res.data.flags).toBeUndefined();
     expect(res.data.series).toHaveLength(28);
     expect(res.data.activities).toHaveLength(28);
-    expect(res.data.activities?.[0]).toMatchObject({ id: 103, date: '2026-09-11', sport: 'run', if: 0.833, hrtss: 69.4, lthr_used: 170, rhr_used: 50, source: 'db' });
+    expect(res.data.activities?.[0]).toMatchObject({ id: 103, date: '2026-09-11', sport: 'run', if: 0.833, hrtss: 69.4, lthr_used: 170, lt1_used: 153, rhr_used: 50, source: 'db' });
     expect(res.data.efficiency?.map((e) => e.period)).toEqual(['2026-09', '2026-10']);
     expect(res.data.weeks?.at(-1)).toMatchObject({ week: '2026-W41', sport: 'run', sessions: 4, hours: 4, km: 40 });
     expect(res.data.note).toMatch(/differs from computed_load/);

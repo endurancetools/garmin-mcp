@@ -18,18 +18,19 @@ export interface EfficiencyRow {
   ef_gap_avg?: number;
 }
 
-type EfficiencySession = Pick<Session, 'date' | 'week' | 'sport' | 'duration_s' | 'avg_hr' | 'lthr_used' | 'ef' | 'ef_gap'>;
+type EfficiencySession = Pick<Session, 'date' | 'week' | 'sport' | 'duration_s' | 'avg_hr' | 'lt1_used' | 'ef' | 'ef_gap'>;
 
 /**
  * EF per month or ISO week for running (speed per beat) and cycling (normalized power per
- * beat): sessions with an EF, average HR below the LTHR of their date and at least 30 min.
+ * beat): sessions with an EF, average HR below the LT1 of their sport and date and at least
+ * 30 min.
  * Sorted by period and sport; 3 places.
  */
 export function efficiencyTrend(sessions: readonly EfficiencySession[], period: EfficiencyPeriod = 'month'): EfficiencyRow[] {
   const acc = new Map<string, { period: string; sport: 'run' | 'bike'; ef: number[]; gap: number[] }>();
   for (const s of sessions) {
     if (s.sport !== 'run' && s.sport !== 'bike') continue;
-    if (s.ef === undefined || s.avg_hr === undefined || s.avg_hr >= s.lthr_used) continue;
+    if (s.ef === undefined || s.avg_hr === undefined || s.avg_hr >= s.lt1_used) continue;
     if ((s.duration_s ?? 0) < EF_MIN_DURATION_S) continue;
     const key = period === 'month' ? s.date.slice(0, 7) : s.week;
     const id = `${key}|${s.sport}`;

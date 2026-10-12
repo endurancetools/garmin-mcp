@@ -25,6 +25,7 @@ function sess(date: string, extra: Partial<Session> = {}): Session {
     if: 1,
     hrtss: 100,
     lthr_used: 170,
+    lt1_used: 153,
     rhr_used: 50,
     source: 'db',
     ...extra,

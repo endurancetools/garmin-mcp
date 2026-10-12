@@ -14,6 +14,7 @@ function sess(date: string, extra: Partial<Session> = {}): Session {
     hrtss: 0,
     ef: 1.3,
     lthr_used: 170,
+    lt1_used: 153,
     rhr_used: 50,
     source: 'db',
     ...extra,
@@ -34,10 +35,11 @@ describe('efficiencyTrend', () => {
     ]);
   });
 
-  it('keeps only sessions below the LTHR of their date and at least 30 min long', () => {
+  it('keeps only sessions below the LT1 of their sport and date and at least 30 min long', () => {
     const rows = efficiencyTrend([
-      sess('2026-05-04', { avg_hr: 170 }),
-      sess('2026-05-05', { avg_hr: 175, lthr_used: 176, ef: 1.1 }),
+      sess('2026-05-03', { avg_hr: 160 }),
+      sess('2026-05-04', { avg_hr: 153 }),
+      sess('2026-05-05', { avg_hr: 155, lt1_used: 156, ef: 1.1 }),
       sess('2026-05-06', { duration_s: 1799 }),
       sess('2026-05-07', { duration_s: 1800, ef: 1.5 }),
       sess('2026-05-08', { ef: undefined }),
@@ -50,7 +52,7 @@ describe('efficiencyTrend', () => {
     const rows = efficiencyTrend(
       [
         sess('2026-05-04'),
-        sess('2026-05-05', { sport: 'bike', ef: 1.45, lthr_used: 160, avg_hr: 140 }),
+        sess('2026-05-05', { sport: 'bike', ef: 1.45, lthr_used: 160, lt1_used: 144, avg_hr: 140 }),
         sess('2026-05-12', { week: '2026-W20', ef: 1.32 }),
         sess('2026-05-06', { sport: 'swim', ef: 2 }),
       ],

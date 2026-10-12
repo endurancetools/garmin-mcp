@@ -90,6 +90,14 @@ describe('thresholds of the session date and sport', () => {
     expect(sessionMetrics(input({ type: 'strength_training' }), CTX).lthr_used).toBe(170);
   });
 
+  it('reports the LT1 of the sport next to the LTHR', () => {
+    expect(sessionMetrics(input(), CTX).lt1_used).toBe(153);
+    expect(sessionMetrics(input({ type: 'road_biking' }), CTX).lt1_used).toBe(144);
+    expect(sessionMetrics(input({ type: 'lap_swimming' }), CTX).lt1_used).toBe(153);
+    const own = { ...CTX, thresholds: [...CTX.thresholds, row('2026-01-01', 'lt1_hr', 150)] };
+    expect(sessionMetrics(input(), own).lt1_used).toBe(150);
+  });
+
   it('takes the threshold valid on the session date', () => {
     const ctx = { ...CTX, thresholds: [...CTX.thresholds, row('2026-06-01', 'lthr_run', 175)] };
     expect(sessionMetrics(input({ date: '2026-05-31' }), ctx).lthr_used).toBe(170);

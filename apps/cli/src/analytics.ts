@@ -77,7 +77,7 @@ export function loadMarkdown({ data, meta }: Envelope<LoadData>): string {
       '',
       mdTable(
         data.activities.map((a) => ({ ...a, duration: hm(a.duration_s), km: km(a.distance_m) })),
-        ['date', 'sport', 'type', 'name', 'duration', 'km', 'avg_hr', 'if', 'hrtss', 'ef', 'ef_gap', 'lthr_used', 'rhr_used', 'source'],
+        ['date', 'sport', 'type', 'name', 'duration', 'km', 'avg_hr', 'if', 'hrtss', 'ef', 'ef_gap', 'lthr_used', 'lt1_used', 'rhr_used', 'source'],
       ),
     );
   }
