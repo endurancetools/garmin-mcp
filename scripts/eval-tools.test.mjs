@@ -44,17 +44,19 @@ describe('eval-tools', () => {
   it('accepts any tool of an expect.tool list, with shared or per-tool args_include', () => {
     const [workout, week, sleep] = parseScenarios(
       [
-        '{"prompt":"Zrób mi trening 6x400 m","expect":{"tool":["create_workout","get_training_status","list_workouts"],"args_include":{"create_workout":{"dry_run":true}}},"forbid":["schedule_workouts"]}',
+        '{"prompt":"Zrób mi trening 6x400 m","expect":{"tool":["create_workout","get_thresholds","get_training_status","list_workouts"],"args_include":{"create_workout":{"dry_run":true}}},"forbid":["schedule_workouts"]}',
         '{"prompt":"What did I do last week?","expect":{"tool":["get_activities","get_period_summary"],"args_include":{"from":"2026-10-05"}}}',
         '{"prompt":"Jak spałem w tym tygodniu?","expect":{"tool":["query_health","get_sleep"],"args_include":{"query_health":{"metrics":["sleep"]}}}}',
       ].join('\n'),
     );
-    expect(workout.expect.tool).toEqual(['create_workout', 'get_training_status', 'list_workouts']);
+    expect(workout.expect.tool).toEqual(['create_workout', 'get_thresholds', 'get_training_status', 'list_workouts']);
     expect(judge(workout, { name: 'create_workout', input: { preset: { name: 'run_intervals' }, dry_run: true } }).pass).toBe(true);
     expect(judge(workout, { name: 'create_workout', input: { preset: { name: 'run_intervals' } } }).pass).toBe(false);
     expect(judge(workout, { name: 'get_training_status', input: {} }).pass).toBe(true);
+    // Threshold pace for the intervals is a fine first read.
+    expect(judge(workout, { name: 'get_thresholds', input: {} }).pass).toBe(true);
     expect(judge(workout, { name: 'list_workouts', input: { from: '2026-10-12' } }).pass).toBe(true);
-    expect(judge(workout, { name: 'get_activities', input: {} })).toEqual({ pass: false, reason: 'expected create_workout | get_training_status | list_workouts' });
+    expect(judge(workout, { name: 'get_activities', input: {} })).toEqual({ pass: false, reason: 'expected create_workout | get_thresholds | get_training_status | list_workouts' });
     expect(judge(workout, undefined).pass).toBe(false);
 
     // Shared args_include applies to every listed tool.

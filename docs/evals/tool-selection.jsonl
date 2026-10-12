@@ -2,7 +2,7 @@
 {"prompt": "When is my next race?", "expect": {"tool": "list_workouts"}, "forbid": ["get_activities", "garmin_sync"]}
 {"prompt": "Kiedy mam mój następny start?", "expect": {"tool": "list_workouts"}, "forbid": ["get_activities", "garmin_sync"]}
 {"prompt": "Co mam zaplanowane na ten tydzień?", "expect": {"tool": "list_workouts"}, "forbid": ["garmin_sync"]}
-{"prompt": "Zrób mi trening 6x400 m", "expect": {"tool": ["create_workout", "get_training_status", "list_workouts"], "args_include": {"create_workout": {"dry_run": true}}}, "forbid": ["schedule_workouts"]}
+{"prompt": "Zrób mi trening 6x400 m", "expect": {"tool": ["create_workout", "get_thresholds", "get_training_status", "list_workouts"], "args_include": {"create_workout": {"dry_run": true}}}, "forbid": ["schedule_workouts"]}
 {"prompt": "Build me an easy 45-minute zone 2 run for tomorrow.", "expect": {"tool": "create_workout", "args_include": {"dry_run": true}}, "forbid": ["schedule_workouts"]}
 {"prompt": "Widziałem już podgląd treningu z presetu run_intervals (6 powtórzeń po 400 m, 90 s przerwy) i zgadzam się. Zapisz go w Garmin Connect.", "expect": {"tool": "create_workout", "args_include": {"preset": {"name": "run_intervals", "params": {"repeats": 6, "work_meters": 400}}}}, "forbid": ["schedule_workouts"]}
 {"prompt": "Schedule my saved workout 1727354116 for 2026-10-15.", "expect": {"tool": "schedule_workouts", "args_include": {"items": [{"date": "2026-10-15", "workout_id": 1727354116}]}}, "forbid": ["create_workout"]}
