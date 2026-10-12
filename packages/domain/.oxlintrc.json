@@ -10,6 +10,8 @@
         "patterns": [
           {
             "group": [
+              "garmin-mcp-analytics",
+              "garmin-mcp-analytics/*",
               "garmin-mcp-server",
               "garmin-mcp-server/*",
               "garmin-mcp-cli",

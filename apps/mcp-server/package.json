@@ -30,6 +30,7 @@
     "!dist/test-utils"
   ],
   "dependencies": {
+    "garmin-mcp-analytics": "workspace:*",
     "garmin-mcp-domain": "workspace:*",
     "garmin-mcp-store": "workspace:*",
     "garmin-mcp-client": "workspace:*",

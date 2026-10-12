@@ -1,0 +1,16 @@
+{
+  "name": "garmin-mcp-analytics",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "packages/analytics/src",
+  "projectType": "library",
+  "tags": [
+    "scope:analytics",
+    "type:lib"
+  ],
+  "targets": {
+    "build": {},
+    "typecheck": {},
+    "lint": {},
+    "test": {}
+  }
+}

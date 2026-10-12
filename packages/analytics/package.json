@@ -1,0 +1,36 @@
+{
+  "name": "garmin-mcp-analytics",
+  "version": "0.1.1",
+  "description": "Training analytics for Garmin data: load, intensity, efficiency, readiness and threshold history",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/endurancetools/garmin-mcp.git",
+    "directory": "packages/analytics"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "exports": {
+    ".": {
+      "garmin-mcp-source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "!dist/**/*.test.*",
+    "!dist/**/*.tsbuildinfo",
+    "!dist/test-utils"
+  ],
+  "dependencies": {
+    "garmin-mcp-domain": "workspace:*",
+    "garmin-mcp-store": "workspace:*",
+    "garmin-mcp-config": "workspace:*"
+  }
+}

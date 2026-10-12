@@ -10,7 +10,7 @@
         "patterns": [
           {
             "group": [],
-            "message": "Layer violation: garmin-mcp-cli may only import garmin-mcp-server, garmin-mcp-domain, garmin-mcp-store, garmin-mcp-client, garmin-mcp-auth, garmin-mcp-config."
+            "message": "Layer violation: garmin-mcp-cli may only import garmin-mcp-server, garmin-mcp-analytics, garmin-mcp-domain, garmin-mcp-store, garmin-mcp-client, garmin-mcp-auth, garmin-mcp-config."
           }
         ]
       }

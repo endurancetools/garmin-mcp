@@ -16,6 +16,9 @@
   ],
   "references": [
     {
+      "path": "../../packages/analytics/tsconfig.lib.json"
+    },
+    {
       "path": "../../packages/domain/tsconfig.lib.json"
     },
     {
