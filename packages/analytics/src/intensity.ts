@@ -2,9 +2,13 @@ import type { IsoDate } from 'garmin-mcp-config';
 import { round } from 'garmin-mcp-domain';
 import { DEFAULT_LOAD_FLAGS } from './load.js';
 import { seilerZoneByHr, type Session } from './session.js';
+import type { SportGroup } from './sport.js';
 import { lt1For, type ProfileZoneFloors, type ThresholdPoint, type ZoneFloors } from './thresholds.js';
 
-/** Three-zone (Seiler) split of run and bike time over a period (spec 5.5). */
+/** Sport groups whose time the intensity distribution counts: the endurance sports measured by HR. */
+export const INTENSITY_SPORTS: readonly SportGroup[] = ['run', 'bike', 'nordic', 'row'];
+
+/** Three-zone (Seiler) split of endurance time (run, bike, nordic, row) over a period (spec 5.5). */
 export interface IntensityDistribution {
   from: IsoDate;
   to: IsoDate;
@@ -49,10 +53,10 @@ type IntensitySession = Pick<
 >;
 
 /**
- * Run and bike sessions of [from, to]. With Garmin zones and the profile's zone bounds of the
- * sport (cycling: CYCLING, else DEFAULT; running: DEFAULT), each Garmin zone goes to Z1/Z2/Z3 by
- * its bpm range against LT1 and the LTHR of the session's sport and date: a zone crossing a
- * threshold is split in proportion to its width in bpm. With zones but no bounds,
+ * Run, bike, nordic and row sessions of [from, to] (nordic and row use the running LTHR and LT1).
+ * With Garmin zones and the profile's zone bounds of the sport (cycling: CYCLING, else DEFAULT),
+ * each Garmin zone goes to Z1/Z2/Z3 by its bpm range against LT1 and the LTHR of the session's
+ * sport and date: a zone crossing a threshold is split in proportion to its width in bpm. With zones but no bounds,
  * Z1 = zones 1–2, Z2 = 3, Z3 = 4–5 (and `note`). Without zones, the whole duration goes to the
  * zone of the average HR. Sessions with neither zones nor HR are skipped.
  */
@@ -71,7 +75,7 @@ export function intensityDistribution(
   let byHr = 0;
   let fixed = false;
   for (const s of sessions) {
-    if (s.date < from || s.date > to || (s.sport !== 'run' && s.sport !== 'bike')) continue;
+    if (s.date < from || s.date > to || !INTENSITY_SPORTS.includes(s.sport)) continue;
     const secs = [s.z1_s ?? 0, s.z2_s ?? 0, s.z3_s ?? 0, s.z4_s ?? 0, s.z5_s ?? 0];
     if (secs.some((t) => t > 0)) {
       const f = s.sport === 'bike' ? (floors.CYCLING ?? floors.DEFAULT) : floors.DEFAULT;

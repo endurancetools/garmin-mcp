@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { sportGroup, type SportGroup } from './sport.js';
 
-// Control list: every type key of `sport_group` in plan-v2 `scripts/lib.sh`.
+// Control list: every type key of `sport_group` in plan-v2 `scripts/lib.sh`, with cross-country
+// skiing, snowshoeing and rowing moved to their own endurance groups.
 const CONTROL: Record<Exclude<SportGroup, 'other'>, string[]> = {
   run: ['running', 'trail_running', 'treadmill_running', 'track_running', 'street_running', 'ultra_run', 'virtual_run', 'indoor_running'],
   bike: [
@@ -26,12 +27,20 @@ const CONTROL: Record<Exclude<SportGroup, 'other'>, string[]> = {
     'casual_walking',
     'speed_walking',
     'rock_climbing',
-    'backcountry_skiing',
     'resort_skiing',
+  ],
+  nordic: [
     'cross_country_skiing',
+    'cross_country_skiing_ws',
+    'cross_country_classic_skiing',
     'skate_skiing',
+    'skate_skiing_ws',
+    'classic_skiing',
+    'backcountry_skiing',
+    'backcountry_skiing_snowboarding_ws',
     'snowshoeing',
   ],
+  row: ['rowing', 'indoor_rowing', 'rowing_v2'],
 };
 
 describe('sportGroup', () => {
@@ -40,7 +49,7 @@ describe('sportGroup', () => {
   });
 
   it('maps unknown and missing types to other', () => {
-    for (const key of ['multi_sport', 'indoor_rowing', 'elliptical', 'golf', 'tennis', '', null, undefined]) {
+    for (const key of ['multi_sport', 'elliptical', 'kayaking', 'golf', 'tennis', '', null, undefined]) {
       expect(sportGroup(key)).toBe('other');
     }
   });
@@ -49,5 +58,7 @@ describe('sportGroup', () => {
     expect(sportGroup('swimrun')).toBe('run');
     expect(sportGroup('Road_Biking')).toBe('bike');
     expect(sportGroup('e_bike_mountain')).toBe('bike');
+    expect(sportGroup('Skate_Skiing')).toBe('nordic');
+    expect(sportGroup('resort_skiing')).toBe('hike');
   });
 });

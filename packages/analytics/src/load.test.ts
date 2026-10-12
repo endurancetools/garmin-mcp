@@ -288,4 +288,17 @@ describe('weeklyBySport', () => {
     });
     expect(rows[1]).toMatchObject({ sessions: 1, hours: 1.5, km: 45, g_load: 0, z12_h: 0 });
   });
+
+  it('shows nordic and row as their own groups', () => {
+    const rows = weeklyBySport([
+      sess('2026-05-04', { week: '2026-W19', sport: 'nordic', duration_s: 5400, distance_m: 20_000 }),
+      sess('2026-05-05', { week: '2026-W19', sport: 'row', duration_s: 1800, distance_m: 6000 }),
+      sess('2026-05-06', { week: '2026-W19', sport: 'hike', duration_s: 7200, distance_m: 8000 }),
+    ]);
+    expect(rows.map((r) => [r.sport, r.hours, r.km])).toEqual([
+      ['hike', 2, 8],
+      ['nordic', 1.5, 20],
+      ['row', 0.5, 6],
+    ]);
+  });
 });
