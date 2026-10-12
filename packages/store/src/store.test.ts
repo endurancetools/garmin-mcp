@@ -11,8 +11,8 @@ const T = 1_791_400_000_000;
 describe('Store', () => {
   it('migrates a fresh database', () => {
     const store = Store.open(':memory:');
-    expect(schemaVersion(store.db)).toBe(5);
-    expect(store.getMeta('schema_version')).toBe('5');
+    expect(schemaVersion(store.db)).toBe(6);
+    expect(store.getMeta('schema_version')).toBe('6');
   });
 
   it('keeps cached activity details when migration 3 widens the detail kinds', () => {
@@ -117,6 +117,121 @@ describe('Store', () => {
     expect(store.tableStats().find((t) => t.table === 'calendar_events')).toEqual({ table: 'calendar_events', rows: 1, from: '2026-10-25', to: '2026-10-25' });
     store.replaceSchedule('2026-10-01', '2026-10-31', [], T);
     expect(store.getCalendarEvents('2026-10-01', '2026-10-31')).toEqual([]);
+  });
+
+  it('adds the analytics tables in migration 6 and keeps the cached data', () => {
+    const db = new Database(':memory:');
+    for (const sql of MIGRATIONS.slice(0, 5)) db.exec(sql);
+    db.pragma('user_version = 5');
+    db.prepare(`INSERT INTO devices (id, name, raw, settings, fetched_at) VALUES (7, 'FR965', '{"deviceId":7}', '{"deviceId":7}', ?)`).run(T);
+    db.prepare(`INSERT INTO meta (key, value) VALUES ('ref:devices:fetched_at', ?)`).run(String(T));
+    migrate(db);
+    expect(schemaVersion(db)).toBe(6);
+    const store = new Store(db);
+    expect(store.getMeta('schema_version')).toBe('6');
+    expect(store.getDevices()[0]?.settings).toEqual({ deviceId: 7 });
+    expect(store.referenceFetchedAt('devices')).toBe(T);
+    expect(store.listThresholds()).toEqual([]);
+    expect(store.countImportedActivities()).toBe(0);
+    const indexes = db.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name IN ('thresholds', 'imported_activities') ORDER BY name").all();
+    expect(indexes.map((r) => (r as { name: string }).name)).toEqual(
+      expect.arrayContaining(['imported_activities_date', 'thresholds_param_date']),
+    );
+  });
+
+  it('keeps threshold history and ignores a duplicate (date, param, source)', () => {
+    const store = Store.open(':memory:');
+    expect(store.addThreshold({ date: '2026-06-01', param: 'lthr_run', value: 168, source: 'garmin-auto', created_at: T })).toEqual({ added: true });
+    expect(store.addThreshold({ date: '2026-09-10', param: 'lthr_run', value: 171, source: 'test', note: 'test 30 min', created_at: T + 1 })).toEqual({
+      added: true,
+    });
+    expect(store.addThreshold({ date: '2026-09-10', param: 'lthr_run', value: 175, source: 'test', created_at: T + 2 })).toEqual({ added: false });
+    // Same date and param from another source is a separate row.
+    expect(store.addThreshold({ date: '2026-09-10', param: 'lthr_run', value: 170, source: 'manual', created_at: T + 3 })).toEqual({ added: true });
+    store.addThreshold({ date: '2026-05-01', param: 'hrmax', value: 192, source: 'manual', created_at: T + 4 });
+
+    expect(store.listThresholds('lthr_run').map((r) => [r.date, r.value, r.source, r.note])).toEqual([
+      ['2026-06-01', 168, 'garmin-auto', null],
+      ['2026-09-10', 171, 'test', 'test 30 min'],
+      ['2026-09-10', 170, 'manual', null],
+    ]);
+    expect(store.listThresholds().map((r) => r.param)).toEqual(['hrmax', 'lthr_run', 'lthr_run', 'lthr_run']);
+    expect(store.listThresholds('ftp_w')).toEqual([]);
+    expect(store.listThresholds('hrmax')[0]).toEqual({
+      id: expect.any(Number),
+      date: '2026-05-01',
+      param: 'hrmax',
+      value: 192,
+      source: 'manual',
+      note: null,
+      created_at: T + 4,
+    });
+  });
+
+  it('imports thresholds: adds new keys, overwrites changed ones, keeps the rest', () => {
+    const store = Store.open(':memory:');
+    store.addThreshold({ date: '2026-06-01', param: 'lthr_run', value: 168, source: 'garmin-auto', created_at: T });
+    store.addThreshold({ date: '2026-09-10', param: 'lthr_run', value: 171, source: 'test', note: 'old', created_at: T });
+    store.addThreshold({ date: '2026-09-10', param: 'lt1_hr', value: 150, source: 'test', created_at: T });
+    const res = store.replaceThresholds([
+      { date: '2026-09-10', param: 'lthr_run', value: 172, source: 'test', note: 'retest', created_at: T + 9 },
+      { date: '2026-09-10', param: 'lt1_hr', value: 150, source: 'test', created_at: T + 9 },
+      { date: '2026-10-01', param: 'ftp_w', value: 260, source: 'import', created_at: T + 9 },
+    ]);
+    expect(res).toEqual({ added: 1, updated: 1, skipped: 1 });
+    expect(store.listThresholds().map((r) => [r.date, r.param, r.value, r.source, r.note, r.created_at])).toEqual([
+      ['2026-10-01', 'ftp_w', 260, 'import', null, T + 9],
+      ['2026-09-10', 'lt1_hr', 150, 'test', null, T],
+      ['2026-06-01', 'lthr_run', 168, 'garmin-auto', null, T],
+      ['2026-09-10', 'lthr_run', 172, 'test', 'retest', T],
+    ]);
+    expect(store.replaceThresholds([])).toEqual({ added: 0, updated: 0, skipped: 0 });
+    expect(store.tableStats().find((t) => t.table === 'thresholds')).toEqual({ table: 'thresholds', rows: 4, from: '2026-06-01', to: '2026-10-01' });
+  });
+
+  it('upserts imported activities by id and reads them by local date', () => {
+    const store = Store.open(':memory:');
+    const run = {
+      id: 'csv-0123456789',
+      start_time_local: '2024-03-02 07:15:00',
+      type: 'running',
+      name: 'Morning run',
+      duration_s: 3600,
+      distance_m: 10_000,
+      avg_hr: 145,
+      source_file: 'Activities.csv',
+      imported_at: T,
+    };
+    const ride = { id: 'csv-abcdefabcd', start_time_local: '2024-03-04 17:00:00', type: 'cycling', source_file: 'Activities.csv', imported_at: T };
+    expect(store.upsertImportedActivities([run, ride])).toEqual({ added: 2, updated: 0 });
+    expect(store.upsertImportedActivities([{ ...run, name: 'Easy run', imported_at: T + 1 }])).toEqual({ added: 0, updated: 1 });
+    expect(store.countImportedActivities()).toBe(2);
+
+    const [row] = store.getImportedActivities('2024-03-01', '2024-03-02');
+    expect(row).toEqual({
+      ...run,
+      name: 'Easy run',
+      imported_at: T + 1,
+      date: '2024-03-02',
+      moving_s: null,
+      elevation_gain_m: null,
+      elevation_loss_m: null,
+      max_hr: null,
+      avg_power: null,
+      norm_power: null,
+      avg_cadence: null,
+      calories: null,
+      training_effect_aerobic: null,
+      training_effect_anaerobic: null,
+    });
+    expect(store.getImportedActivities('2024-03-01', '2024-03-31').map((r) => r.id)).toEqual(['csv-0123456789', 'csv-abcdefabcd']);
+    expect(store.getImportedActivities('2024-03-03', '2024-03-03')).toEqual([]);
+    expect(store.tableStats().find((t) => t.table === 'imported_activities')).toEqual({
+      table: 'imported_activities',
+      rows: 2,
+      from: '2024-03-02',
+      to: '2024-03-04',
+    });
   });
 
   it('records sync runs', () => {

@@ -205,4 +205,44 @@ export const MIGRATIONS: readonly string[] = [
   ALTER TABLE devices ADD COLUMN settings TEXT;
   DELETE FROM meta WHERE key = 'ref:devices:fetched_at';
   `,
+  /* 6 */ `
+  -- Own tables of the training analytics, not Garmin data (no raw JSON).
+  -- Training thresholds with history: a value holds from its date until the next one.
+  CREATE TABLE thresholds (
+    id INTEGER PRIMARY KEY,
+    date TEXT NOT NULL,
+    param TEXT NOT NULL,
+    value REAL NOT NULL,
+    source TEXT NOT NULL,
+    note TEXT,
+    created_at INTEGER NOT NULL,
+    UNIQUE (date, param, source)
+  );
+  CREATE INDEX thresholds_param_date ON thresholds(param, date);
+
+  -- Activities from a Garmin Connect CSV export, for dates the cache does not cover.
+  CREATE TABLE imported_activities (
+    id TEXT PRIMARY KEY,
+    start_time_local TEXT NOT NULL,
+    date TEXT GENERATED ALWAYS AS (substr(start_time_local, 1, 10)) STORED,
+    type TEXT,
+    name TEXT,
+    duration_s REAL,
+    moving_s REAL,
+    distance_m REAL,
+    elevation_gain_m REAL,
+    elevation_loss_m REAL,
+    avg_hr REAL,
+    max_hr REAL,
+    avg_power REAL,
+    norm_power REAL,
+    avg_cadence REAL,
+    calories REAL,
+    training_effect_aerobic REAL,
+    training_effect_anaerobic REAL,
+    source_file TEXT NOT NULL,
+    imported_at INTEGER NOT NULL
+  );
+  CREATE INDEX imported_activities_date ON imported_activities(date);
+  `,
 ];
