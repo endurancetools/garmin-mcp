@@ -1,4 +1,5 @@
 import { Command, Option } from 'commander';
+import { AnalyticsService, importActivities, LOAD_SOURCES, SET_THRESHOLD_SOURCES, type LoadSource } from 'garmin-mcp-analytics';
 import { BrowserUnavailableError, diagnose, findBrowser, isAuthError, pythonFallbackCommand, type LoginResult } from 'garmin-mcp-auth';
 import { addDays, assertIsoDate, GarminError, InputError, loadConfig, parsePauseSeconds, type GarminConfig, type RawConfig } from 'garmin-mcp-config';
 import { activityBrief, createRuntime, healthTable, HEALTH_METRICS, type HealthMetric, type Runtime } from 'garmin-mcp-domain';
@@ -7,6 +8,7 @@ import { startServer } from 'garmin-mcp-server';
 import { databasePath, forgetAccount, readAccount, SYNC_SCOPES, Store, type SyncScope } from 'garmin-mcp-store';
 import fs from 'node:fs';
 import path from 'node:path';
+import { loadMarkdown, parseThresholdsCsv, readinessMarkdown, readJsonObject, setThresholdText, thresholdsCsv, thresholdsMarkdown } from './analytics.js';
 import { err, out, prompt, promptHidden, table } from './io.js';
 import { RECORDABLE, writeFixture } from './record.js';
 
@@ -38,9 +40,46 @@ function openLocalStore(config: GarminConfig): Store | undefined {
   return fs.existsSync(file) ? Store.open(file) : undefined;
 }
 
+/** The analytics service of a command and how to release it. */
+export interface AnalyticsHandle {
+  analytics: AnalyticsService;
+  close(): void;
+}
+
+/** Seams for tests: the analytics commands and `status` run on an in-memory store there. */
+export interface ProgramDeps {
+  /** Opens the analytics service (default: the account's database through `runtime.service()`). */
+  analytics?: (config: GarminConfig) => Promise<AnalyticsHandle>;
+  /** Opens the local database for `status` (default: the account's file, if it exists). */
+  store?: (config: GarminConfig) => Store | undefined;
+  now?: () => number;
+}
+
+/**
+ * The analytics service over the account's database. The service opens like for any read
+ * (the account from `account.json`, the profile from the cache); with auto fetch off the
+ * commands never download, missing data comes back as a note with the `garmin sync` command.
+ */
+async function openAnalytics(config: GarminConfig): Promise<AnalyticsHandle> {
+  const rt = createRuntime(config);
+  const garmin = await rt.service();
+  return { analytics: new AnalyticsService(garmin), close: () => rt.close() };
+}
+
 const iso = (ms: number | null | undefined) => (ms ? new Date(ms).toISOString().replace('.000Z', 'Z') : '-');
 
-export function buildProgram(): Command {
+export function buildProgram(deps: ProgramDeps = {}): Command {
+  const now = deps.now ?? Date.now;
+  const openStore = deps.store ?? openLocalStore;
+  /** Runs `fn` with the analytics service of the command; never downloads from Garmin. */
+  const withAnalytics = async <T>(cmd: Command, fn: (a: AnalyticsService) => Promise<T> | T): Promise<T> => {
+    const handle = await (deps.analytics ?? openAnalytics)(configFrom(cmd, { autoFetch: false }));
+    try {
+      return await fn(handle.analytics);
+    } finally {
+      handle.close();
+    }
+  };
   const program = new Command()
     .name('garmin')
     .description('Garmin Connect MCP: login, sync to a local SQLite cache, previews and diagnostics')
@@ -121,7 +160,7 @@ export function buildProgram(): Command {
       const rt = createRuntime(config);
       const auth = await rt.auth.status();
       const account = readAccount(config.dataDir);
-      const store = openLocalStore(config);
+      const store = openStore(config);
       const report = {
         auth: { logged_in: auth.loggedIn, tokens_file: auth.tokensFile, expires_at: auth.expiresAt?.toISOString(), client_id: auth.clientId },
         account: account && { display_name: account.displayName, database: databasePath(config.dataDir, account.hash) },
@@ -133,6 +172,7 @@ export function buildProgram(): Command {
           pause_reason: Number(store.getMeta('sync:paused_until') ?? 0) > Date.now() ? store.getMeta('sync:pause_reason') : undefined,
         },
         synced: store && { activities: store.getMeta('activities:covered'), weigh_ins: store.getMeta('weighins:covered') },
+        analytics: store && { thresholds: store.listThresholds().length, imported_activities: store.countImportedActivities() },
         recent_syncs: store?.recentSyncs(5).map((s) => ({ id: s.id, scope: s.scope, mode: s.mode, status: s.status, started: iso(s.started_at), finished: iso(s.finished_at) })),
       };
       store?.close();
@@ -143,6 +183,7 @@ export function buildProgram(): Command {
       const l = report.limits;
       if (l) out(`Requests today: ${l.requests_today}/${l.max_requests_per_day}${l.paused_until ? ` - syncing paused until ${l.paused_until}: ${l.pause_reason ?? ''}` : ''}`);
       if (report.synced?.activities) out(`Activities synced: ${report.synced.activities}`);
+      if (report.analytics) out(`Analytics:      ${report.analytics.thresholds} threshold rows, ${report.analytics.imported_activities} imported activities`);
       if (report.tables) out(`\n${table(report.tables)}`);
       if (report.recent_syncs?.length) out(`\n${table(report.recent_syncs)}`);
     });
@@ -236,6 +277,110 @@ export function buildProgram(): Command {
       out(table(result.rows));
       const s = result.summary[metric as HealthMetric];
       if (s) out(`\navg ${s.avg ?? '-'}  min ${s.min ?? '-'}  max ${s.max ?? '-'}  days ${s.days_with_data}  trend ${s.trend?.direction ?? '-'}`);
+    });
+
+  program
+    .command('load')
+    .description('own training load model from the local database: hrTSS, CTL/ATL/TSB, ACWR, monotony, weeks, intensity (no network)')
+    .option('--from <date>', 'start date YYYY-MM-DD (default: 27 days before --to)')
+    .option('--to <date>', 'end date YYYY-MM-DD (default: today)')
+    .addOption(new Option('--source <source>', 'daily load: hrTSS from heart rate, or Garmin training load').choices([...LOAD_SOURCES]).default('hrtss'))
+    .option('--flags <file>', 'JSON object overriding flag thresholds, e.g. {"acwr_high": 1.4}')
+    .option('--series', 'add the daily series of the range')
+    .option('--activities', 'add per-activity metrics of the range')
+    .option('--efficiency', 'add the monthly efficiency factor of aerobic sessions')
+    .option('--json', 'the { data, meta } envelope of the get_load tool')
+    .action(
+      async (
+        opts: { from?: string; to?: string; source: LoadSource; flags?: string; series?: boolean; activities?: boolean; efficiency?: boolean; json?: boolean },
+        cmd: Command,
+      ) => {
+        const flags = opts.flags ? readJsonObject(opts.flags, '--flags') : undefined;
+        const res = await withAnalytics(cmd, (a) =>
+          a.getLoad({
+            from: opts.from,
+            to: opts.to,
+            source: opts.source,
+            include_series: opts.series,
+            include_activities: opts.activities,
+            include_efficiency: opts.efficiency,
+            flags,
+          }),
+        );
+        out(opts.json ? JSON.stringify(res, null, 2) : loadMarkdown(res));
+      },
+    );
+
+  program
+    .command('readiness [date]')
+    .description('morning GO / MODIFY / REST decision from HRV, resting HR, sleep, body battery, training readiness, stress and load (no network)')
+    .option('--rules <file>', 'JSON object overriding decision thresholds, e.g. {"sleep_h_red": 5.5}')
+    .option('--json', 'the { data, meta } envelope of the get_readiness tool')
+    .action(async (date: string | undefined, opts: { rules?: string; json?: boolean }, cmd: Command) => {
+      const rules = opts.rules ? readJsonObject(opts.rules, '--rules') : undefined;
+      const res = await withAnalytics(cmd, (a) => a.getReadiness({ date, rules }));
+      out(opts.json ? JSON.stringify(res, null, 2) : readinessMarkdown(res));
+    });
+
+  const thresholds = program.command('thresholds').description('threshold history (LTHR, LT1, HRmax, FTP ...): list, add, export and import as CSV');
+  thresholds
+    .command('list', { isDefault: true })
+    .description('thresholds in effect on a date, per sport, and optionally the whole history (default)')
+    .option('--date <date>', 'date YYYY-MM-DD (default: today)')
+    .option('--param <param>', 'only this parameter')
+    .option('--history', 'add every stored row')
+    .option('--json', 'the { data, meta } envelope of the get_thresholds tool')
+    .action(async (opts: { date?: string; param?: string; history?: boolean; json?: boolean }, cmd: Command) => {
+      const res = await withAnalytics(cmd, (a) => a.getThresholds({ date: opts.date, param: opts.param, history: opts.history }));
+      out(opts.json ? JSON.stringify(res, null, 2) : thresholdsMarkdown(res));
+    });
+  thresholds
+    .command('add <date> <param> <value>')
+    .description('record a threshold (field test or manual value) effective from a date')
+    .addOption(new Option('--source <source>', 'where the value comes from').choices([...SET_THRESHOLD_SOURCES]).default('test'))
+    .option('--note <text>', 'e.g. "30 min test"')
+    .option('--json', 'the { data, meta } envelope of the set_threshold tool')
+    .action(async (date: string, param: string, value: string, opts: { source: string; note?: string; json?: boolean }, cmd: Command) => {
+      const n = Number(value);
+      if (value.trim() === '' || !Number.isFinite(n)) throw new InputError(`value must be a number, got "${value}"`);
+      const res = await withAnalytics(cmd, (a) => a.setThreshold({ date, param, value: n, source: opts.source, note: opts.note }));
+      out(opts.json ? JSON.stringify(res, null, 2) : setThresholdText(res));
+    });
+  thresholds
+    .command('export')
+    .description('write the threshold history as CSV (date,param,value,source,note)')
+    .option('--out <file>', 'file to write (default: standard output)')
+    .action(async (opts: { out?: string }, cmd: Command) => {
+      const res = await withAnalytics(cmd, (a) => a.getThresholds({ history: true }));
+      const rows = res.data.history ?? [];
+      const csv = thresholdsCsv(rows);
+      if (!opts.out) return void process.stdout.write(csv);
+      fs.writeFileSync(path.resolve(opts.out), csv);
+      out(`Wrote ${rows.length} threshold rows to ${opts.out}.`);
+    });
+  thresholds
+    .command('import <file>')
+    .description('add threshold rows from a CSV written by `thresholds export`; same date, param and source overwrite, identical rows are skipped')
+    .action(async (file: string, _opts: unknown, cmd: Command) => {
+      const { rows, garminAuto } = parseThresholdsCsv(fs.readFileSync(path.resolve(file), 'utf8'), file, now());
+      const res = await withAnalytics(cmd, (a) => a.garmin.store.replaceThresholds(rows));
+      out(`Imported ${file}: ${res.added} added, ${res.updated} updated, ${res.skipped} unchanged.`);
+      if (garminAuto) out(`${garminAuto} garmin-auto row(s) left out: those come from the Garmin profile.`);
+    });
+
+  program
+    .command('import-activities <files...>')
+    .description('import Garmin Connect "Activities" CSV exports for dates the synced activities do not cover')
+    .option('--json', 'machine readable report')
+    .action(async (files: string[], opts: { json?: boolean }, cmd: Command) => {
+      const input = files.map((f) => ({ name: path.basename(f), text: fs.readFileSync(path.resolve(f), 'utf8') }));
+      const report = await withAnalytics(cmd, (a) => importActivities(a.garmin.store, input, now()));
+      if (opts.json) return out(JSON.stringify(report, null, 2));
+      out(
+        `Imported ${report.rows} activities from ${report.files} file(s): ${report.added} added, ${report.updated} already imported (updated), ${report.duplicates} duplicates, ${report.skipped} skipped.`,
+      );
+      if (report.covered) out(`${report.covered} of them fall on dates covered by synced activities; analytics uses the synced ones there.`);
+      for (const w of report.warnings) err(`warning: ${w}`);
     });
 
   program
