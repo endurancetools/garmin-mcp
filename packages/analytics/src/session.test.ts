@@ -5,6 +5,7 @@ import {
   buildSessions,
   efficiencyFactor,
   efficiencyFactorGap,
+  hikeGap,
   hrTss,
   hrZonesCandidate,
   intensityFactor,
@@ -320,6 +321,17 @@ describe('efficiency factors', () => {
     expect(efficiencyFactor('bike', { avg_hr: 140, np_w: 200 })).toBeCloseTo(200 / 140, 10);
     expect(efficiencyFactor('bike', { avg_hr: 140 })).toBeUndefined();
     expect(efficiencyFactorGap('bike', 140, 3.5)).toBeUndefined();
+  });
+
+  it('hiking: grade adjusted speed in m/min per beat, only with GAP, distance and elevation', () => {
+    const hike = { avg_hr: 120, duration_s: 7200, distance_m: 8000, elev_gain_m: 600, gap_mps: 1.5 };
+    expect(efficiencyFactor('hike', hike)).toBeCloseTo(0.75, 10);
+    expect(hikeGap(hike)).toBe(1.5);
+    expect(efficiencyFactorGap('hike', 120, hikeGap(hike))).toBeCloseTo(0.75, 10);
+    expect(efficiencyFactor('hike', { ...hike, gap_mps: undefined })).toBeUndefined();
+    expect(efficiencyFactor('hike', { ...hike, elev_gain_m: undefined })).toBeUndefined();
+    expect(efficiencyFactor('hike', { ...hike, distance_m: undefined })).toBeUndefined();
+    expect(hikeGap({ ...hike, elev_gain_m: undefined })).toBeUndefined();
   });
 
   it('undefined for other sports and for missing inputs', () => {

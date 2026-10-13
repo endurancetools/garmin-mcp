@@ -75,7 +75,7 @@ function analytics(service: GarminService): AnalyticsService {
 /** `key default, ...` of a rule or flag object, for the one description of its input. */
 const defaults = (values: object) =>
   Object.entries(values)
-    .map(([k, v]) => `${k} ${String(v)}`)
+    .map(([k, v]) => `${k} ${Array.isArray(v) ? `[${v.join(', ')}]` : String(v)}`)
     .join(', ');
 
 /** Workout input of create_workout. */

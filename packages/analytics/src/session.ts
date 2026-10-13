@@ -291,12 +291,22 @@ export function resolveLoad(candidates: readonly (LoadCandidate | undefined)[]):
 }
 
 /**
- * Efficiency factor: running speed in m/min per beat, cycling normalized power per beat;
+ * Grade adjusted speed of a hike: Garmin's GAP when the hike also has a distance and an
+ * elevation gain (the inputs of GAP), else `undefined` (the hike stays out of EF).
+ */
+export function hikeGap(s: Pick<SessionInput, 'distance_m' | 'elev_gain_m' | 'gap_mps'>): number | undefined {
+  const ok = (s.distance_m ?? 0) > 0 && s.elev_gain_m !== undefined && s.gap_mps !== undefined && s.gap_mps > 0;
+  return ok ? s.gap_mps : undefined;
+}
+
+/**
+ * Efficiency factor: running speed in m/min per beat, cycling normalized power per beat,
+ * hiking grade adjusted speed in m/min per beat ({@link hikeGap});
  * `undefined` for other sports or missing inputs.
  */
 export function efficiencyFactor(
   sport: SportGroup,
-  s: Pick<SessionInput, 'avg_hr' | 'duration_s' | 'distance_m' | 'np_w'>,
+  s: Pick<SessionInput, 'avg_hr' | 'duration_s' | 'distance_m' | 'np_w' | 'elev_gain_m' | 'gap_mps'>,
 ): number | undefined {
   const hr = s.avg_hr;
   if (hr === undefined || !(hr > 0)) return undefined;
@@ -306,12 +316,16 @@ export function efficiencyFactor(
     return dur > 0 && dist > 0 ? ((dist / dur) * 60) / hr : undefined;
   }
   if (sport === 'bike' && s.np_w !== undefined) return s.np_w / hr;
+  if (sport === 'hike') {
+    const gap = hikeGap(s);
+    return gap === undefined ? undefined : (gap * 60) / hr;
+  }
   return undefined;
 }
 
-/** Grade adjusted efficiency factor (running only): GAP in m/min per beat. */
+/** Grade adjusted efficiency factor (running and hiking): GAP in m/min per beat; for a hike pass {@link hikeGap}. */
 export function efficiencyFactorGap(sport: SportGroup, avgHr: number | undefined, gapMps: number | undefined): number | undefined {
-  if (sport !== 'run' || gapMps === undefined || avgHr === undefined || !(avgHr > 0)) return undefined;
+  if ((sport !== 'run' && sport !== 'hike') || gapMps === undefined || avgHr === undefined || !(avgHr > 0)) return undefined;
   return (gapMps * 60) / avgHr;
 }
 
@@ -410,7 +424,7 @@ export function sessionMetrics(input: SessionInput, ctx: SessionContext, onNote?
     hrtss: round(hr.tss, 1) ?? 0,
     hr_method: hrZones ? 'zones' : 'avg',
     ef: round(efficiencyFactor(sport, input), 3),
-    ef_gap: round(efficiencyFactorGap(sport, input.avg_hr, input.gap_mps), 3),
+    ef_gap: round(efficiencyFactorGap(sport, input.avg_hr, sport === 'hike' ? hikeGap(input) : input.gap_mps), 3),
     gap_mps: round(input.gap_mps, 3),
     z1_s: round(z?.[0], 0),
     z2_s: round(z?.[1], 0),

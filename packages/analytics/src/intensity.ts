@@ -2,13 +2,10 @@ import type { IsoDate } from 'garmin-mcp-config';
 import { round } from 'garmin-mcp-domain';
 import { DEFAULT_LOAD_FLAGS } from './load.js';
 import { seilerZoneByHr, type Session } from './session.js';
-import type { SportGroup } from './sport.js';
+import { INTENSITY_SPORTS, type SportGroup } from './sport.js';
 import { lt1For, zoneBounds, zoneFloorsFor, type ProfileZoneFloors, type ThresholdPoint } from './thresholds.js';
 
-/** Sport groups whose time the intensity distribution counts: the endurance sports measured by HR. */
-export const INTENSITY_SPORTS: readonly SportGroup[] = ['run', 'bike', 'nordic', 'row'];
-
-/** Three-zone (Seiler) split of endurance time (run, bike, nordic, row) over a period (spec 5.5). */
+/** Three-zone (Seiler) split of endurance time (`flags.intensity_sports`, default run, bike, nordic, row) over a period (spec 5.5). */
 export interface IntensityDistribution {
   from: IsoDate;
   to: IsoDate;
@@ -47,7 +44,8 @@ type IntensitySession = Pick<
 >;
 
 /**
- * Run, bike, nordic and row sessions of [from, to] (nordic and row use the running LTHR and LT1).
+ * Sessions of `sports` (default {@link INTENSITY_SPORTS}: run, bike, nordic, row) in [from, to]
+ * (groups without thresholds of their own, such as nordic, row and hike, use the running LTHR and LT1).
  * With Garmin zones and the profile's zone bounds of the sport (cycling: CYCLING, else DEFAULT),
  * each Garmin zone goes to Z1/Z2/Z3 by its bpm range against LT1 and the LTHR of the session's
  * sport and date: a zone crossing a threshold is split in proportion to its width in bpm. With zones but no bounds,
@@ -61,6 +59,7 @@ export function intensityDistribution(
   to: IsoDate,
   z1MinPct: number = DEFAULT_LOAD_FLAGS.z1_min_pct,
   floors: ProfileZoneFloors = {},
+  sports: readonly SportGroup[] = INTENSITY_SPORTS,
 ): IntensityDistribution {
   let a = 0;
   let b = 0;
@@ -69,7 +68,7 @@ export function intensityDistribution(
   let byHr = 0;
   let fixed = false;
   for (const s of sessions) {
-    if (s.date < from || s.date > to || !INTENSITY_SPORTS.includes(s.sport)) continue;
+    if (s.date < from || s.date > to || !sports.includes(s.sport)) continue;
     const secs = [s.z1_s ?? 0, s.z2_s ?? 0, s.z3_s ?? 0, s.z4_s ?? 0, s.z5_s ?? 0];
     if (secs.some((t) => t > 0)) {
       const f = zoneFloorsFor(floors, s.sport);

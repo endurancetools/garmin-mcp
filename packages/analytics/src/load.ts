@@ -1,7 +1,7 @@
 import { addDays, daysBetween, type IsoDate } from 'garmin-mcp-config';
 import { round, trainingLoadSeries } from 'garmin-mcp-domain';
 import type { Session } from './session.js';
-import { SPORT_GROUPS, type SportGroup } from './sport.js';
+import { INTENSITY_SPORTS, isSportGroup, SPORT_GROUPS, type SportGroup } from './sport.js';
 
 /**
  * Daily stress source: `auto` the per-session hierarchy (power → pace → heart rate → session RPE, `tss`),
@@ -71,12 +71,14 @@ export interface LoadFlags {
   tsb_fresh: number;
   /** Week-to-week growth of total hours or running km above this percentage. */
   week_jump_pct: number;
-  /** Share of Z1 (below LT1) in run, bike, nordic and row time under this percentage (spec 5.5). */
+  /** Share of Z1 (below LT1) in the time of `intensity_sports` under this percentage (spec 5.5). */
   z1_min_pct: number;
   /** Multiplier of session RPE × minutes (`load_source: "rpe"`); not a flag threshold, but overridden the same way. */
   rpe_calibration: number;
   /** Heart-rate candidate from the time in zones (`zones`) or from the average heart rate (`avg`); not a flag threshold, but overridden the same way. */
   hr_method: HrMethod;
+  /** Sport groups the intensity distribution counts (default {@link INTENSITY_SPORTS}); not a flag threshold, but overridden the same way. */
+  intensity_sports: readonly SportGroup[];
 }
 
 export const DEFAULT_LOAD_FLAGS: Readonly<LoadFlags> = {
@@ -90,6 +92,7 @@ export const DEFAULT_LOAD_FLAGS: Readonly<LoadFlags> = {
   z1_min_pct: 75,
   rpe_calibration: RPE_LOAD_CALIBRATION,
   hr_method: 'zones',
+  intensity_sports: INTENSITY_SPORTS,
 };
 
 export type LoadFlagCode =
@@ -107,18 +110,22 @@ export interface LoadFlag {
   text: string;
 }
 
-/** Is `v` a valid value of the load flag `key`: a finite number, or for `hr_method` one of {@link HR_METHODS}. */
+/**
+ * Is `v` a valid value of the load flag `key`: a finite number, for `hr_method` one of
+ * {@link HR_METHODS}, for `intensity_sports` a non-empty list of known sport groups.
+ */
 export function isLoadFlagValue(key: string, v: unknown): boolean {
   if (key === 'hr_method') return typeof v === 'string' && (HR_METHODS as readonly string[]).includes(v);
+  if (key === 'intensity_sports') return Array.isArray(v) && v.length > 0 && v.every(isSportGroup);
   return Object.hasOwn(DEFAULT_LOAD_FLAGS, key) && typeof v === 'number' && Number.isFinite(v);
 }
 
-/** Defaults overridden by the valid values in `overrides` (finite numbers; `hr_method` one of {@link HR_METHODS}). */
+/** Defaults overridden by the valid values in `overrides` ({@link isLoadFlagValue}; `intensity_sports` without repeats). */
 export function resolveLoadFlags(overrides?: Partial<Record<keyof LoadFlags, unknown>>): LoadFlags {
   const out: Record<string, unknown> = { ...DEFAULT_LOAD_FLAGS };
   for (const key of Object.keys(DEFAULT_LOAD_FLAGS)) {
     const v = overrides?.[key as keyof LoadFlags];
-    if (isLoadFlagValue(key, v)) out[key] = v;
+    if (isLoadFlagValue(key, v)) out[key] = Array.isArray(v) ? [...new Set(v)] : v;
   }
   return out as unknown as LoadFlags;
 }

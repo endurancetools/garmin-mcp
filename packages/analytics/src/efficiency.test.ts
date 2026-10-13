@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { efficiencyTrend } from './efficiency.js';
+import { efficiencySports, efficiencyTrend } from './efficiency.js';
 import type { Session } from './session.js';
 
 function sess(date: string, extra: Partial<Session> = {}): Session {
@@ -64,6 +64,16 @@ describe('efficiencyTrend', () => {
       ['2026-W19', 'run', 1, 1.3],
       ['2026-W20', 'run', 1, 1.32],
     ]);
+  });
+
+  it('adds hiking (EF from GAP) only when asked for', () => {
+    const hike = sess('2026-05-06', { sport: 'hike', ef: 0.75, ef_gap: 0.75, avg_hr: 120, duration_s: 7200 });
+    expect(efficiencyTrend([sess('2026-05-04'), hike]).map((r) => r.sport)).toEqual(['run']);
+    expect(efficiencyTrend([sess('2026-05-04'), hike, sess('2026-05-07', { sport: 'hike', avg_hr: 120, ef: undefined })], 'month', efficiencySports(['run', 'hike']))).toEqual([
+      { period: '2026-05', sport: 'hike', n: 1, ef_avg: 0.75, ef_max: 0.75, ef_gap_avg: 0.75 },
+      { period: '2026-05', sport: 'run', n: 1, ef_avg: 1.3, ef_max: 1.3, ef_gap_avg: undefined },
+    ]);
+    expect(efficiencySports(['run', 'bike', 'nordic', 'row'])).toEqual(['run', 'bike']);
   });
 
   it('empty without qualifying sessions', () => {
