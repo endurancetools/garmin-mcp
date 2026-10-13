@@ -6,6 +6,8 @@ Four tools compute training metrics on your machine, from the data already in th
 
 The defaults below are starting points taken from the literature, not personal prescriptions. Every flag and rule can be overridden in the call (`flags` of `get_load`, `rules` of `get_readiness`), and every answer returns the values it used (`flags_used`, `rules_used`).
 
+**Not medical advice.** These are training metrics computed from what your watch recorded. They describe load and trends, say nothing certain about illness, injury or overtraining, and do not replace a doctor or a coach who knows you. What each method can and cannot tell you, in plain words: [Methods and evidence](methods.md).
+
 ## What each tool answers
 
 | Tool | Question | Main fields |
@@ -176,6 +178,8 @@ Aerobic decoupling (Pa:Hr for running, Pw:Hr for power) compares the efficiency 
 Around 5% is the usual orientation point: below it the session was aerobically steady, above it the pace or power was too high for the current aerobic base, or heat, dehydration or fuelling played a part. It is information, not a flag: terrain, wind, stops and the warm-up at the start of the first half all move the number, so compare sessions of the same kind.
 
 ## Morning readiness
+
+The decision is training information, not medical advice: it compares this morning with your own recent baselines and cannot tell whether you are ill or injured. If you feel unwell, talk to a doctor, whatever the decision says.
 
 `get_readiness` reports seven signals of day D (default today) and turns four of them into a decision: HRV, resting heart rate, hours of sleep and own load. A counted signal is `ok`, `yellow`, `red`, or `unknown` when its data is missing; Garmin's own scores (Training Readiness, Body Battery, stress) are `info`: shown, never rated. Neither `unknown` nor `info` signals count (`counts.info`, `counts.unknown`).
 
