@@ -1,5 +1,6 @@
 ---
 title: How it works
+description: "How Garmin MCP works: a local MCP server and SQLite cache on your machine, paced downloads from Garmin Connect, designed tools, and what is stored where."
 nav_order: 9
 ---
 Everything runs on your machine. Your AI client starts the server, the server keeps a local database of what it has downloaded from Garmin Connect, and only the answers go to the client.

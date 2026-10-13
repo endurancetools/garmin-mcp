@@ -1,5 +1,6 @@
 ---
 title: Signing in
+description: "Sign in to Garmin Connect for Garmin MCP on Garmin's own page in your browser, MFA included; your password never passes through the tool. Signing out too."
 nav_order: 4
 ---
 ```bash

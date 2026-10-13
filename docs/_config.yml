@@ -17,6 +17,28 @@ locale: en-US
 search: true
 breadcrumbs: true
 
+# Link previews and search (E7-6). Every page sets its own `title` and `description` in front matter;
+# `<title>` is "<page title> – Garmin MCP" unless the title already contains "Garmin MCP".
+title_separator: "–"
+og_image: /assets/images/og.png
+og_image_alt: "Garmin MCP: training load and readiness from Garmin, in Claude"
+# No X (Twitter) account yet (decision E7-6a), so no `twitter.username`; without it the theme writes no
+# twitter:card, and _includes/head/custom.html adds `summary_large_image` instead.
+# Search engine verification codes (E7-17): uncomment and paste the codes from Google Search Console
+# and Bing Webmaster Tools.
+# google_site_verification: ""
+# bing_site_verification: ""
+# There is no feed (jekyll-feed is not enabled); without this the theme links a missing /feed.xml.
+atom_feed:
+  hide: true
+# Person JSON-LD on the home page (the theme's _includes/schema.html).
+social:
+  type: Person
+  name: Marcin Milewicz
+  links:
+    - https://github.com/marcinmilewicz
+    - https://www.linkedin.com/in/marcinmilewicz/
+
 plugins:
   - jekyll-include-cache
   - jekyll-remote-theme
@@ -61,3 +83,5 @@ defaults:
 exclude:
   - evals
   - vendor
+  # SVG sources of the images in assets/images (scripts/brand-images.mjs), not part of the site.
+  - assets/src

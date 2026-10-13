@@ -1,0 +1,41 @@
+{% comment %}
+  Extra <head> tags (Minimal Mistakes includes this file at the end of <head>), E7-6.
+  - Favicons and theme colour; images from scripts/brand-images.mjs (E7-7).
+  - twitter:card, because the theme writes it only with `twitter.username`, and there is no X account
+    (decision E7-6a). X reads title, description and image from the og: tags.
+  - SoftwareApplication JSON-LD on the home page. softwareVersion comes from the latest GitHub release
+    (jekyll-github-metadata), so a release needs no edit here.
+{% endcomment %}
+<link rel="icon" href="{{ '/assets/images/favicon.svg' | relative_url }}" type="image/svg+xml">
+<link rel="icon" href="{{ '/assets/images/favicon-32.png' | relative_url }}" type="image/png" sizes="32x32">
+<link rel="apple-touch-icon" href="{{ '/assets/images/apple-touch-icon.png' | relative_url }}" sizes="180x180">
+<meta name="theme-color" content="#0d2420">
+{%- unless site.twitter.username %}
+<meta name="twitter:card" content="summary_large_image">
+{%- endunless %}
+{%- if page.url == "/" %}
+{%- assign software_version = site.github.latest_release.tag_name | remove_first: "v" %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": ["SoftwareApplication", "SoftwareSourceCode"],
+  "name": {{ site.title | jsonify }},
+  "alternateName": "garmin-mcp-server",
+  "description": {{ page.description | jsonify }},
+  "url": {{ '/' | absolute_url | jsonify }},
+  "image": {{ site.og_image | absolute_url | jsonify }},
+  "applicationCategory": "HealthApplication",
+  "applicationSubCategory": "MCP server",
+  "operatingSystem": "macOS, Windows, Linux",
+  "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"},
+  "license": "https://opensource.org/licenses/MIT",
+  {%- if software_version != "" %}
+  "softwareVersion": {{ software_version | jsonify }},
+  {%- endif %}
+  "codeRepository": {{ site.repository | prepend: "https://github.com/" | jsonify }},
+  "programmingLanguage": "TypeScript",
+  "downloadUrl": "https://www.npmjs.com/package/garmin-mcp-server",
+  "author": {"@type": "Person", "name": {{ site.author.name | jsonify }}, "url": "https://www.linkedin.com/in/marcinmilewicz/"}
+}
+</script>
+{%- endif %}

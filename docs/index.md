@@ -1,9 +1,12 @@
 ---
-title: Ask your AI assistant how your training is really going
+title: "Garmin MCP – Garmin Connect for Claude and AI assistants"
+description: "Unofficial open-source Garmin MCP server: ask Claude or any AI assistant about your training load, form and HRV readiness, and send workouts to your watch."
 layout: splash
 nav_order: 1
 excerpt: "Training load, form and morning readiness from your Garmin Connect data, computed on your machine with cited sports-science methods. Unofficial and open source; not affiliated with Garmin."
 header:
+  # The hero headline (E7-2a); `title` above is the page title in search results and link previews.
+  title: "Ask your AI assistant how your training is really going"
   overlay_color: "#1d3557"
   actions:
     - label: "Get started"

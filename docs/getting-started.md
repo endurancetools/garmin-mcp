@@ -1,5 +1,6 @@
 ---
-title: Getting started
+title: "Getting started with Garmin MCP"
+description: "Set up Garmin MCP in a few minutes: Node.js 22, a one-time Garmin Connect sign-in in your browser, then Claude Code, Claude Desktop or another MCP client."
 nav_order: 2
 ---
 Everything starts the same way, whichever client you use.

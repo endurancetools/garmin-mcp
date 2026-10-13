@@ -1,5 +1,6 @@
 ---
-title: Claude Desktop
+title: "Garmin Connect in Claude Desktop"
+description: "Connect Garmin Connect to Claude Desktop: install the one-click .mcpb extension or edit claude_desktop_config.json, then ask Claude about your training."
 parent: Getting started
 nav_order: 2
 ---

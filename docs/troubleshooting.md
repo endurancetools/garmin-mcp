@@ -1,5 +1,6 @@
 ---
 title: Troubleshooting
+description: "Fix common Garmin MCP problems: garmin doctor, a client that does not show the server, sign-in errors, missing data, file permissions and Windows."
 nav_order: 7
 ---
 ## First stop: `garmin doctor`

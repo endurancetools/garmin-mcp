@@ -1,5 +1,6 @@
 ---
 title: Tools reference
+description: "Reference of every Garmin MCP tool for AI assistants: activities, sleep, HRV, training load and readiness, workouts and calendar, resources and prompts."
 nav_order: 5
 ---
 You do not need to call tools by name; the assistant does. This page tells you what exists.
