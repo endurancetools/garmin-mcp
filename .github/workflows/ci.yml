@@ -82,7 +82,9 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       # CHANGELOG.md is written by hand (nx.json: workspaceChangelog.file false) and must have a
       # `## <version>` section before the release; it replaces the commit list nx put in the GitHub
-      # release, and the Claude Desktop extension of that version is attached to the release.
+      # release, and the Claude Desktop extension of that version is attached to the release, once as
+      # garmin-mcp-<version>.mcpb and once as garmin-mcp.mcpb (same file), so the fixed link
+      # releases/latest/download/garmin-mcp.mcpb on the docs site always gets the newest extension.
       - name: Release notes and Claude Desktop extension
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -92,7 +94,8 @@ jobs:
           if [ ! -s release-notes.md ]; then echo "CHANGELOG.md has no '## $version' section" >&2; exit 1; fi
           ./scripts/build-mcpb.sh
           gh release edit "v$version" --notes-file release-notes.md
-          gh release upload "v$version" "dist/garmin-mcp-$version.mcpb" --clobber
+          cp "dist/garmin-mcp-$version.mcpb" dist/garmin-mcp.mcpb
+          gh release upload "v$version" "dist/garmin-mcp-$version.mcpb" dist/garmin-mcp.mcpb --clobber
       # npm is not published from here: npm creates new packages only through a staged publish
       # approved with 2FA, and granular tokens lose direct publish in 2027, so the maintainer runs
       # `pnpm -r publish` locally (DEVELOPMENT.md, Release). The MCP registry accepts GitHub OIDC, so that
