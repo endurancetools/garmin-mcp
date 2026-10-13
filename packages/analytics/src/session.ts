@@ -38,7 +38,17 @@ export interface SessionInput {
   gap_mps?: number;
   /** Seconds in HR zones 1–5 from the activity list; absent when Garmin gave none. */
   zones_s?: readonly [number, number, number, number, number];
+  /** Laps of the splits detail (`activity_details(kind=splits)`); absent when that detail was not downloaded. */
+  laps?: readonly Lap[];
   source: 'db' | 'import';
+}
+
+/** One lap of the splits detail: duration (s), average heart rate, grade adjusted speed (m/s) and average power (W). */
+export interface Lap {
+  duration_s: number;
+  avg_hr?: number;
+  gap_mps?: number;
+  avg_power_w?: number;
 }
 
 /** Per-activity metrics (spec 5.3); field names are the tool output names. */
@@ -88,6 +98,8 @@ export interface Session {
   /** LT1 HR of the sport on the session date (`lt1For`); the aerobic filter of the EF trend. */
   lt1_used: number;
   rhr_used: number;
+  /** Aerobic decoupling (Pa:Hr for running, Pw:Hr from power), % (1 place): drop of EF from the first to the second half; see {@link decoupling}. */
+  decoupling_pct?: number;
   source: 'db' | 'import';
 }
 
@@ -106,15 +118,27 @@ function zonesFrom(raw: Obj | undefined): SessionInput['zones_s'] {
   return [a, b, c, d, e];
 }
 
+/** Laps from the splits detail (`lapDTOs`); laps without a positive duration are dropped. `undefined` without the detail. */
+export function lapsFrom(splitsRaw: unknown): Lap[] | undefined {
+  const dtos = obj(splitsRaw)?.['lapDTOs'];
+  if (!Array.isArray(dtos)) return undefined;
+  return dtos.flatMap((d: unknown) => {
+    const l = obj(d);
+    const duration = num(l?.['duration']);
+    if (duration === undefined || !(duration > 0)) return [];
+    return [{ duration_s: duration, avg_hr: num(l?.['averageHR']), gap_mps: num(l?.['avgGradeAdjustedSpeed']), avg_power_w: num(l?.['averagePower']) }];
+  });
+}
+
 /**
  * Session input from a stored activity: columns, plus `normPower`, `avgGradeAdjustedSpeed`,
  * `hrTimeInZone_N`, cadence, moving time, elevation loss and event type from the activity
  * list entry, and RPE/feel from the summary detail (`activity_details(kind=summary).raw`) when
  * given: `summaryDTO.directWorkoutRpe/Feel`, which `get_activity` and `update_activity` use,
- * else `metadataDTO.workoutRpe/Feel`. Garmin's RPE 10–100 becomes CR-10 (/10).
- * `undefined` for a row without a date.
+ * else `metadataDTO.workoutRpe/Feel`. Garmin's RPE 10–100 becomes CR-10 (/10). Laps from the
+ * splits detail when given ({@link lapsFrom}). `undefined` for a row without a date.
  */
-export function sessionFromActivity(a: ActivityRow, summaryRaw?: unknown): SessionInput | undefined {
+export function sessionFromActivity(a: ActivityRow, summaryRaw?: unknown, splitsRaw?: unknown): SessionInput | undefined {
   if (!a.date) return undefined;
   const raw = obj(a.raw);
   const summary = obj(obj(summaryRaw)?.['summaryDTO']);
@@ -145,6 +169,7 @@ export function sessionFromActivity(a: ActivityRow, summaryRaw?: unknown): Sessi
     feel: num(summary?.['directWorkoutFeel']) ?? num(meta?.['workoutFeel']),
     gap_mps: num(raw?.['avgGradeAdjustedSpeed']),
     zones_s: zonesFrom(raw),
+    laps: lapsFrom(splitsRaw),
     source: 'db',
   };
 }
@@ -329,6 +354,61 @@ export function efficiencyFactorGap(sport: SportGroup, avgHr: number | undefined
   return (gapMps * 60) / avgHr;
 }
 
+/** Decoupling only for sessions at least this long (s). */
+export const DECOUPLING_MIN_DURATION_S = 3600;
+/** … with at least this many laps, so that the two halves differ by more than one straddling lap. */
+export const DECOUPLING_MIN_LAPS = 4;
+/** Output of the EF of each sport group with decoupling: grade adjusted speed for running, average power for the others. */
+export const DECOUPLING_METRIC: Partial<Record<SportGroup, 'gap_mps' | 'avg_power_w'>> = { run: 'gap_mps', bike: 'avg_power_w', nordic: 'avg_power_w', row: 'avg_power_w' };
+
+/** Whether a session qualifies for decoupling, laps aside: a sport with a metric, at least 60 min, average HR below LTHR. */
+export function decouplingEligible(s: Pick<Session, 'sport' | 'duration_s' | 'avg_hr' | 'lthr_used'>): boolean {
+  return DECOUPLING_METRIC[s.sport] !== undefined && (s.duration_s ?? 0) >= DECOUPLING_MIN_DURATION_S && s.avg_hr !== undefined && s.avg_hr < s.lthr_used;
+}
+
+/** Weighted sums of one half: time, time × HR, time × metric. */
+interface Half {
+  t: number;
+  hr: number;
+  out: number;
+}
+
+/**
+ * Aerobic decoupling (Pa:Hr, Pw:Hr) from laps: the laps laid end to end are cut at half of
+ * their total time (a lap across the middle counts in both halves by its share of time), and
+ * each half gets EF = time-weighted mean of `metric` / time-weighted mean HR over its laps that
+ * have both (positive); result `(EF1 − EF2) / EF1 × 100`. Positive = less output per beat in
+ * the second half (cardiac drift). `undefined` with fewer than {@link DECOUPLING_MIN_LAPS} laps
+ * or a half without a lap that has both values.
+ */
+export function decoupling(laps: readonly Lap[], metric: 'gap_mps' | 'avg_power_w'): number | undefined {
+  if (laps.length < DECOUPLING_MIN_LAPS) return undefined;
+  const mid = laps.reduce((t, l) => t + l.duration_s, 0) / 2;
+  const halves: [Half, Half] = [
+    { t: 0, hr: 0, out: 0 },
+    { t: 0, hr: 0, out: 0 },
+  ];
+  let start = 0;
+  for (const l of laps) {
+    const first = Math.min(Math.max(mid - start, 0), l.duration_s);
+    start += l.duration_s;
+    const hr = l.avg_hr;
+    const out = l[metric];
+    if (hr === undefined || !(hr > 0) || out === undefined || !(out > 0)) continue;
+    [first, l.duration_s - first].forEach((t, i) => {
+      const h = halves[i === 0 ? 0 : 1];
+      h.t += t;
+      h.hr += t * hr;
+      h.out += t * out;
+    });
+  }
+  const [a, b] = halves;
+  if (!(a.t > 0 && b.t > 0)) return undefined;
+  const ef1 = a.out / a.hr;
+  const ef2 = b.out / b.hr;
+  return ((ef1 - ef2) / ef1) * 100;
+}
+
 /** Three-zone (Seiler) zone of a session from its average HR: below LT1 → 1, below LTHR → 2, else 3. */
 export function seilerZoneByHr(avgHr: number, lt1: number, lthr: number): 1 | 2 | 3 {
   if (avgHr < lt1) return 1;
@@ -365,7 +445,8 @@ export const NO_CSS_NOTE =
  * distance, moving time and `css_s_per_100m`), `hr` (hrTSS from the time
  * in zones with the profile's zone bounds, else from the average HR; `hr_method`), `rpe`
  * (session RPE, any sport); the first positive one gives `tss`, `if` and `load_source`. LT1 notes are not reported: `get_load`
- * takes them from `thresholds_used`. Rounding: IF, EF, EF-GAP, GAP 3 places; TSS, hrTSS,
+ * takes them from `thresholds_used`. `decoupling_pct` from the laps ({@link decoupling}) for
+ * {@link decouplingEligible} sessions. Rounding: IF, EF, EF-GAP, GAP 3 places; TSS, hrTSS,
  * Garmin load, TE, RHR 1 place; durations, distances, HR, power, cadence, calories whole numbers.
  */
 export function sessionMetrics(input: SessionInput, ctx: SessionContext, onNote?: NoteSink): Session {
@@ -393,6 +474,8 @@ export function sessionMetrics(input: SessionInput, ctx: SessionContext, onNote?
     rpeCandidate(input.rpe, input.duration_s, ctx.rpe_calibration),
   ]);
   const z = input.zones_s;
+  const decMetric = DECOUPLING_METRIC[sport];
+  const decOk = input.laps && decMetric && decouplingEligible({ sport, duration_s: input.duration_s, avg_hr: input.avg_hr, lthr_used: lthr.value });
   return {
     id: input.id,
     date: input.date,
@@ -434,6 +517,7 @@ export function sessionMetrics(input: SessionInput, ctx: SessionContext, onNote?
     lthr_used: lthr.value,
     lt1_used: lt1.value,
     rhr_used: round(rhr.value, 1) ?? rhr.value,
+    decoupling_pct: decOk ? round(decoupling(input.laps ?? [], decMetric), 1) : undefined,
     source: input.source,
   };
 }

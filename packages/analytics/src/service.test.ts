@@ -259,6 +259,28 @@ describe('AnalyticsService.getLoad', () => {
     expect(bad.meta.note).toMatch(/Ignored flags \(unknown key or invalid value\): hr_method/);
   });
 
+  it('decoupling_pct from the splits detail; activities without laps counted in one note', async () => {
+    const t = setup();
+    t.store.markReferenceFetched('profile', NOW);
+    const yesterday = addDays(TODAY, -1);
+    const ride = activity(9400, TODAY, { activityType: { typeKey: 'road_biking' }, duration: 3600, averageHR: 135 });
+    const runs = [activity(9401, yesterday), activity(9402, addDays(TODAY, -2)), activity(9403, addDays(TODAY, -3), { duration: 1800 })];
+    t.activities([ride, ...runs], addDays(TODAY, -3), TODAY);
+    const laps = [130, 132, 134, 136, 138, 140].map((hr) => ({ duration: 600, averageHR: hr, averagePower: 200 }));
+    t.store.putActivityDetail(9400, 'splits', { activityId: 9400, lapDTOs: laps }, NOW);
+    t.store.addThreshold({ date: '2026-01-01', param: 'lthr_run', value: 170, source: 'manual', created_at: NOW });
+    t.daily('daily_summary', addDays(TODAY, -40), TODAY, () => ({ resting_hr: 50 }));
+    const res = await t.analytics.getLoad({ from: addDays(TODAY, -3), include_activities: true, include_efficiency: true });
+    expect(loadOutput.safeParse(res).success).toBe(true);
+    expect(res.data.activities?.find((a) => a.id === 9400)?.decoupling_pct).toBe(4.3);
+    expect(res.data.activities?.filter((a) => a.decoupling_pct !== undefined)).toHaveLength(1);
+    expect(res.data.efficiency?.find((e) => e.sport === 'bike')).toMatchObject({ decoupling_mean_pct: 4.3, decoupling_n: 1 });
+    // Two 60-min runs below LTHR without laps; the 30-min run does not qualify.
+    expect(res.meta.note).toContain('decoupling_pct needs the laps of an activity: 2 activities of 60 min or more below LTHR');
+    const plain = await t.analytics.getLoad({ from: addDays(TODAY, -3) });
+    expect(plain.meta.note ?? '').not.toMatch(/decoupling_pct/);
+  });
+
   it('marks a week of history as warming up: no TSB flag in get_load, load signal unknown in get_readiness', async () => {
     const t = setup();
     t.store.markReferenceFetched('profile', NOW);

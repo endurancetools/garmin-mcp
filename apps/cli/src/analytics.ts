@@ -88,12 +88,12 @@ export function loadMarkdown({ data, meta }: Envelope<LoadData>): string {
       '## Activities',
       '',
       mdTable(
-        data.activities.map((a) => ({ ...a, duration: hm(a.duration_s), km: km(a.distance_m) })),
-        ['date', 'sport', 'type', 'name', 'duration', 'km', 'avg_hr', 'tss', 'if', 'load_source', 'hrtss', 'ef', 'ef_gap', 'lthr_used', 'lt1_used', 'rhr_used', 'source'],
+        data.activities.map((a) => ({ ...a, duration: hm(a.duration_s), km: km(a.distance_m), 'decoupl.': a.decoupling_pct })),
+        ['date', 'sport', 'type', 'name', 'duration', 'km', 'avg_hr', 'tss', 'if', 'load_source', 'hrtss', 'ef', 'ef_gap', 'decoupl.', 'lthr_used', 'lt1_used', 'rhr_used', 'source'],
       ),
     );
   }
-  if (data.efficiency) out.push('', '## Efficiency (aerobic sessions)', '', mdTable(data.efficiency, ['period', 'sport', 'n', 'ef_avg', 'ef_max', 'ef_gap_avg']));
+  if (data.efficiency) out.push('', '## Efficiency (aerobic sessions)', '', mdTable(data.efficiency, ['period', 'sport', 'n', 'ef_avg', 'ef_max', 'ef_gap_avg', 'decoupling_mean_pct', 'decoupling_n']));
   out.push('', data.note, ...metaBlock(meta));
   return out.join('\n');
 }

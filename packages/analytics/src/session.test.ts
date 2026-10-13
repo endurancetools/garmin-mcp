@@ -3,12 +3,14 @@ import type { ActivityRow, ImportedActivityRow, ThresholdParam } from 'garmin-mc
 import { describe, expect, it } from 'vitest';
 import {
   buildSessions,
+  decoupling,
   efficiencyFactor,
   efficiencyFactorGap,
   hikeGap,
   hrTss,
   hrZonesCandidate,
   intensityFactor,
+  lapsFrom,
   NO_CSS_NOTE,
   NO_FTP_NOTE,
   NO_THRESHOLD_PACE_NOTE,
@@ -21,6 +23,7 @@ import {
   sessionFromImported,
   sessionMetrics,
   swimPaceCandidate,
+  type Lap,
   type SessionContext,
   type SessionInput,
 } from './session.js';
@@ -511,5 +514,60 @@ describe('sessionFromImported', () => {
     expect(s.anaerobic_te).toBeUndefined();
     expect(s.g_load).toBeUndefined();
     expect(s.z1_s).toBeUndefined();
+  });
+});
+
+describe('aerobic decoupling (Pa:Hr, Pw:Hr)', () => {
+  /** 6 × 10 min at a constant 200 W with HR rising from 130 to 140. */
+  const steadyRide: Lap[] = [130, 132, 134, 136, 138, 140].map((hr) => ({ duration_s: 600, avg_hr: hr, avg_power_w: 200 }));
+  const ride = (extra: Partial<SessionInput> = {}) => input({ type: 'road_biking', avg_hr: 135, laps: steadyRide, ...extra });
+
+  it('constant power with rising heart rate gives a positive percentage: (EF1 − EF2) / EF1', () => {
+    // Halves: HR 132 and 138 at 200 W → (200/132 − 200/138) / (200/132) = 1 − 132/138.
+    expect(decoupling(steadyRide, 'avg_power_w')).toBeCloseTo((1 - 132 / 138) * 100, 6);
+    expect(sessionMetrics(ride(), CTX).decoupling_pct).toBe(4.3);
+  });
+
+  it('steady heart rate gives 0, a lap across the middle counts in both halves by its time', () => {
+    const flat: Lap[] = [0, 1, 2, 3].map(() => ({ duration_s: 900, avg_hr: 140, gap_mps: 3 }));
+    expect(decoupling(flat, 'gap_mps')).toBe(0);
+    // 3 laps of 20 min: the middle lap is split 10 / 10 min; halves HR (130·20 + 140·10)/30 and (140·10 + 150·20)/30.
+    const three: Lap[] = [130, 140, 150].map((hr) => ({ duration_s: 1200, avg_hr: hr, gap_mps: 3 }));
+    const four = [...three, { duration_s: 0.000001, avg_hr: 150, gap_mps: 3 }];
+    const h1 = (130 * 20 + 140 * 10) / 30;
+    const h2 = (140 * 10 + 150 * 20) / 30;
+    expect(decoupling(four, 'gap_mps')).toBeCloseTo((1 - h1 / h2) * 100, 3);
+  });
+
+  it('running uses the grade adjusted speed of each lap', () => {
+    const laps: Lap[] = [3.2, 3.2, 3.1, 3.0].map((gap) => ({ duration_s: 900, avg_hr: 145, gap_mps: gap }));
+    const s = sessionMetrics(input({ duration_s: 3600, avg_hr: 145, laps }), CTX);
+    expect(s.decoupling_pct).toBe(round((1 - 3.05 / 3.2) * 100, 1));
+  });
+
+  it('no field when shorter than 60 min, at or above LTHR, without laps, with too few laps or in a sport without the metric', () => {
+    expect(sessionMetrics(ride({ duration_s: 3599 }), CTX).decoupling_pct).toBeUndefined();
+    expect(sessionMetrics(ride({ avg_hr: 160 }), CTX).decoupling_pct).toBeUndefined(); // lthr_bike 160
+    expect(sessionMetrics(ride({ laps: undefined }), CTX).decoupling_pct).toBeUndefined();
+    expect(sessionMetrics(ride({ laps: steadyRide.slice(0, 3) }), CTX).decoupling_pct).toBeUndefined();
+    expect(sessionMetrics(ride({ type: 'lap_swimming' }), CTX).decoupling_pct).toBeUndefined();
+    expect(sessionMetrics(ride({ type: 'hiking' }), CTX).decoupling_pct).toBeUndefined();
+    // A run without grade adjusted speed in its laps has no running metric.
+    expect(sessionMetrics(input({ laps: steadyRide }), CTX).decoupling_pct).toBeUndefined();
+  });
+
+  it('nordic and row use power like the bike', () => {
+    expect(sessionMetrics(ride({ type: 'skate_ski' }), CTX).decoupling_pct).toBe(4.3);
+    expect(sessionMetrics(ride({ type: 'rowing' }), CTX).decoupling_pct).toBe(4.3);
+  });
+
+  it('lapsFrom reads lapDTOs of the splits detail; sessionFromActivity passes them', () => {
+    expect(lapsFrom(undefined)).toBeUndefined();
+    expect(lapsFrom({ lapDTOs: [] })).toEqual([]);
+    expect(lapsFrom({ lapDTOs: [{ duration: 320.5, averageHR: 148, avgGradeAdjustedSpeed: 3.236, averagePower: 361 }, { duration: 0, averageHR: 150 }] })).toEqual([
+      { duration_s: 320.5, avg_hr: 148, gap_mps: 3.236, avg_power_w: 361 },
+    ]);
+    expect(sessionFromActivity(activity(), undefined, { lapDTOs: [{ duration: 600, averageHR: 140 }] })?.laps).toEqual([{ duration_s: 600, avg_hr: 140 }]);
+    expect(sessionFromActivity(activity())?.laps).toBeUndefined();
   });
 });

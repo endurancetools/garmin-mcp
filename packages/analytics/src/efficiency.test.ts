@@ -80,3 +80,19 @@ describe('efficiencyTrend', () => {
     expect(efficiencyTrend([])).toEqual([]);
   });
 });
+
+describe('efficiencyTrend: monthly decoupling', () => {
+  it('averages decoupling_pct of the sessions that have it next to EF, also between LT1 and LTHR and in sports without EF', () => {
+    const rows = efficiencyTrend([
+      sess('2026-05-04', { ef: 1.3, decoupling_pct: 3.2 }),
+      sess('2026-05-10', { ef: 1.36 }),
+      sess('2026-05-20', { avg_hr: 160, decoupling_pct: 6.1 }), // above LT1: no EF row entry, decoupling counts
+      sess('2026-05-21', { sport: 'nordic', ef: undefined, decoupling_pct: 2 }),
+    ]);
+    expect(rows).toEqual([
+      { period: '2026-05', sport: 'nordic', n: 0, decoupling_mean_pct: 2, decoupling_n: 1 },
+      { period: '2026-05', sport: 'run', n: 2, ef_avg: 1.33, ef_max: 1.36, decoupling_mean_pct: 4.7, decoupling_n: 2 },
+    ]);
+  });
+});
+

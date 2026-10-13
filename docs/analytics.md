@@ -164,6 +164,17 @@ The zone bounds come from the profile as it is now, while Garmin counted the tim
 
 Below LT1 heart rate and pace are close to steady state, so EF reflects aerobic fitness rather than how hard a tempo session was; a session between LT1 and LTHR is left out even though it is still below threshold. A rising EF at the same heart rate means more speed or power per beat, i.e. better aerobic fitness. Compare like with like: the same routes and conditions. Hills and walking breaks lower EF by definition; EF-GAP corrects for gradient, not for walking or surface.
 
+## Decoupling
+
+Aerobic decoupling (Pa:Hr for running, Pw:Hr for power) compares the efficiency factor of the first and second half of one long, steady session: `decoupling_pct = (EF1 − EF2) / EF1 × 100` (Allen, Coggan, McGregor 2019). With the same output the heart rate drifts up in the second half (cardiac drift), EF falls and the percentage is positive; a well-trained aerobic system holds EF, so the drift stays small. Maunder et al. (2021) describe the same deterioration over long exercise as "durability", a profile item next to VO2max and thresholds.
+
+- **Which sessions.** At least 60 minutes, average heart rate below LTHR of the sport and date (`lthr_used`), and a running, cycling, cross-country skiing or rowing session. EF of the halves comes from the grade adjusted speed for running and from average power for the others (nordic and row only with a power meter); other groups get no value.
+- **Halves from laps.** The halves are taken by time from the laps of the splits detail: the laps are laid end to end, cut at half of their total time (a lap across the middle counts in both halves by its share of time), and each half gets the time-weighted mean speed or power over the time-weighted mean heart rate of its laps. A session needs at least 4 laps (an activity recorded as one lap has no halves); laps without heart rate or without the metric are skipped. Power is the average of the laps, not normalized power, so a ride with surges reads differently from its EF.
+- **Downloaded laps only.** The laps are fetched with `get_activity` and `detail: "splits"` (or `"full"`); `get_load` does not fetch them itself. Without them the field is empty and `meta.note` gives the number of qualifying activities in the range without laps. Activities imported from a Garmin Connect export have no laps.
+- **Output.** `activities[].decoupling_pct` (1 place) and, in `efficiency[]`, `decoupling_mean_pct` and `decoupling_n` per month and sport over the sessions that have the field (also those between LT1 and LTHR, and nordic and row, which have no EF row: such a row has `n` 0). The CLI shows the column `decoupl.` in the activity table.
+
+Around 5% is the usual orientation point: below it the session was aerobically steady, above it the pace or power was too high for the current aerobic base, or heat, dehydration or fuelling played a part. It is information, not a flag: terrain, wind, stops and the warm-up at the start of the first half all move the number, so compare sessions of the same kind.
+
 ## Morning readiness
 
 `get_readiness` reports seven signals of day D (default today) and turns four of them into a decision: HRV, resting heart rate, hours of sleep and own load. A counted signal is `ok`, `yellow`, `red`, or `unknown` when its data is missing; Garmin's own scores (Training Readiness, Body Battery, stress) are `info`: shown, never rated. Neither `unknown` nor `info` signals count (`counts.info`, `counts.unknown`).
@@ -245,3 +256,4 @@ The HRV rules follow day-to-day HRV-guided training, which compares the night wi
 17. TrainingPeaks. Estimating Training Stress Score (TSS) (TSS per hour by zone after J. Friel). https://www.trainingpeaks.com/learn/articles/estimating-training-stress-score-tss/
 18. TrainingPeaks. Calculating swimming TSS score (sTSS from CSS). https://www.trainingpeaks.com/learn/articles/calculating-swimming-tss-score/
 19. Meeusen R, Duclos M, Foster C, Fry A, Gleeson M, Nieman D, Raglin J, Rietjens G, Steinacker J, Urhausen A. Prevention, diagnosis, and treatment of the overtraining syndrome: joint consensus statement of the European College of Sport Science and the American College of Sports Medicine. Med Sci Sports Exerc. 2013;45(1):186-205.
+20. Maunder E, Seiler S, Mildenhall MJ, Kilding AE, Plews DJ. The importance of 'durability' in the physiological profiling of endurance athletes. Sports Med. 2021;51(8):1619-1628.
