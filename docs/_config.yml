@@ -53,6 +53,9 @@ relative_links:
 author:
   name: Marcin Milewicz
 
+# The footer's copyright link; without it the theme links `url` alone (the user's GitHub Pages root, 404).
+copyright_url: https://endurancetools.github.io/garmin-mcp/
+
 footer:
   links:
     - label: GitHub

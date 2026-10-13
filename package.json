@@ -14,7 +14,8 @@
     "check": "nx run-many -t lint typecheck test build",
     "graph": "nx graph",
     "docs": "bash scripts/docs-serve.sh",
-    "docs:build": "bash scripts/docs-serve.sh build"
+    "docs:build": "bash scripts/docs-serve.sh build",
+    "docs:check": "bash scripts/docs-check.sh"
   },
   "devDependencies": {
     "@nx/eslint-plugin": "23.3.0",
