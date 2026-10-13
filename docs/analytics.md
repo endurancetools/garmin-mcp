@@ -174,13 +174,15 @@ Below LT1 heart rate and pace are close to steady state, so EF reflects aerobic 
 | `stress` | yes | average stress of D − 1 (D itself is still running) | | never | above `stress_yellow` |
 | `load` | yes | TSB and ACWR of the load model on D, summed from hrTSS (as `source: "hrtss"` of `get_load`); `unknown` while the model warms up (fewer than 42 days since the first activity, detail "load model warming up (N of 42 days)") | | ACWR above `acwr_red` or TSB below `tsb_red` | ACWR above `acwr_yellow` or TSB below `tsb_yellow` |
 
-Decision: at least `decision_red_min` red signals is **REST**; else at least `decision_yellow_min` yellow signals is **MODIFY**; else **GO**.
+Decision (`decision_rule`, default `pairs`): **REST** when both signals of one of these pairs are red: `hrv` with `rhr`, `hrv` with `sleep`, or `load` with any of `hrv`, `rhr` and `sleep`. A red signal without its pair, or at least `decision_yellow_min` yellow signals, is **MODIFY**; else **GO**. With `decision_rule: "count"` the decision counts instead: at least `decision_red_min` red signals is **REST**, else at least `decision_yellow_min` yellow ones is **MODIFY**, else **GO** (the only rule up to 0.2.0). The first line of `recommendation` names the signals that decided, e.g. "REST: red hrv + rhr (decision_rule pairs)." or "MODIFY: 1 red (sleep) without a red pair (decision_rule pairs)."
+
+The signals are correlated: one short or restless night lowers HRV, raises the resting heart rate, shortens sleep and drains Body Battery together, so under a counting rule a single event can be read as several independent warnings, and with `decision_red_min` 1 any one red signal cancels the key session. The pairs ask for agreement between sources that fail for different reasons. HRV and resting heart rate are two readings of the autonomic state taken by different means, and HRV together with short or poor sleep confirms that the low night is real; own load against a physiological signal is the classic picture of overreaching: the training has been heavy and the body shows it (Meeusen et al. 2013). A single red still turns the day into MODIFY, so nothing is ignored, only the cancellation needs a second, independent witness.
 
 Garmin's Training Readiness does not vote because it is itself a blend of overnight HRV, sleep, recovery time and recent load. Those inputs are already rated on their own here, so counting Garmin's score as well would count the same night twice: one poor night could give a red Training Readiness on top of a red HRV and a yellow sleep. The decision is built from your own data against your own baselines; Garmin's score stays in `signals` with its level and recovery time so you can compare. `partial` is true when D is today or later, or when a row of D was downloaded before the day had ended, so a later sync may change the answer. `recommendation` gives short advice for the decision.
 
 ### Readiness rules
 
-Override any of them with `rules`, e.g. `{"sleep_h_yellow": 7.5, "decision_yellow_min": 3}`. Unknown keys, including the former `readiness_red` and `readiness_yellow`, are ignored with a note.
+Override any of them with `rules`, e.g. `{"sleep_h_yellow": 7.5, "decision_yellow_min": 3}` or `{"decision_rule": "count"}`. Unknown keys, including the former `readiness_red` and `readiness_yellow`, and invalid values are ignored with a note.
 
 | Key | Default | Key | Default |
 | --- | --- | --- | --- |
@@ -191,8 +193,9 @@ Override any of them with `rules`, e.g. `{"sleep_h_yellow": 7.5, "decision_yello
 | `rhr_yellow_delta` | 3 bpm | `acwr_yellow` | 1.3 |
 | `sleep_score_red` | 60 | `tsb_red` | −30 |
 | `sleep_score_yellow` | 75 | `tsb_yellow` | −20 |
-| `sleep_h_red` | 6 h | `decision_red_min` | 1 |
-| `sleep_h_yellow` | 7 h | `decision_yellow_min` | 2 |
+| `sleep_h_red` | 6 h | `decision_rule` | `pairs` (or `count`) |
+| `sleep_h_yellow` | 7 h | `decision_red_min` | 1 (`count` only) |
+| | | `decision_yellow_min` | 2 |
 
 The HRV rules follow day-to-day HRV-guided training, which compares the night with the athlete's own recent baseline rather than with population norms (Kiviniemi et al. 2007; Plews et al. 2013; Javaloyes et al. 2019); resting heart rate is read the same way (Buchheit 2014).
 
@@ -240,3 +243,4 @@ The HRV rules follow day-to-day HRV-guided training, which compares the night wi
 16. Foster C, Florhaug JA, Franklin J, Gottschall L, Hrovatin LA, Parker S, Doleshal P, Dodge C. A new approach to monitoring exercise training. J Strength Cond Res. 2001;15(1):109-115.
 17. TrainingPeaks. Estimating Training Stress Score (TSS) (TSS per hour by zone after J. Friel). https://www.trainingpeaks.com/learn/articles/estimating-training-stress-score-tss/
 18. TrainingPeaks. Calculating swimming TSS score (sTSS from CSS). https://www.trainingpeaks.com/learn/articles/calculating-swimming-tss-score/
+19. Meeusen R, Duclos M, Foster C, Fry A, Gleeson M, Nieman D, Raglin J, Rietjens G, Steinacker J, Urhausen A. Prevention, diagnosis, and treatment of the overtraining syndrome: joint consensus statement of the European College of Sport Science and the American College of Sports Medicine. Med Sci Sports Exerc. 2013;45(1):186-205.

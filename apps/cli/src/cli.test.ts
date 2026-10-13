@@ -369,12 +369,13 @@ describe('garmin readiness', () => {
   it('applies rules from a JSON file and prints the envelope with --json', async () => {
     const { deps } = fake();
     const file = path.join(tmp, 'rules.json');
-    fs.writeFileSync(file, JSON.stringify({ sleep_h_red: 9 }));
-    const res = json<{ data: { decision: string; rules_used: Record<string, number>; signals: { name: string; rating: string }[] } }>(
+    fs.writeFileSync(file, JSON.stringify({ sleep_h_red: 9, decision_rule: 'count' }));
+    const res = json<{ data: { decision: string; rules_used: Record<string, number | string>; signals: { name: string; rating: string }[] } }>(
       (await run(deps, 'readiness', '2026-10-07', '--rules', file, '--json')).stdout,
     );
     expect(res.data.decision).toBe('REST');
     expect(res.data.rules_used.sleep_h_red).toBe(9);
+    expect(res.data.rules_used.decision_rule).toBe('count');
     expect(res.data.signals.find((s) => s.name === 'sleep')?.rating).toBe('red');
     await expect(run(deps, 'readiness', '2099-01-01')).rejects.toThrow('is in the future');
   });

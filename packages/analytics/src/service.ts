@@ -36,7 +36,7 @@ import {
   type SportLoad,
   type WeekSport,
 } from './load.js';
-import { DEFAULT_READINESS_RULES, readiness, READINESS_WINDOW_DAYS, type Readiness } from './readiness.js';
+import { DEFAULT_READINESS_RULES, isReadinessRuleValue, readiness, READINESS_WINDOW_DAYS, type Readiness } from './readiness.js';
 import { buildSessions, sessionFromActivity, sessionFromImported, type Session, type SessionInput } from './session.js';
 import type { SportGroup } from './sport.js';
 import {
@@ -117,7 +117,7 @@ export interface LoadData {
 
 export interface ReadinessQuery {
   date?: string;
-  /** Overrides of `DEFAULT_READINESS_RULES`; unknown keys and non-numbers are ignored with a note. */
+  /** Overrides of `DEFAULT_READINESS_RULES`; unknown keys and invalid values are ignored with a note. */
   rules?: Record<string, unknown>;
 }
 
@@ -417,7 +417,7 @@ export class AnalyticsService {
     const today = this.garmin.today();
     const date = q.date ? assertIsoDate(q.date, 'date') : today;
     if (date > today) throw new InputError(`date (${date}) is in the future`, `Readiness needs the night and morning of the day; use a date up to ${today}.`);
-    const ruleInput = overrides(q.rules, DEFAULT_READINESS_RULES, 'rules');
+    const ruleInput = overrides(q.rules, DEFAULT_READINESS_RULES, 'rules', isReadinessRuleValue);
     const from = addDays(date, -READINESS_WINDOW_DAYS);
     const kinds: readonly DailyKind[] = SCOPE_DAILY.all;
     const [profile, ...ensured] = await Promise.all([

@@ -3,6 +3,16 @@ import { round } from 'garmin-mcp-domain';
 import type { DailyRows } from 'garmin-mcp-store';
 import { CTL_WARMUP_DAYS, type LoadDay } from './load.js';
 
+/**
+ * How the rated signals become the decision. `count`: REST at `decision_red_min` red signals,
+ * else MODIFY at `decision_yellow_min` yellow ones (the original rule, kept for plan-v2).
+ * `pairs`: REST only when both signals of one of {@link READINESS_RED_PAIRS} are red; a red
+ * signal without its pair, or `decision_yellow_min` yellow ones, is MODIFY.
+ */
+export type ReadinessDecisionRule = 'count' | 'pairs';
+
+export const READINESS_DECISION_RULES: readonly ReadinessDecisionRule[] = ['count', 'pairs'];
+
 /** Thresholds of the morning decision (spec 5.7); every one can be overridden in the tool input. */
 export interface ReadinessRules {
   /** HRV red: last night below this × Garmin's baseline low. */
@@ -37,7 +47,9 @@ export interface ReadinessRules {
   tsb_red: number;
   /** Own load yellow: TSB below this. */
   tsb_yellow: number;
-  /** At least this many red signals: REST. */
+  /** `pairs` (default) or `count`, see {@link ReadinessDecisionRule}. */
+  decision_rule: ReadinessDecisionRule;
+  /** `count` only: at least this many red signals: REST. */
   decision_red_min: number;
   /** At least this many yellow signals: MODIFY. */
   decision_yellow_min: number;
@@ -60,18 +72,25 @@ export const DEFAULT_READINESS_RULES: Readonly<ReadinessRules> = {
   acwr_yellow: 1.3,
   tsb_red: -30,
   tsb_yellow: -20,
+  decision_rule: 'pairs',
   decision_red_min: 1,
   decision_yellow_min: 2,
 };
 
-/** Defaults overridden by the finite numbers in `overrides`. */
-export function resolveReadinessRules(overrides?: Partial<Record<keyof ReadinessRules, number | undefined>>): ReadinessRules {
-  const out: ReadinessRules = { ...DEFAULT_READINESS_RULES };
-  for (const key of Object.keys(DEFAULT_READINESS_RULES) as (keyof ReadinessRules)[]) {
-    const v = overrides?.[key];
-    if (typeof v === 'number' && Number.isFinite(v)) out[key] = v;
+/** Is `v` a valid value of the readiness rule `key`: a finite number, or for `decision_rule` one of {@link READINESS_DECISION_RULES}. */
+export function isReadinessRuleValue(key: string, v: unknown): boolean {
+  if (key === 'decision_rule') return typeof v === 'string' && (READINESS_DECISION_RULES as readonly string[]).includes(v);
+  return Object.hasOwn(DEFAULT_READINESS_RULES, key) && typeof v === 'number' && Number.isFinite(v);
+}
+
+/** Defaults overridden by the valid values in `overrides` (finite numbers; `decision_rule` one of {@link READINESS_DECISION_RULES}). */
+export function resolveReadinessRules(overrides?: Partial<Record<keyof ReadinessRules, unknown>>): ReadinessRules {
+  const out: Record<string, unknown> = { ...DEFAULT_READINESS_RULES };
+  for (const key of Object.keys(DEFAULT_READINESS_RULES)) {
+    const v = overrides?.[key as keyof ReadinessRules];
+    if (isReadinessRuleValue(key, v)) out[key] = v;
   }
-  return out;
+  return out as unknown as ReadinessRules;
 }
 
 export type ReadinessSignalName = 'hrv' | 'rhr' | 'sleep' | 'body_battery' | 'training_readiness' | 'stress' | 'load';
@@ -84,6 +103,18 @@ export const READINESS_SIGNALS: readonly ReadinessSignalName[] = [
   'training_readiness',
   'stress',
   'load',
+];
+
+/**
+ * Pairs of signals from independent sources whose two reds give REST under `decision_rule: "pairs"`
+ * (E6-22, E6-31): HRV with resting HR, HRV with sleep, and own load with any physiological signal.
+ */
+export const READINESS_RED_PAIRS: readonly (readonly [ReadinessSignalName, ReadinessSignalName])[] = [
+  ['hrv', 'rhr'],
+  ['hrv', 'sleep'],
+  ['load', 'hrv'],
+  ['load', 'rhr'],
+  ['load', 'sleep'],
 ];
 
 /**
@@ -136,7 +167,7 @@ export interface ReadinessInput {
   load?: Pick<LoadDay, 'date' | 'tsb' | 'acwr' | 'monotony' | 'warming_up'>;
   /** First day of the load series (the first session), for the warm-up progress in the `load` detail. */
   load_start?: IsoDate;
-  rules?: Partial<Record<keyof ReadinessRules, number | undefined>>;
+  rules?: Partial<Record<keyof ReadinessRules, unknown>>;
 }
 
 /** Days before D whose means the HRV and resting HR rules use. */
@@ -347,10 +378,44 @@ function loadSignal(load: ReadinessInput['load'], start: IsoDate | undefined, r:
 }
 
 /**
+ * The decision from the rated signals under `rules.decision_rule`, and one line naming the
+ * signals that decided it (the first line of `recommendation`). Only `red` and `yellow` count.
+ */
+export function decide(signals: readonly ReadinessSignal[], rules: ReadinessRules): { decision: ReadinessDecision; reason: string } {
+  const red = signals.filter((s) => s.rating === 'red').map((s) => s.name);
+  const yellow = signals.filter((s) => s.rating === 'yellow').map((s) => s.name);
+  const list = (rating: string, names: readonly string[]) => (names.length ? `${names.length} ${rating} (${names.join(', ')})` : `0 ${rating}`);
+  const yellowEnough = yellow.length >= rules.decision_yellow_min;
+  const modifyByYellow = `MODIFY: ${list('yellow', yellow)}, at least decision_yellow_min ${rules.decision_yellow_min}.`;
+  const go = (): string => {
+    const parts = [red.length ? list('red', red) : undefined, yellow.length ? list('yellow', yellow) : undefined].filter(Boolean);
+    if (!parts.length) return 'GO: no red or yellow signal.';
+    const limits = rules.decision_rule === 'count' ? `decision_red_min ${rules.decision_red_min} and ` : '';
+    return `GO: ${parts.join(' and ')}, below ${limits}decision_yellow_min ${rules.decision_yellow_min}.`;
+  };
+
+  if (rules.decision_rule === 'count') {
+    if (red.length >= rules.decision_red_min)
+      return { decision: 'REST', reason: `REST: ${list('red', red)}, at least decision_red_min ${rules.decision_red_min}.` };
+    if (yellowEnough) return { decision: 'MODIFY', reason: modifyByYellow };
+    return { decision: 'GO', reason: go() };
+  }
+
+  const pairs = READINESS_RED_PAIRS.filter(([a, b]) => red.includes(a) && red.includes(b));
+  if (pairs.length) return { decision: 'REST', reason: `REST: red ${pairs.map(([a, b]) => `${a} + ${b}`).join(', ')} (decision_rule pairs).` };
+  if (red.length) {
+    const also = yellow.length ? `; ${list('yellow', yellow)}` : '';
+    return { decision: 'MODIFY', reason: `MODIFY: ${list('red', red)} without a red pair (decision_rule pairs)${also}.` };
+  }
+  if (yellowEnough) return { decision: 'MODIFY', reason: modifyByYellow };
+  return { decision: 'GO', reason: go() };
+}
+
+/**
  * Morning GO / MODIFY / REST decision for `date` (spec 5.7): seven signals rated red,
  * yellow, ok, info (Garmin's Training Readiness, shown only) or unknown (no data, or the load
- * model still warming up); info and unknown never count. REST at `decision_red_min` red signals,
- * else MODIFY at `decision_yellow_min` yellow ones, else GO. Stress is taken from the day
+ * model still warming up); info and unknown never count. The decision follows
+ * `decision_rule` (see {@link decide}). Stress is taken from the day
  * before (the day itself is still running). `partial` when the day is today or later, or a
  * row of the day was fetched before the day had ended (local date of `fetched_at` ≤ D).
  */
@@ -379,8 +444,7 @@ export function readiness(input: ReadinessInput): Readiness {
 
   const counts: Record<ReadinessRating, number> = { red: 0, yellow: 0, ok: 0, info: 0, unknown: 0 };
   for (const s of signals) counts[s.rating] += 1;
-  const decision: ReadinessDecision =
-    counts.red >= rules.decision_red_min ? 'REST' : counts.yellow >= rules.decision_yellow_min ? 'MODIFY' : 'GO';
+  const { decision, reason } = decide(signals, rules);
 
   const fetchedEarly = [daily, sleep, hrv, training].some(
     (r) => r !== undefined && dateIn(input.timeZone, new Date(r.fetched_at)) <= d,
@@ -393,6 +457,6 @@ export function readiness(input: ReadinessInput): Readiness {
     signals,
     partial: d >= input.today || fetchedEarly,
     rules_used: rules,
-    recommendation: [...RECOMMENDATIONS[decision]],
+    recommendation: [reason, ...RECOMMENDATIONS[decision]],
   };
 }
