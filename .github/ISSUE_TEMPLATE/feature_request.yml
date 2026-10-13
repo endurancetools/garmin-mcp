@@ -1,0 +1,30 @@
+name: Feature request
+description: A question about your training you would like to ask, or a capability you miss.
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The server's tools are designed around questions, not mirrored from Garmin's API ([why](https://endurancetools.github.io/garmin-mcp/how-it-works/#designed-tools)). The most useful request starts with what you want to ask your assistant.
+  - type: textarea
+    id: question
+    attributes:
+      label: What do you want to ask or do?
+      description: The question in your own words, e.g. "How did my long runs change since I started the build?"
+    validations:
+      required: true
+  - type: textarea
+    id: today
+    attributes:
+      label: What happens today
+      description: What the assistant answers now, or why that is not enough. Leave out personal data.
+  - type: textarea
+    id: data
+    attributes:
+      label: Garmin data involved
+      description: Which data from Garmin Connect, your watch or a sensor this needs, if you know.
+  - type: textarea
+    id: notes
+    attributes:
+      label: Anything else
+      description: Alternatives you tried, links to the method or literature behind a metric.
