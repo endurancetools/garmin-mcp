@@ -10,6 +10,8 @@ Works with Claude Code, Claude Desktop, Codex, Antigravity CLI, opencode and any
 
 **Documentation: [endurancetools.github.io/garmin-mcp](https://endurancetools.github.io/garmin-mcp/)** (getting started per client, what to ask, configuration, troubleshooting). Contributing and development: [DEVELOPMENT.md](DEVELOPMENT.md).
 
+Unofficial. Garmin and Garmin Connect are trademarks of Garmin Ltd. or its subsidiaries; this project is not affiliated with or endorsed by Garmin. The training analytics (`get_load`, `get_readiness`) are training information, not medical advice.
+
 ## Getting started
 
 Requirements: Node.js 22 or newer, a Garmin Connect account, and Chrome, Edge, Brave or Chromium for the sign-in window (there is a terminal fallback).

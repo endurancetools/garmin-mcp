@@ -20,7 +20,7 @@ You do not need to call tools by name; the assistant does. This page tells you w
 | `get_gear`, `get_devices` | gear with distance, devices with firmware, last sync and settings |
 | `garmin_sync` | download a scope (activities, health, training, reference or all) and date range explicitly, with progress |
 | `get_load` | your own training load model from power, pace, heart rate or RPE: CTL/ATL/TSB (the form to ask about; [two load models](analytics.md#load-model)), ACWR, monotony and strain, warning flags, weekly volume per sport, the 3-zone intensity split, optionally per-activity TSS and the efficiency trend ([formulas](analytics.md)) |
-| `get_readiness` | a morning GO / MODIFY / REST decision from HRV, resting heart rate, hours of sleep and load, with your own thresholds if you give them; Garmin's Training Readiness, Body Battery, stress and sleep score are shown, not counted |
+| `get_readiness` | a morning GO / MODIFY / REST decision from HRV, resting heart rate, hours of sleep and load, with your own thresholds if you give them; Garmin's Training Readiness, Body Battery, stress and sleep score are shown, not counted; training information, not medical advice |
 | `get_thresholds` | the thresholds in use on a date (LTHR and LT1 per sport, HRmax, 28-day resting heart rate) and their history, plus the heart rate and power zones per sport from your Garmin profile |
 | `set_threshold` | record a field test result (LTHR, LT1, HRmax, FTP...) from a date; stored locally, never sent to Garmin |
 
