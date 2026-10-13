@@ -5,7 +5,15 @@
   "tags": ["scope:scripts", "type:tool"],
   "targets": {
     "test": {
-      "inputs": ["default", "{workspaceRoot}/docs/evals/tool-selection.jsonl"]
+      "inputs": [
+        "default",
+        "{workspaceRoot}/docs/evals/tool-selection.jsonl",
+        "{workspaceRoot}/README.md",
+        "{workspaceRoot}/apps/*/README.md",
+        "{workspaceRoot}/apps/*/package.json",
+        "{workspaceRoot}/packages/*/README.md",
+        "{workspaceRoot}/packages/*/package.json"
+      ]
     }
   }
 }
