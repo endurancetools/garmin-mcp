@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <!-- Garmin MCP square icon without rounded corners (iOS and Product Hunt round them): apple-touch-icon 180 px, Product Hunt thumbnail 240 px. Rendered to PNG by scripts/brand-images.mjs. -->
+  <rect width="64" height="64" rx="0" fill="#16443b"/>
+  <path d="M11 47 C 22 46, 27 37, 33 31 S 44 19, 50 17" fill="none" stroke="#4fe3a5" stroke-width="6.5" stroke-linecap="round"/>
+  <circle cx="50" cy="17" r="8" fill="#4fe3a5" stroke="#16443b" stroke-width="3"/>
+</svg>

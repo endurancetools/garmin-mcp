@@ -76,6 +76,19 @@ node scripts/eval-tools.mjs [scenarios.jsonl]
 
 The eval needs a signed-in Claude Code (`claude` on `PATH`), not an API key. Each scenario is one `claude -p` call with `--output-format stream-json`, `--max-turns 1`, no built-in tools (`--tools ""`), no settings files (`--setting-sources ""`) and only one MCP server (`--strict-mcp-config`): `scripts/eval-fake-server.mjs`, the real server over stdio with a fake `GarminService` that returns empty envelopes, so nothing reaches Garmin or your cache. `claude` runs in a fresh temporary directory, so this repo's files do not reach the prompt. Only the first tool call of the first reply counts: it must be `expect.tool` (or one of the list) with `args_include`, and must not be one of `forbid`. It prints a table and the pass rate. `EVAL_MODEL` is passed as `--model` (default `sonnet`), `EVAL_MIN_PASS` sets the threshold (default `0.9`). Exit code 0 at or above the threshold, 1 below it, 2 when `claude` is not on `PATH`; the eval uses your Claude Code plan limits and is not part of `pnpm check` or CI. The scenario parser, the matcher and the `stream-json` parser have offline tests in `scripts/eval-tools.test.mjs` (Nx project `garmin-mcp-scripts`). Last run (2026-10-13, sonnet, 20 tools): 42/42; "Zrób mi trening 6x400 m" also accepts `get_thresholds` as the first read (threshold pace for the intervals), and "Ile procent czasu biegania i roweru spędziłem w tym miesiącu w Z1, poniżej LT1?" reaches `get_load` since `get_period_summary` says its zones are the Garmin HR zones and points the Z1/Z2/Z3 split against LT1/LTHR to `get_load`.
 
+## Brand images
+
+The link preview, GitHub social preview, favicons and the Product Hunt thumbnail are SVG sources in `docs/assets/src/` and PNGs in `docs/assets/images/`, both committed:
+
+| Source | Output | Size |
+| --- | --- | --- |
+| `og.svg` | `og.png` (default `og:image` of the site) | 1200 × 630 |
+| `social-preview.svg` | `social-preview.png` (uploaded by hand in GitHub Settings → Social preview) | 1280 × 640 |
+| `favicon.svg` | `favicon.svg` (copy), `favicon-32.png` | 32 × 32 |
+| `app-icon.svg` | `apple-touch-icon.png`, `ph-thumbnail.png` | 180 × 180, 240 × 240 |
+
+After changing a source, run `node scripts/brand-images.mjs`. It draws each SVG at its target size in headless Chrome (`CHROME` overrides the binary; otherwise the usual macOS and Linux locations), reads the size back from the PNG header and exits 1 when a PNG has the wrong size or reaches 300 kB. Text is set in Helvetica Neue / Helvetica / Arial, so another machine may render it slightly differently. The chart in the previews is a synthetic fitness/fatigue curve, not anybody's data; no Garmin logo or artwork goes into these images.
+
 ## Release
 
 Versions are fixed across all packages (`nx release`). `CHANGELOG.md` is written by hand in English for users, not generated from commits (`nx.json`: `workspaceChangelog.file` is `false`); `docs/changelog.md` is the same text for the documentation site, with front matter and a relative link to `analytics.md`. Four steps:
