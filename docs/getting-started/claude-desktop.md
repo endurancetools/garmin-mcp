@@ -9,7 +9,7 @@ Sign in to Garmin first if you have not ([Getting started](../getting-started.md
 ## Option A: install the extension
 
 1. Download `garmin-mcp-<version>.mcpb` from the [latest release](https://github.com/endurancetools/garmin-mcp/releases/latest).
-2. Open the file. Claude Desktop asks whether to install the "Garmin" extension; confirm.
+2. Open the file. Claude Desktop asks whether to install the "Garmin MCP" extension; confirm.
 3. In the extension settings you can switch **Download missing data automatically** off if you want Claude to ask before fetching. It is on by default.
 
 The extension runs `npx -y garmin-mcp-server` for you, so Node.js 22 or newer still has to be installed.
