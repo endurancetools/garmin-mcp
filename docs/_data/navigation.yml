@@ -30,6 +30,8 @@ docs:
         url: /configuration/
       - title: "Troubleshooting"
         url: /troubleshooting/
+      - title: "FAQ"
+        url: /faq/
   - title: Reference
     children:
       - title: "Tools reference"
