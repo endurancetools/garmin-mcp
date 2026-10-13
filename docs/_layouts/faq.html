@@ -1,0 +1,29 @@
+---
+layout: single
+---
+{% comment %}
+  The FAQ page in Minimal Mistakes' `single` layout, plus schema.org FAQPage JSON-LD built from the
+  rendered page: every <h2> is a question, everything up to the next <h2> is its answer (as plain
+  text). The page text is the only source, so the structured data cannot drift from it.
+{% endcomment %}
+{{ content }}
+{%- assign sections = content | split: '<h2 ' -%}
+{%- capture faq_items -%}
+  {%- for section in sections offset: 1 -%}
+    {%- assign parts = section | split: '</h2>' -%}
+    {%- assign question = '<h2 ' | append: parts[0] | strip_html | normalize_whitespace | strip -%}
+    {%- assign answer = parts[1] | strip_html | normalize_whitespace | strip -%}
+    {%- capture item -%}
+      {"@type": "Question", "name": {{ question | jsonify }}, "acceptedAnswer": {"@type": "Answer", "text": {{ answer | jsonify }}}}
+    {%- endcapture -%}
+    {{ item | strip }}{% unless forloop.last %},{% endunless %}
+  {%- endfor -%}
+{%- endcapture -%}
+{%- assign faq_items = faq_items
+  | replace: '&rsquo;', '’' | replace: '&lsquo;', '‘' | replace: '&rdquo;', '”' | replace: '&ldquo;', '“'
+  | replace: '&ndash;', '–' | replace: '&mdash;', '—' | replace: '&hellip;', '…' | replace: '&times;', '×'
+  | replace: '&quot;', '\"' | replace: '&#39;', "'" | replace: '&lt;', '<' | replace: '&gt;', '>'
+  | replace: '&amp;', '&' -%}
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{{ faq_items }}]}
+</script>
