@@ -37,7 +37,7 @@ import {
   type WeekSport,
 } from './load.js';
 import { DEFAULT_READINESS_RULES, isReadinessRuleValue, readiness, READINESS_WINDOW_DAYS, type Readiness } from './readiness.js';
-import { buildSessions, sessionFromActivity, sessionFromImported, type Session, type SessionInput } from './session.js';
+import { buildSessions, decouplingEligible, sessionFromActivity, sessionFromImported, type Session, type SessionInput } from './session.js';
 import { sportList, type SportGroup } from './sport.js';
 import {
   hrmaxOn,
@@ -195,6 +195,11 @@ function mergeSource(results: readonly EnsureResult[]): ResponseMeta['source'] {
   return 'cache';
 }
 
+/** Note of `get_load` on stored activities that qualify for decoupling but have no laps downloaded. */
+export function decouplingLapsNote(n: number): string {
+  return `decoupling_pct needs the laps of an activity: ${n} ${n === 1 ? 'activity' : 'activities'} of 60 min or more below LTHR (run, bike, nordic, row) in the range ${n === 1 ? 'has' : 'have'} none downloaded; get_activity with detail "splits" downloads them.`;
+}
+
 /** `meta` of a read: source of the on-demand fetches, the service's coverage gap, then the notes. */
 function readMeta(results: readonly EnsureResult[], gap: Partial<ResponseMeta>, notes: readonly string[] = []): ResponseMeta {
   const source = mergeSource(results);
@@ -288,8 +293,8 @@ export class AnalyticsService {
   }
 
   /**
-   * Every session up to `to`: stored activities (RPE/feel from their summary detail, when
-   * fetched) plus imported CSV activities on dates outside `activities:covered`, with the
+   * Every session up to `to`: stored activities (RPE/feel from their summary detail and laps
+   * from their splits detail, when fetched; `no_laps` = ids of those without splits) plus imported CSV activities on dates outside `activities:covered`, with the
    * thresholds valid on each date and the profile's HR zone bounds (`floors`); `rpeCalibration`
    * overrides the session RPE multiplier, `hrMethod` the heart-rate candidate (default `zones`).
    */
@@ -297,11 +302,19 @@ export class AnalyticsService {
     to: IsoDate,
     rpeCalibration?: number,
     hrMethod?: HrMethod,
-  ): { sessions: Session[]; notes: string[]; thresholds: ThresholdRow[]; daily: { date: IsoDate; resting_hr: number | null }[]; floors: ProfileZoneFloors } {
+  ): {
+    sessions: Session[];
+    notes: string[];
+    thresholds: ThresholdRow[];
+    daily: { date: IsoDate; resting_hr: number | null }[];
+    floors: ProfileZoneFloors;
+    no_laps: Set<number | string>;
+  } {
     const store = this.#store;
     const inputs: SessionInput[] = store
       .queryActivities({ to, sort: 'asc' })
-      .flatMap((a) => sessionFromActivity(a, store.getActivityDetail(a.id, 'summary')?.raw) ?? []);
+      .flatMap((a) => sessionFromActivity(a, store.getActivityDetail(a.id, 'summary')?.raw, store.getActivityDetail(a.id, 'splits')?.raw) ?? []);
+    const noLaps = new Set(inputs.filter((i) => i.laps === undefined).map((i) => i.id));
     const covered = parseRangeSet(store.getMeta('activities:covered'));
     for (const r of store.getImportedActivities('0000-01-01', to)) {
       if (!inRanges(covered, r.date)) inputs.push(sessionFromImported(r));
@@ -313,7 +326,7 @@ export class AnalyticsService {
       .map((d) => ({ date: d.date, resting_hr: d.resting_hr }));
     const floors = profileZoneFloors(store.getProfile()?.raw);
     const { sessions, notes } = buildSessions(inputs, { thresholds, daily, rpe_calibration: rpeCalibration, floors, hr_method: hrMethod });
-    return { sessions, notes, thresholds, daily, floors };
+    return { sessions, notes, thresholds, daily, floors, no_laps: noLaps };
   }
 
   // ------------------------------------------------------------ get_load
@@ -337,7 +350,7 @@ export class AnalyticsService {
       this.garmin.syncer.ensureDaily(['daily_summary'], addDays(from, -RHR_WINDOW_DAYS), to, this.#budget),
     ]);
 
-    const { sessions, notes, thresholds, daily, floors } = this.#sessions(end, flags.rpe_calibration, flags.hr_method);
+    const { sessions, notes, thresholds, daily, floors, no_laps: noLaps } = this.#sessions(end, flags.rpe_calibration, flags.hr_method);
     const series = loadSeries(sessions, source, end);
     const perSport = q.include_by_sport ? loadSeriesBySport(sessions, source, end) : undefined;
     const day = loadOn(series, to);
@@ -383,6 +396,10 @@ export class AnalyticsService {
     }
     if (intensityNote) allNotes.add(intensityNote);
     if (flagInput.note) allNotes.add(flagInput.note);
+    if (q.include_activities || q.include_efficiency) {
+      const withoutLaps = inRange.filter((s) => s.source === 'db' && noLaps.has(s.id) && decouplingEligible(s)).length;
+      if (withoutLaps > 0) allNotes.add(decouplingLapsNote(withoutLaps));
+    }
 
     const model =
       'CTL/ATL are 42/7-day EWMAs, TSB = CTL - ATL at the start of the day, ACWR = 7-day / 28-day mean. ' +

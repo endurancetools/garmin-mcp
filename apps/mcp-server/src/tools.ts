@@ -379,6 +379,7 @@ export const TOOLS: ToolDef[] = [
       'Returns CTL/ATL/TSB, ACWR, monotony and strain on `to` (`latest`), warning `flags`, ISO weeks per sport (sessions, hours, km, TSS, hrTSS, Garmin load, hours in Z1-2/Z3/Z4-5), ' +
       'the 3-zone intensity split against LT1/LTHR of the last 28 days (Z1/Z2/Z3 minutes and %; answers time below LT1, % in Z1, polarisation) and the thresholds used. ' +
       'include_series adds the daily curve, include_activities TSS/IF/load_source/EF per activity, include_efficiency the monthly EF trend, ' +
+      'both with aerobic decoupling (Pa:Hr/Pw:Hr, % EF drop from first to second half) of sessions of 60+ min below LTHR with downloaded laps, ' +
       'include_by_sport CTL/ATL/TSB/ACWR per sport group (`by_sport`, plus run_ctl… columns in the series) next to the total, which stays the default. ' +
       'Example: {"from":"2026-09-01","to":"2026-09-30","include_activities":true}.',
     input: {
