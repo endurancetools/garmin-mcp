@@ -330,7 +330,7 @@ export function buildProgram(deps: ProgramDeps = {}): Command {
 
   program
     .command('readiness [date]')
-    .description('morning GO / MODIFY / REST decision from HRV, resting HR, sleep, body battery, training readiness, stress and load (no network)')
+    .description("morning GO / MODIFY / REST decision from HRV, resting HR, sleep hours and load, with Garmin's scores shown (no network)")
     .option('--rules <file>', 'JSON object overriding decision thresholds, e.g. {"sleep_h_red": 5.5}')
     .option('--json', 'the { data, meta } envelope of the get_readiness tool')
     .action(async (date: string | undefined, opts: { rules?: string; json?: boolean }, cmd: Command) => {

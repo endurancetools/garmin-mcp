@@ -308,7 +308,7 @@ describe('AnalyticsService.getReadiness', () => {
     expect(readinessOutput.safeParse(res).success).toBe(true);
     expect(res.meta).toEqual({ source: 'cache' });
     // One red (resting HR) without its pair: MODIFY under the default decision_rule pairs.
-    expect(res.data).toMatchObject({ date: D, decision: 'MODIFY', counts: { red: 1, yellow: 0, ok: 5, info: 1 }, partial: false });
+    expect(res.data).toMatchObject({ date: D, decision: 'MODIFY', counts: { red: 1, yellow: 0, ok: 3, info: 3 }, partial: false });
     expect(res.data.recommendation?.[0]).toBe('MODIFY: 1 red (rhr) without a red pair (decision_rule pairs).');
     expect(res.data.signals.find((s) => s.name === 'rhr')).toMatchObject({ rating: 'red', value: { bpm: 56 }, reference: { mean28_bpm: 50 } });
     expect(res.data.signals.find((s) => s.name === 'load')).toMatchObject({ rating: 'ok', value: { acwr: 1, date: D } });
@@ -317,10 +317,11 @@ describe('AnalyticsService.getReadiness', () => {
 
   it('uses own rules over the defaults and reports ignored keys', async () => {
     const { analytics } = ready();
-    const res = await analytics.getReadiness({ date: D, rules: { rhr_red_delta: 10, bogus: 1, readiness_red: 90 } });
+    const res = await analytics.getReadiness({ date: D, rules: { rhr_red_delta: 10, bogus: 1, readiness_red: 90, bb_yellow: 85 } });
     expect(res.data).toMatchObject({ decision: 'GO', counts: { red: 0, yellow: 1 }, rules_used: { rhr_red_delta: 10, rhr_yellow_delta: 3 } });
     expect(res.data.rules_used).not.toHaveProperty('readiness_red');
-    expect(res.meta.note).toMatch(/Ignored rules .*: bogus, readiness_red;/);
+    expect(res.data.rules_used).not.toHaveProperty('bb_yellow');
+    expect(res.meta.note).toMatch(/Ignored rules .*: bogus, readiness_red, bb_yellow;/);
   });
 
   it('takes decision_rule count from the rules and ignores an unknown decision_rule', async () => {
