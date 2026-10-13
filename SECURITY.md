@@ -37,7 +37,7 @@ Please report privately, not in a public issue:
 
 Never include real tokens, the contents of `tokens.json`, your database or your Garmin password, not even in a private report; redacted examples are enough.
 
-You will get an answer within 7 days. Once a fix is released, the advisory is published with credit to you, unless you prefer otherwise.
+Once a fix is released, the advisory is published with credit to you, unless you prefer otherwise.
 
 ## Out of scope
 
