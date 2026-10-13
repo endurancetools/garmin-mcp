@@ -70,7 +70,7 @@
     { "name": "get_gear", "description": "Shoes and bikes with distance" },
     { "name": "get_devices", "description": "Devices, last sync and settings" },
     { "name": "get_load", "description": "Own load model (TSS from power, pace or HR): form (CTL/ATL/TSB), ACWR, monotony, weekly volume and intensity split" },
-    { "name": "get_readiness", "description": "Morning GO/MODIFY/REST decision from HRV, resting HR, sleep, body battery and load" },
+    { "name": "get_readiness", "description": "Morning GO/MODIFY/REST decision from HRV, resting HR, sleep hours and load" },
     { "name": "get_thresholds", "description": "LTHR, LT1, HRmax, FTP and resting HR in effect on a date, with history, plus heart rate and power zones per sport from the Garmin profile" },
     { "name": "set_threshold", "description": "Record a field test result (LTHR, LT1, HRmax, FTP) in the local database" }
   ],

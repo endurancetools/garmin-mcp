@@ -25,20 +25,10 @@ export interface ReadinessRules {
   rhr_red_delta: number;
   /** Resting HR yellow: at least the 28-day mean + this (bpm). */
   rhr_yellow_delta: number;
-  /** Sleep red: score below this. */
-  sleep_score_red: number;
-  /** Sleep yellow: score below this. */
-  sleep_score_yellow: number;
   /** Sleep red: fewer hours than this. */
   sleep_h_red: number;
   /** Sleep yellow: fewer hours than this. */
   sleep_h_yellow: number;
-  /** Body Battery high of the day below this: red. */
-  bb_red: number;
-  /** Body Battery high of the day below this: yellow. */
-  bb_yellow: number;
-  /** Average stress of the day before above this: yellow (never red). */
-  stress_yellow: number;
   /** Own load red: ACWR above this. */
   acwr_red: number;
   /** Own load yellow: ACWR above this. */
@@ -61,13 +51,8 @@ export const DEFAULT_READINESS_RULES: Readonly<ReadinessRules> = {
   hrv_yellow_weekly_factor: 0.9,
   rhr_red_delta: 5,
   rhr_yellow_delta: 3,
-  sleep_score_red: 60,
-  sleep_score_yellow: 75,
   sleep_h_red: 6,
   sleep_h_yellow: 7,
-  bb_red: 30,
-  bb_yellow: 50,
-  stress_yellow: 50,
   acwr_red: 1.5,
   acwr_yellow: 1.3,
   tsb_red: -30,
@@ -119,7 +104,7 @@ export const READINESS_RED_PAIRS: readonly (readonly [ReadinessSignalName, Readi
 
 /**
  * `unknown`: no data for the signal; `info`: shown for reference, never rated (Garmin's own
- * Training Readiness score). Neither counts towards the decision.
+ * scores: Training Readiness, Body Battery, stress). Neither counts towards the decision.
  */
 export type ReadinessRating = 'ok' | 'yellow' | 'red' | 'info' | 'unknown';
 
@@ -272,34 +257,35 @@ function rhrSignal(rhr: number | null | undefined, mean28: number | undefined, r
   };
 }
 
+/**
+ * Sleep rated from the hours alone (E6-30). Garmin's sleep score (a blend of duration, stages and
+ * restlessness) stays in `value` for reference and never sets the rating; without the hours the
+ * signal is `unknown` even when the score is there.
+ */
 function sleepSignal(row: ReadinessInput['sleep'][number] | undefined, r: ReadinessRules): ReadinessSignal {
   const score = finite(row?.score) ? row.score : undefined;
   // Hours to 0.1, as plan-v2 compared them.
   const hours = finite(row?.duration_s) ? round(row.duration_s / 3600, 1) : undefined;
-  if (score === undefined && hours === undefined) return unknown('sleep', 'No sleep score or duration for the night before the day.');
-  const below = (limitScore: number, limitH: number): string | undefined => {
-    const parts = [
-      score !== undefined && score < limitScore ? `score ${score} < ${limitScore}` : undefined,
-      hours !== undefined && hours < limitH ? `${hours} h < ${limitH} h` : undefined,
-    ].filter(Boolean);
-    return parts.length ? `Sleep ${parts.join(', ')}.` : undefined;
-  };
-  const { rating, detail } = rate(below(r.sleep_score_red, r.sleep_h_red), below(r.sleep_score_yellow, r.sleep_h_yellow));
+  if (hours === undefined) {
+    if (score === undefined) return unknown('sleep', 'No sleep duration for the night before the day.');
+    return { name: 'sleep', rating: 'unknown', value: { score }, detail: `No sleep duration for the night before the day; Garmin's score ${score} is not counted.` };
+  }
+  const { rating, detail } = rate(
+    hours < r.sleep_h_red ? `Sleep ${hours} h < ${r.sleep_h_red} h.` : undefined,
+    hours < r.sleep_h_yellow ? `Sleep ${hours} h < ${r.sleep_h_yellow} h.` : undefined,
+  );
   return {
     name: 'sleep',
     rating,
-    value: vals({ score, hours }),
-    detail: detail ?? `Sleep at least score ${r.sleep_score_yellow} and ${r.sleep_h_yellow} h.`,
+    value: vals({ hours, score }),
+    detail: detail ?? `Sleep ${hours} h ≥ ${r.sleep_h_yellow} h.`,
   };
 }
 
-function bodyBatterySignal(high: number | null | undefined, r: ReadinessRules): ReadinessSignal {
+/** Garmin's Body Battery, always `info`: a Firstbeat model of HRV, stress and activity, so it repeats the counted signals. */
+function bodyBatterySignal(high: number | null | undefined): ReadinessSignal {
   if (!finite(high)) return unknown('body_battery', 'No Body Battery high for the day.');
-  const { rating, detail } = rate(
-    high < r.bb_red ? `Body Battery high ${high} < ${r.bb_red}.` : undefined,
-    high < r.bb_yellow ? `Body Battery high ${high} < ${r.bb_yellow}.` : undefined,
-  );
-  return { name: 'body_battery', rating, value: { high }, detail: detail ?? `Body Battery high ${high} ≥ ${r.bb_yellow}.` };
+  return { name: 'body_battery', rating: 'info', value: { high }, detail: "Garmin's Body Battery high, shown for reference, not counted" };
 }
 
 type ReadinessEntry = { score?: unknown; level?: unknown; inputContext?: unknown; timestamp?: unknown; recoveryTime?: unknown };
@@ -342,17 +328,10 @@ function trainingReadinessSignal(row: ReadinessInput['training'][number] | undef
   };
 }
 
-function stressSignal(avg: number | null | undefined, date: IsoDate, r: ReadinessRules): ReadinessSignal {
+/** Garmin's average stress of the day before, always `info`: it is derived from the daytime HRV. */
+function stressSignal(avg: number | null | undefined, date: IsoDate): ReadinessSignal {
   if (!finite(avg)) return unknown('stress', `No average stress for ${date} (the day before).`);
-  const yellow = avg > r.stress_yellow;
-  return {
-    name: 'stress',
-    rating: yellow ? 'yellow' : 'ok',
-    value: { avg, date },
-    detail: yellow
-      ? `Average stress ${avg} on ${date} > ${r.stress_yellow}.`
-      : `Average stress ${avg} on ${date} ≤ ${r.stress_yellow}.`,
-  };
+  return { name: 'stress', rating: 'info', value: { avg, date }, detail: `Garmin's average stress of ${date} (the day before), shown for reference, not counted` };
 }
 
 function loadSignal(load: ReadinessInput['load'], start: IsoDate | undefined, r: ReadinessRules): ReadinessSignal {
@@ -412,11 +391,11 @@ export function decide(signals: readonly ReadinessSignal[], rules: ReadinessRule
 }
 
 /**
- * Morning GO / MODIFY / REST decision for `date` (spec 5.7): seven signals rated red,
- * yellow, ok, info (Garmin's Training Readiness, shown only) or unknown (no data, or the load
- * model still warming up); info and unknown never count. The decision follows
- * `decision_rule` (see {@link decide}). Stress is taken from the day
- * before (the day itself is still running). `partial` when the day is today or later, or a
+ * Morning GO / MODIFY / REST decision for `date` (spec 5.7, E6-28, E6-30): seven signals, of which
+ * HRV, resting HR, sleep hours and own load are rated red, yellow, ok or unknown (no data, or the
+ * load model still warming up), and Garmin's Training Readiness, Body Battery and stress are info
+ * (shown only); info and unknown never count. The decision follows `decision_rule` (see
+ * {@link decide}). Stress is taken from the day before (the day itself is still running). `partial` when the day is today or later, or a
  * row of the day was fetched before the day had ended (local date of `fetched_at` ≤ D).
  */
 export function readiness(input: ReadinessInput): Readiness {
@@ -436,9 +415,9 @@ export function readiness(input: ReadinessInput): Readiness {
     hrvSignal(hrv, input.hrv.filter(before).map((r) => r.last_night_avg).filter(finite), rules),
     rhrSignal(daily?.resting_hr, mean(input.daily.filter(before).map((r) => r.resting_hr)), rules),
     sleepSignal(sleep, rules),
-    bodyBatterySignal(daily?.body_battery_high, rules),
+    bodyBatterySignal(daily?.body_battery_high),
     trainingReadinessSignal(training),
-    stressSignal(on(input.daily, yesterday)?.avg_stress, yesterday, rules),
+    stressSignal(on(input.daily, yesterday)?.avg_stress, yesterday),
     loadSignal(input.load, input.load_start, rules),
   ];
 

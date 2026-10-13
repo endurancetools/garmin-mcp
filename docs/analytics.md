@@ -162,40 +162,37 @@ Below LT1 heart rate and pace are close to steady state, so EF reflects aerobic 
 
 ## Morning readiness
 
-`get_readiness` reports seven signals of day D (default today) and turns six of them into a decision. A counted signal is `ok`, `yellow`, `red`, or `unknown` when its data is missing; Garmin's Training Readiness is `info`: shown, never rated. Neither `unknown` nor `info` signals count (`counts.info`, `counts.unknown`).
+`get_readiness` reports seven signals of day D (default today) and turns four of them into a decision: HRV, resting heart rate, hours of sleep and own load. A counted signal is `ok`, `yellow`, `red`, or `unknown` when its data is missing; Garmin's own scores (Training Readiness, Body Battery, stress) are `info`: shown, never rated. Neither `unknown` nor `info` signals count (`counts.info`, `counts.unknown`).
 
 | Signal | Counted | Value | Compared with | Red | Yellow |
 | --- | --- | --- | --- | --- | --- |
 | `hrv` | yes | overnight HRV of D; Garmin's HRV status shown, not rated | Garmin's 7-day average and baseline of D (its rolling averages of the raw nights), mean of the 28 nights before (from 7 nights with data; fewer: not compared, noted in the detail) | below `hrv_red_base_factor` × baseline low, or below `hrv_red_mean28_factor` × 28-night mean | below the baseline low, or below `hrv_yellow_weekly_factor` × 7-day average |
 | `rhr` | yes | resting heart rate of D | mean of the 28 days before | ≥ mean + `rhr_red_delta` | ≥ mean + `rhr_yellow_delta` |
-| `sleep` | yes | sleep score and hours of the night before D | | score below `sleep_score_red` or hours below `sleep_h_red` | score below `sleep_score_yellow` or hours below `sleep_h_yellow` |
-| `body_battery` | yes | Body Battery high of D | | below `bb_red` | below `bb_yellow` |
+| `sleep` | yes | hours of the night before D (to 0.1 h); Garmin's sleep score shown, not rated; `unknown` without the hours | | hours below `sleep_h_red` | hours below `sleep_h_yellow` |
+| `body_battery` | no (`info`) | Body Battery high of D | | never | never |
 | `training_readiness` | no (`info`) | Garmin Training Readiness of D: the newest morning (after wake-up) value, else the newest of the day; with level and recovery time | | never | never |
-| `stress` | yes | average stress of D − 1 (D itself is still running) | | never | above `stress_yellow` |
+| `stress` | no (`info`) | average stress of D − 1 (D itself is still running) | | never | never |
 | `load` | yes | TSB and ACWR of the load model on D, summed from hrTSS (as `source: "hrtss"` of `get_load`); `unknown` while the model warms up (fewer than 42 days since the first activity, detail "load model warming up (N of 42 days)") | | ACWR above `acwr_red` or TSB below `tsb_red` | ACWR above `acwr_yellow` or TSB below `tsb_yellow` |
 
 Decision (`decision_rule`, default `pairs`): **REST** when both signals of one of these pairs are red: `hrv` with `rhr`, `hrv` with `sleep`, or `load` with any of `hrv`, `rhr` and `sleep`. A red signal without its pair, or at least `decision_yellow_min` yellow signals, is **MODIFY**; else **GO**. With `decision_rule: "count"` the decision counts instead: at least `decision_red_min` red signals is **REST**, else at least `decision_yellow_min` yellow ones is **MODIFY**, else **GO** (the only rule up to 0.2.0). The first line of `recommendation` names the signals that decided, e.g. "REST: red hrv + rhr (decision_rule pairs)." or "MODIFY: 1 red (sleep) without a red pair (decision_rule pairs)."
 
-The signals are correlated: one short or restless night lowers HRV, raises the resting heart rate, shortens sleep and drains Body Battery together, so under a counting rule a single event can be read as several independent warnings, and with `decision_red_min` 1 any one red signal cancels the key session. The pairs ask for agreement between sources that fail for different reasons. HRV and resting heart rate are two readings of the autonomic state taken by different means, and HRV together with short or poor sleep confirms that the low night is real; own load against a physiological signal is the classic picture of overreaching: the training has been heavy and the body shows it (Meeusen et al. 2013). A single red still turns the day into MODIFY, so nothing is ignored, only the cancellation needs a second, independent witness.
+The signals are correlated: one short or restless night lowers HRV, raises the resting heart rate and shortens sleep together, so under a counting rule a single event can be read as several independent warnings, and with `decision_red_min` 1 any one red signal cancels the key session. The pairs ask for agreement between sources that fail for different reasons. HRV and resting heart rate are two readings of the autonomic state taken by different means, and HRV together with short sleep confirms that the low night is real; own load against a physiological signal is the classic picture of overreaching: the training has been heavy and the body shows it (Meeusen et al. 2013). A single red still turns the day into MODIFY, so nothing is ignored, only the cancellation needs a second, independent witness.
 
-Garmin's Training Readiness does not vote because it is itself a blend of overnight HRV, sleep, recovery time and recent load. Those inputs are already rated on their own here, so counting Garmin's score as well would count the same night twice: one poor night could give a red Training Readiness on top of a red HRV and a yellow sleep. The decision is built from your own data against your own baselines; Garmin's score stays in `signals` with its level and recovery time so you can compare. `partial` is true when D is today or later, or when a row of D was downloaded before the day had ended, so a later sync may change the answer. `recommendation` gives short advice for the decision.
+Garmin's scores do not vote because each is built from the same inputs that are already rated here. Training Readiness blends overnight HRV, sleep, recovery time and recent load; Body Battery is a Firstbeat model of HRV, stress and activity, in practice the same picture as Training Readiness; average stress is derived from the daytime HRV; the sleep score mixes duration with sleep stages and restlessness that the watch only estimates. Counting them as well would count the same night two or three times: one poor night could give a red Training Readiness and a low Body Battery on top of a red HRV and a short sleep. The decision is built from your own data against your own baselines (HRV, resting heart rate, hours of sleep, own load); Garmin's scores stay in `signals` (Training Readiness with its level and recovery time, the sleep score in the `sleep` value) so you can compare. `partial` is true when D is today or later, or when a row of D was downloaded before the day had ended, so a later sync may change the answer. `recommendation` gives short advice for the decision.
 
 ### Readiness rules
 
-Override any of them with `rules`, e.g. `{"sleep_h_yellow": 7.5, "decision_yellow_min": 3}` or `{"decision_rule": "count"}`. Unknown keys, including the former `readiness_red` and `readiness_yellow`, and invalid values are ignored with a note.
+Override any of them with `rules`, e.g. `{"sleep_h_yellow": 7.5, "decision_yellow_min": 3}` or `{"decision_rule": "count"}`. Unknown keys, including the former `readiness_red`, `readiness_yellow`, `sleep_score_red`, `sleep_score_yellow`, `bb_red`, `bb_yellow` and `stress_yellow`, and invalid values are ignored with a note.
 
 | Key | Default | Key | Default |
 | --- | --- | --- | --- |
-| `hrv_red_base_factor` | 0.9 | `bb_red` | 30 |
-| `hrv_red_mean28_factor` | 0.85 | `bb_yellow` | 50 |
-| `hrv_yellow_weekly_factor` | 0.9 | `stress_yellow` | 50 |
-| `rhr_red_delta` | 5 bpm | `acwr_red` | 1.5 |
-| `rhr_yellow_delta` | 3 bpm | `acwr_yellow` | 1.3 |
-| `sleep_score_red` | 60 | `tsb_red` | −30 |
-| `sleep_score_yellow` | 75 | `tsb_yellow` | −20 |
-| `sleep_h_red` | 6 h | `decision_rule` | `pairs` (or `count`) |
-| `sleep_h_yellow` | 7 h | `decision_red_min` | 1 (`count` only) |
-| | | `decision_yellow_min` | 2 |
+| `hrv_red_base_factor` | 0.9 | `acwr_red` | 1.5 |
+| `hrv_red_mean28_factor` | 0.85 | `acwr_yellow` | 1.3 |
+| `hrv_yellow_weekly_factor` | 0.9 | `tsb_red` | −30 |
+| `rhr_red_delta` | 5 bpm | `tsb_yellow` | −20 |
+| `rhr_yellow_delta` | 3 bpm | `decision_rule` | `pairs` (or `count`) |
+| `sleep_h_red` | 6 h | `decision_red_min` | 1 (`count` only) |
+| `sleep_h_yellow` | 7 h | `decision_yellow_min` | 2 |
 
 The HRV rules follow day-to-day HRV-guided training, which compares the night with the athlete's own recent baseline rather than with population norms (Kiviniemi et al. 2007; Plews et al. 2013; Javaloyes et al. 2019); resting heart rate is read the same way (Buchheit 2014).
 
