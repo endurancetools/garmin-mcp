@@ -1,7 +1,10 @@
 # Local preview of the documentation site with the same Jekyll stack GitHub Pages uses.
 # Run it through Docker (no Ruby on the machine needed): `pnpm docs` from the repository root.
 source "https://rubygems.org"
-gem "github-pages", group: :jekyll_plugins
+# Without the lower bound bundler can resolve github-pages 222 (jekyll 3.9.0, liquid 4.0.3), which
+# fails on Ruby 3.3 with "undefined method `tainted?'" in _layouts/single.html. 228+ brings
+# jekyll 3.10 and liquid 4.0.4, which work on Ruby 3.3.
+gem "github-pages", ">= 228", group: :jekyll_plugins
 gem "jekyll-remote-theme"
 gem "jekyll-include-cache"
 gem "webrick"
