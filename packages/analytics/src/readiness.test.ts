@@ -3,7 +3,9 @@ import { describe, expect, it } from 'vitest';
 import { loadOn, loadSeries } from './load.js';
 import {
   DEFAULT_READINESS_RULES,
+  READINESS_RED_PAIRS,
   READINESS_SIGNALS,
+  isReadinessRuleValue,
   morningReadiness,
   readiness,
   resolveReadinessRules,
@@ -85,7 +87,8 @@ describe('readiness', () => {
     expect(r.counts).toEqual({ red: 0, yellow: 0, ok: 6, info: 1, unknown: 0 });
     expect(r.partial).toBe(false);
     expect(r.rules_used).toEqual(DEFAULT_READINESS_RULES);
-    expect(r.recommendation[0]).toMatch(/^Follow the planned microcycle/);
+    expect(r.recommendation[0]).toBe('GO: no red or yellow signal.');
+    expect(r.recommendation[1]).toMatch(/^Follow the planned microcycle/);
   });
 
   it('reports values and references of a signal', () => {
@@ -188,7 +191,7 @@ describe('readiness', () => {
       expect(r.decision).toBe('GO');
       expect(r.counts).toEqual({ red: 0, yellow: 0, ok: 6, info: 1, unknown: 0 });
       // With the strictest count rule a single red or yellow would decide; info still does not.
-      const strict = readiness(input({ training: trainingRow(20), rules: { decision_red_min: 1, decision_yellow_min: 1 } }));
+      const strict = readiness(input({ training: trainingRow(20), rules: { decision_rule: 'count', decision_red_min: 1, decision_yellow_min: 1 } }));
       expect(strict.decision).toBe('GO');
     });
     it('falls back to the stored column without readiness snapshots, unknown without both', () => {
@@ -276,24 +279,111 @@ describe('readiness', () => {
   });
 
   describe('decision', () => {
-    it('REST at decision_red_min red signals, MODIFY at decision_yellow_min yellow ones', () => {
-      expect(readiness(input({ day: { body_battery_high: 20 } })).decision).toBe('REST');
-      expect(readiness(input({ day: { body_battery_high: 40 } })).decision).toBe('GO');
-      const twoYellow = input({ day: { body_battery_high: 40 }, sleep: { score: 70 } });
-      const r = readiness(twoYellow);
-      expect(r.decision).toBe('MODIFY');
-      expect(r.counts).toEqual({ red: 0, yellow: 2, ok: 4, info: 1, unknown: 0 });
-      expect(r.recommendation).toHaveLength(2);
+    const LOAD = { date: D, tsb: 0, monotony: 1, warming_up: false };
+    /** Input with the named signals red (and `extra` merged in). */
+    const withRed = (names: readonly ReadinessSignalName[], extra: Parameters<typeof input>[0] = {}): ReadinessInput => {
+      const over: Parameters<typeof input>[0] = { ...extra, day: { ...extra.day } };
+      for (const name of names) {
+        // HRV 50 < 0.85 × the 28-night mean 60; resting HR 55 = mean 50 + 5; sleep score 50 < 60; ACWR 1.6 > 1.5; Body Battery 20 < 30.
+        if (name === 'hrv') over.hrv = { last_night_avg: 50, weekly_avg: 50, baseline_low: 40 };
+        if (name === 'rhr') over.day = { ...over.day, resting_hr: 55 };
+        if (name === 'sleep') over.sleep = { score: 50 };
+        if (name === 'load') over.load = { ...LOAD, acwr: 1.6 };
+        if (name === 'body_battery') over.day = { ...over.day, body_battery_high: 20 };
+      }
+      return input(over);
+    };
+    const COUNT = { decision_rule: 'count' } as const;
+
+    describe('decision_rule pairs (default)', () => {
+      it.each(READINESS_RED_PAIRS.map(([a, b]) => [a, b]))('red %s with red %s: REST, naming the pair', (a, b) => {
+        const r = readiness(withRed([a, b]));
+        expect(r.counts.red).toBe(2);
+        expect(r.decision).toBe('REST');
+        expect(r.recommendation[0]).toBe(`REST: red ${a} + ${b} (decision_rule pairs).`);
+        expect(r.recommendation).toHaveLength(4);
+      });
+      it.each(['hrv', 'rhr', 'sleep', 'body_battery', 'load'] as const)('a single red %s: MODIFY, naming it', (name) => {
+        const r = readiness(withRed([name]));
+        expect(r.counts.red).toBe(1);
+        expect(r.decision).toBe('MODIFY');
+        expect(r.recommendation[0]).toBe(`MODIFY: 1 red (${name}) without a red pair (decision_rule pairs).`);
+        expect(r.recommendation).toHaveLength(3);
+      });
+      it('two reds outside the pairs: MODIFY', () => {
+        expect(readiness(withRed(['rhr', 'sleep'])).decision).toBe('MODIFY');
+        const r = readiness(withRed(['hrv', 'body_battery'], { yesterday: { avg_stress: 60 } }));
+        expect(r.decision).toBe('MODIFY');
+        expect(r.recommendation[0]).toBe('MODIFY: 2 red (hrv, body_battery) without a red pair (decision_rule pairs); 1 yellow (stress).');
+      });
+      it('every pair found is named', () => {
+        const r = readiness(withRed(['hrv', 'rhr', 'sleep']));
+        expect(r.recommendation[0]).toBe('REST: red hrv + rhr, hrv + sleep (decision_rule pairs).');
+      });
+      it('MODIFY at decision_yellow_min yellow signals, GO below it', () => {
+        const twoYellow = input({ day: { body_battery_high: 40 }, sleep: { score: 70 } });
+        const r = readiness(twoYellow);
+        expect(r.decision).toBe('MODIFY');
+        expect(r.recommendation[0]).toBe('MODIFY: 2 yellow (sleep, body_battery), at least decision_yellow_min 2.');
+        const one = readiness(input({ day: { body_battery_high: 40 } }));
+        expect(one.decision).toBe('GO');
+        expect(one.recommendation[0]).toBe('GO: 1 yellow (body_battery), below decision_yellow_min 2.');
+        expect(readiness(input({ day: { body_battery_high: 40 }, rules: { decision_yellow_min: 1 } })).decision).toBe('MODIFY');
+      });
+      it('decision_red_min does not change it', () => {
+        expect(readiness(withRed(['rhr'], { rules: { decision_red_min: 1 } })).decision).toBe('MODIFY');
+        expect(readiness(withRed(['hrv', 'rhr'], { rules: { decision_red_min: 3 } })).decision).toBe('REST');
+      });
     });
-    it('decision_yellow_min and decision_red_min come from the rules', () => {
-      const twoYellow = { day: { body_battery_high: 40 }, sleep: { score: 70 } };
-      expect(readiness(input({ ...twoYellow, rules: { decision_yellow_min: 3 } })).decision).toBe('GO');
-      expect(readiness(input({ day: { body_battery_high: 40 }, rules: { decision_yellow_min: 1 } })).decision).toBe('MODIFY');
-      const oneRed = { day: { body_battery_high: 20 } };
-      expect(readiness(input({ ...oneRed, rules: { decision_red_min: 2 } })).decision).toBe('GO');
-      const r = readiness(input({ ...oneRed, sleep: { score: 50 }, rules: { decision_red_min: 2 } }));
-      expect(r.decision).toBe('REST');
-      expect(r.recommendation).toHaveLength(3);
+
+    describe('decision_rule count', () => {
+      it('REST at decision_red_min red signals, MODIFY at decision_yellow_min yellow ones', () => {
+        const red = readiness(input({ day: { body_battery_high: 20 }, rules: COUNT }));
+        expect(red.decision).toBe('REST');
+        expect(red.recommendation[0]).toBe('REST: 1 red (body_battery), at least decision_red_min 1.');
+        expect(readiness(input({ day: { body_battery_high: 40 }, rules: COUNT })).decision).toBe('GO');
+        const twoYellow = input({ day: { body_battery_high: 40 }, sleep: { score: 70 }, rules: COUNT });
+        const r = readiness(twoYellow);
+        expect(r.decision).toBe('MODIFY');
+        expect(r.counts).toEqual({ red: 0, yellow: 2, ok: 4, info: 1, unknown: 0 });
+        expect(r.recommendation).toHaveLength(3);
+      });
+      it('decision_yellow_min and decision_red_min come from the rules', () => {
+        const twoYellow = { day: { body_battery_high: 40 }, sleep: { score: 70 } };
+        expect(readiness(input({ ...twoYellow, rules: { ...COUNT, decision_yellow_min: 3 } })).decision).toBe('GO');
+        expect(readiness(input({ day: { body_battery_high: 40 }, rules: { ...COUNT, decision_yellow_min: 1 } })).decision).toBe('MODIFY');
+        const oneRed = { day: { body_battery_high: 20 } };
+        const below = readiness(input({ ...oneRed, rules: { ...COUNT, decision_red_min: 2 } }));
+        expect(below.decision).toBe('GO');
+        expect(below.recommendation[0]).toBe('GO: 1 red (body_battery), below decision_red_min 2 and decision_yellow_min 2.');
+        const r = readiness(input({ ...oneRed, sleep: { score: 50 }, rules: { ...COUNT, decision_red_min: 2 } }));
+        expect(r.decision).toBe('REST');
+        expect(r.recommendation).toHaveLength(4);
+      });
+      it('gives the results of the rule before decision_rule on the same data; pairs differs only on reds', () => {
+        // [reds, extra input, decision before decision_rule (red_min 1, yellow_min 2), decision with pairs]
+        const cases: [ReadinessSignalName[], Parameters<typeof input>[0], string, string][] = [
+          [[], {}, 'GO', 'GO'],
+          [[], { day: { body_battery_high: 40 } }, 'GO', 'GO'],
+          [[], { day: { body_battery_high: 40 }, yesterday: { avg_stress: 60 } }, 'MODIFY', 'MODIFY'],
+          [['hrv'], {}, 'REST', 'MODIFY'],
+          [['rhr'], {}, 'REST', 'MODIFY'],
+          [['sleep'], {}, 'REST', 'MODIFY'],
+          [['body_battery'], {}, 'REST', 'MODIFY'],
+          [['load'], {}, 'REST', 'MODIFY'],
+          [['rhr', 'sleep'], {}, 'REST', 'MODIFY'],
+          [['hrv', 'rhr'], {}, 'REST', 'REST'],
+          [['load', 'sleep'], {}, 'REST', 'REST'],
+        ];
+        for (const [reds, extra, before, pairs] of cases) {
+          const i = withRed(reds, extra);
+          const old = readiness({ ...i, rules: { decision_rule: 'count', decision_red_min: 1, decision_yellow_min: 2 } });
+          const c = old.counts;
+          expect(c.red >= 1 ? 'REST' : c.yellow >= 2 ? 'MODIFY' : 'GO').toBe(before);
+          expect(readiness({ ...i, rules: COUNT }).decision).toBe(before);
+          expect(readiness(i).decision).toBe(pairs);
+        }
+      });
     });
   });
 
@@ -305,6 +395,16 @@ describe('readiness', () => {
       expect(r.decision).toBe('MODIFY');
       expect(r.rules_used).toEqual({ ...DEFAULT_READINESS_RULES, bb_yellow: 85, stress_yellow: 25 });
     });
+    it('decision_rule is count or pairs; anything else keeps the default', () => {
+      expect(resolveReadinessRules({ decision_rule: 'count' }).decision_rule).toBe('count');
+      expect(resolveReadinessRules({ decision_rule: 'any' }).decision_rule).toBe('pairs');
+      expect(resolveReadinessRules({ decision_rule: 1 }).decision_rule).toBe('pairs');
+      expect(isReadinessRuleValue('decision_rule', 'pairs')).toBe(true);
+      expect(isReadinessRuleValue('decision_rule', 'PAIRS')).toBe(false);
+      expect(isReadinessRuleValue('bb_red', 'count')).toBe(false);
+      expect(isReadinessRuleValue('bogus', 1)).toBe(false);
+      expect(readiness(input({ rules: { decision_rule: 'count' } })).rules_used.decision_rule).toBe('count');
+    });
     it('resolveReadinessRules ignores missing and non-finite values', () => {
       expect(resolveReadinessRules()).toEqual(DEFAULT_READINESS_RULES);
       expect(resolveReadinessRules({ bb_red: Number.NaN, bb_yellow: undefined, rhr_red_delta: 6 })).toEqual({
@@ -312,7 +412,7 @@ describe('readiness', () => {
         rhr_red_delta: 6,
       });
     });
-    it('defaults match the spec 5.7 table without the Training Readiness thresholds (E6-28)', () => {
+    it('defaults match the spec 5.7 table without the Training Readiness thresholds (E6-28), with decision_rule pairs (E6-23)', () => {
       expect(DEFAULT_READINESS_RULES).toEqual({
         hrv_red_base_factor: 0.9,
         hrv_red_mean28_factor: 0.85,
@@ -330,6 +430,7 @@ describe('readiness', () => {
         acwr_yellow: 1.3,
         tsb_red: -30,
         tsb_yellow: -20,
+        decision_rule: 'pairs',
         decision_red_min: 1,
         decision_yellow_min: 2,
       });

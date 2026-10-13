@@ -307,7 +307,9 @@ describe('AnalyticsService.getReadiness', () => {
     fits(readinessOutput, res);
     expect(readinessOutput.safeParse(res).success).toBe(true);
     expect(res.meta).toEqual({ source: 'cache' });
-    expect(res.data).toMatchObject({ date: D, decision: 'REST', counts: { red: 1, yellow: 0, ok: 5, info: 1 }, partial: false });
+    // One red (resting HR) without its pair: MODIFY under the default decision_rule pairs.
+    expect(res.data).toMatchObject({ date: D, decision: 'MODIFY', counts: { red: 1, yellow: 0, ok: 5, info: 1 }, partial: false });
+    expect(res.data.recommendation?.[0]).toBe('MODIFY: 1 red (rhr) without a red pair (decision_rule pairs).');
     expect(res.data.signals.find((s) => s.name === 'rhr')).toMatchObject({ rating: 'red', value: { bpm: 56 }, reference: { mean28_bpm: 50 } });
     expect(res.data.signals.find((s) => s.name === 'load')).toMatchObject({ rating: 'ok', value: { acwr: 1, date: D } });
     expect(res.data.signals.find((s) => s.name === 'training_readiness')).toMatchObject({ rating: 'info', value: { score: 70, level: 'HIGH', recovery_h: 10 } });
@@ -319,6 +321,16 @@ describe('AnalyticsService.getReadiness', () => {
     expect(res.data).toMatchObject({ decision: 'GO', counts: { red: 0, yellow: 1 }, rules_used: { rhr_red_delta: 10, rhr_yellow_delta: 3 } });
     expect(res.data.rules_used).not.toHaveProperty('readiness_red');
     expect(res.meta.note).toMatch(/Ignored rules .*: bogus, readiness_red;/);
+  });
+
+  it('takes decision_rule count from the rules and ignores an unknown decision_rule', async () => {
+    const { analytics } = ready();
+    const count = await analytics.getReadiness({ date: D, rules: { decision_rule: 'count' } });
+    expect(count.data).toMatchObject({ decision: 'REST', rules_used: { decision_rule: 'count' } });
+    expect(count.meta.note).toBeUndefined();
+    const bad = await analytics.getReadiness({ date: D, rules: { decision_rule: 'all' } });
+    expect(bad.data).toMatchObject({ decision: 'MODIFY', rules_used: { decision_rule: 'pairs' } });
+    expect(bad.meta.note).toMatch(/Ignored rules .*: decision_rule;/);
   });
 
   it('hints a sync of the whole window when the cache lacks it', async () => {

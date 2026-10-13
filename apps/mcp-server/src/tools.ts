@@ -402,6 +402,7 @@ export const TOOLS: ToolDef[] = [
       'Morning GO/MODIFY/REST decision from HRV, resting HR, sleep, body battery, stress and load; pass `rules` to use your own thresholds. ' +
       'Each signal has its value, reference, rating (ok, yellow, red; unknown when data is missing) and a readable detail; plus rules_used and a recommendation. ' +
       "Garmin's own Training Readiness score is shown as an info signal, not counted. " +
+      'REST needs a red pair (hrv with rhr or sleep, load with hrv, rhr or sleep), a single red or 2 yellow give MODIFY; decision_rule "count" instead gives REST at decision_red_min reds. ' +
       'Use for "how am I today" or "can I do a hard session". Example: {"date":"2026-10-12"}.',
     input: {
       date: date.optional().describe('Morning to judge; default today'),

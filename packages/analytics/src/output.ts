@@ -12,7 +12,7 @@ const num = z.number().optional();
 const bool = z.boolean().optional();
 const list = <T extends z.ZodType>(item: T) => z.array(item).optional();
 const obj = <S extends z.core.$ZodLooseShape>(shape: S) => z.looseObject(shape).optional();
-/** `rules_used`, `flags_used`: named numbers, documented in the input description. */
+/** `rules_used`, `flags_used`: named numbers (and the `hr_method`, `decision_rule` strings), documented in the input description. */
 const numbers = obj({});
 const values = z.record(z.string(), z.union([z.number(), z.string()])).optional();
 
