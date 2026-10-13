@@ -1,7 +1,24 @@
 {
   "name": "garmin-mcp-client",
   "version": "0.2.0",
-  "description": "Typed Garmin Connect API client with zod schemas, retries and rate limits",
+  "description": "Typed Garmin Connect API client for Garmin MCP, the unofficial MCP server for Garmin Connect, with zod schemas, retries and rate limits. Not affiliated with Garmin.",
+  "keywords": [
+    "garmin",
+    "garmin-connect",
+    "garmin-mcp",
+    "garmin-mcp-server",
+    "garmin-connect-mcp",
+    "garmin-ai",
+    "mcp",
+    "mcp-server",
+    "model-context-protocol",
+    "claude",
+    "claude-desktop",
+    "ai-assistant",
+    "garmin-connect-api",
+    "api-client",
+    "zod"
+  ],
   "license": "MIT",
   "repository": {
     "type": "git",

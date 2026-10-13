@@ -351,7 +351,7 @@ describe('MCP server', () => {
     const client = await connect(runtime({ enableDestructive: false }));
     const tools = (await client.listTools()).tools.map((t) => t.name);
     expect(manifest.tools.map((t) => t.name)).toEqual(tools);
-    expect(manifest.long_description).toContain(`${tools.length} coarse tools`);
+    expect(manifest.long_description).toContain(`${tools.length} tools`);
     const prompts = (await client.listPrompts()).prompts;
     expect(manifest.prompts.map((p) => p.name)).toEqual(prompts.map((p) => p.name));
     // Manifest `text` is the server prompt rendered with every argument as an mcpb `${arguments.<name>}` placeholder.

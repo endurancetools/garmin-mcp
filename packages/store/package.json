@@ -1,7 +1,23 @@
 {
   "name": "garmin-mcp-store",
   "version": "0.2.0",
-  "description": "SQLite store and synchronisation for Garmin Connect data",
+  "description": "Local SQLite cache and synchronisation of Garmin Connect data for Garmin MCP, the unofficial MCP server for Garmin Connect. Not affiliated with Garmin.",
+  "keywords": [
+    "garmin",
+    "garmin-connect",
+    "garmin-mcp",
+    "garmin-mcp-server",
+    "garmin-connect-mcp",
+    "garmin-ai",
+    "mcp",
+    "mcp-server",
+    "model-context-protocol",
+    "claude",
+    "claude-desktop",
+    "ai-assistant",
+    "sqlite",
+    "local-cache"
+  ],
   "license": "MIT",
   "repository": {
     "type": "git",

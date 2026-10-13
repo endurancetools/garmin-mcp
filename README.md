@@ -4,13 +4,20 @@
 [![CI](https://github.com/endurancetools/garmin-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/endurancetools/garmin-mcp/actions/workflows/ci.yml)
 [![MCP registry](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fregistry.modelcontextprotocol.io%2Fv0.1%2Fservers%2Fio.github.endurancetools%252Fgarmin-mcp%2Fversions&query=%24.servers%5B-1%3A%5D.server.version&label=MCP%20registry&color=blue)](https://registry.modelcontextprotocol.io/v0.1/servers/io.github.endurancetools%2Fgarmin-mcp/versions)
 
-An MCP server that gives your AI assistant your Garmin Connect data: activities, health, sleep, training status, body composition, gear, devices, the workout library and the calendar. It keeps a local SQLite cache, downloads only what a question needs, and can build, preview and schedule structured workouts that sync to the watch.
+**Ask your AI assistant how your training is really going.** Garmin MCP is an unofficial, open-source MCP server for your Garmin Connect data: training load, form and morning readiness computed on your machine with methods from published sports-science literature, with citations; 20 tools designed around the questions athletes ask, not a mirror of Garmin's API; a local SQLite cache that downloads only what a question needs; and structured workouts that go from the answer to your Garmin calendar and watch. It also reads activities, health, sleep, training status, body composition, gear, devices and the workout library.
 
 Works with Claude Code, Claude Desktop, Codex, Antigravity CLI, opencode and any other MCP client (stdio or streamable HTTP).
 
 **Documentation: [endurancetools.github.io/garmin-mcp](https://endurancetools.github.io/garmin-mcp/)** (getting started per client, what to ask, configuration, troubleshooting). Contributing and development: [DEVELOPMENT.md](DEVELOPMENT.md).
 
 Unofficial. Garmin and Garmin Connect are trademarks of Garmin Ltd. or its subsidiaries; this project is not affiliated with or endorsed by Garmin. The training analytics (`get_load`, `get_readiness`) are training information, not medical advice.
+
+## Why Garmin MCP
+
+- **Answers you can check.** Training load (TSS from power, pace, heart rate or session RPE), fitness, fatigue and form (CTL/ATL/TSB), ACWR, intensity distribution and morning readiness from your own HRV, resting heart rate, sleep and load against your own baselines, with methods from published sports-science literature, with citations. Every answer returns the values and rules it used, and you can change them. [Methods and evidence](https://endurancetools.github.io/garmin-mcp/methods/)
+- **Designed tools, not an API mirror.** 20 tools built around questions like "review my week" or "can I train hard today?", so one call answers one question. The whole tool list costs the model about 7,800 tokens of context, and the first tool call was the right one in 42 of 42 tool-selection scenarios. [Designed tools](https://endurancetools.github.io/garmin-mcp/how-it-works/#designed-tools)
+- **Local and private.** You sign in on Garmin's own page, so your password never passes through the tool. What it downloads stays in a local database on your computer, answers come back from it in milliseconds, downloads are paced to stay gentle with Garmin, and tool answers go only to the AI client you connect. [What is stored where](https://endurancetools.github.io/garmin-mcp/how-it-works/#what-is-stored-where)
+- **From answer to watch.** Ask for "6×400 m with 90 s rest on Thursday": you see the steps and estimated duration first, nothing is saved until you agree, and then it goes to your Garmin calendar and syncs to the watch. [Workouts and calendar](https://endurancetools.github.io/garmin-mcp/asking/#workouts-and-calendar)
 
 ## Getting started
 

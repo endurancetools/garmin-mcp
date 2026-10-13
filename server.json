@@ -1,7 +1,7 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.endurancetools/garmin-mcp",
-  "description": "Garmin Connect activities, health, training and workouts via a local SQLite cache",
+  "description": "Unofficial Garmin Connect server: training load, form, HRV readiness and workouts for your watch",
   "repository": {
     "url": "https://github.com/endurancetools/garmin-mcp",
     "source": "github"
