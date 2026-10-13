@@ -19,3 +19,4 @@ docs/.jekyll-metadata
 docs/Gemfile.lock
 docs/vendor/
 docs/.bundle/
+.scratch/
