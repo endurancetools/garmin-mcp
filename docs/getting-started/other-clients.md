@@ -1,5 +1,6 @@
 ---
 title: Other clients
+description: "Use the Garmin MCP server with Codex, Antigravity CLI, opencode, Docker or any MCP client over stdio or streamable HTTP, with configuration examples."
 parent: Getting started
 nav_order: 3
 ---

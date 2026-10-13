@@ -1,5 +1,6 @@
 ---
 title: Configuration
+description: "Garmin MCP settings: automatic downloads, opt-in delete tools, the network server and sign-in, as environment variables or config.json, with defaults."
 nav_order: 6
 ---
 Everything works without configuration. Settings are environment variables passed by your client (see the client guides), or lines in `~/.garmin-mcp/config.json`. Precedence: command-line flag, then environment, then `config.json`, then the default.

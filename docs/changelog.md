@@ -1,5 +1,6 @@
 ---
 title: Changelog
+description: "Garmin MCP release notes: what changed in each version of the MCP server, CLI and Claude Desktop extension, including training analytics in 0.2.0."
 nav_order: 11
 ---
 What changed in each release. All `garmin-mcp-*` packages share one version; the Claude Desktop extension of every version is attached to its [GitHub release](https://github.com/endurancetools/garmin-mcp/releases).

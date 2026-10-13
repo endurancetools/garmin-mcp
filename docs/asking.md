@@ -1,5 +1,6 @@
 ---
 title: What you can ask
+description: "Example questions for your AI assistant about Garmin data: sleep, HRV, training load, weekly reviews, and creating Garmin workouts with Claude."
 nav_order: 3
 ---
 Ask in your own words. The assistant picks the right tool; you do not need to know tool names.

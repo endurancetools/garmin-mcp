@@ -1,5 +1,6 @@
 ---
-title: Methods and evidence
+title: "Methods and evidence: fitness, fatigue, form and HRV readiness"
+description: "Plain-language guide to how Garmin MCP computes training load, fitness, fatigue and form, ACWR, intensity distribution and HRV readiness, with sources."
 ---
 The training numbers in Garmin MCP (`get_load`, `get_readiness`) use methods from published sports-science literature, with citations. This page explains each one in plain words: what it tells you, which work it comes from, where it stops being reliable, and how to change its defaults. The formulas, defaults and exact rules are on one page only, [Training analytics](analytics.md); the numbers in square brackets below point to its [References](analytics.md#references).
 

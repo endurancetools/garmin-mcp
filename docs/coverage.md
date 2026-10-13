@@ -1,5 +1,6 @@
 ---
 title: "Coverage map: Garmin Connect → garmin-mcp tools"
+description: "Which Garmin Connect data Garmin MCP covers: every read and write mapped to its MCP tool, resource or parameter, marked full, partial or missing."
 nav_order: 8
 ---
 Every Garmin Connect read and write this map tracks, and the garmin-mcp tool, resource or parameter that serves it.
