@@ -1,0 +1,60 @@
+name: Bug report
+description: Something does not work as documented.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Do not paste tokens.** Never include the contents of `tokens.json` or `garmin_tokens.json`, an `Authorization` header, your Garmin password or e-mail, or your database. Issues are public.
+        A security problem goes to a [private report](https://github.com/endurancetools/garmin-mcp/security/advisories/new) instead.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did or asked, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: doctor
+    attributes:
+      label: Output of `garmin doctor`
+      description: |
+        Run `npx -y garmin-mcp-cli doctor` and paste the whole output. It contains no tokens, but it shows your Garmin display name and the path of your data directory; replace them if you prefer.
+      render: text
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: '`npx -y garmin-mcp-cli --version`, or the `.mcpb` file name'
+      placeholder: 0.2.0
+    validations:
+      required: true
+  - type: dropdown
+    id: client
+    attributes:
+      label: MCP client
+      options:
+        - Claude Desktop (.mcpb extension)
+        - Claude Desktop (npx in config)
+        - Claude Code
+        - Docker
+        - CLI only (garmin ...)
+        - Other (say which below)
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Operating system and Node.js version
+      placeholder: macOS 15.4, Node.js 22.11
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant log lines
+      description: |
+        Claude Desktop: Settings → Developer → Open Logs Folder → `mcp-server-garmin.log`. `GARMIN_LOG_LEVEL=debug` gives more. Check the lines for tokens and personal data before pasting.
+      render: text
