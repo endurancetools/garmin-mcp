@@ -2,6 +2,28 @@
 
 All notable changes to Garmin MCP. All `garmin-mcp-*` packages share one version. The same list is on the [documentation site](https://endurancetools.github.io/garmin-mcp/changelog/).
 
+## 0.3.0 (2026-10-13)
+
+### Claude Desktop extension
+
+- The extension is called **Garmin MCP** in Claude Desktop, not "Garmin Connect", which is Garmin's own service. Its description says it is an unofficial, open-source server, not affiliated with Garmin.
+- Every release also carries the extension as `garmin-mcp.mcpb`, so `releases/latest/download/garmin-mcp.mcpb` always downloads the newest one.
+
+### Morning readiness
+
+- **REST needs two signals that agree.** By default (`decision_rule: "pairs"`) the decision is REST only when both signals of a pair are red: HRV with resting heart rate, HRV with sleep, or load with HRV, resting heart rate or sleep. A single red signal gives MODIFY. One short night lowers HRV, raises resting heart rate and shortens sleep together, so the old counting rule could cancel a key session on one event. `rules: {"decision_rule": "count"}` restores it.
+- **The decision uses HRV, resting heart rate, sleep hours and load only.** Sleep is rated by hours; the sleep score stays in the answer. Body Battery and stress are shown for reference (`info`), like Garmin's Training Readiness, and do not vote. The rules `sleep_score_red`, `sleep_score_yellow`, `bb_red`, `bb_yellow` and `stress_yellow` are gone and are ignored with a note.
+
+### Training load
+
+- **Aerobic decoupling** (Pa:Hr for running, Pw:Hr for power) per session in `get_load` activities, and its monthly mean in the efficiency trend: the efficiency of the first and second half of a steady session of at least an hour, from the laps of the activity.
+- **`flags.intensity_sports`** chooses which sport groups the intensity distribution counts (default run, bike, nordic, row). Add `hike` to include mountain walking; it then also gets an efficiency trend from grade adjusted speed.
+
+### Documentation
+
+- New pages: [Methods and evidence](https://endurancetools.github.io/garmin-mcp/methods/) (what fitness, fatigue, form and HRV readiness mean and where the methods come from) and an [FAQ](https://endurancetools.github.io/garmin-mcp/faq/).
+- Every npm package has its own README; `SECURITY.md`, `CONTRIBUTING.md` and issue and pull request templates in the repository.
+
 ## 0.2.0 (2026-10-12)
 
 ### Training analytics
