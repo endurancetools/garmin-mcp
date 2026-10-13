@@ -1,0 +1,32 @@
+---
+# Minimal Mistakes' main stylesheet with a few additions for this site.
+search: false
+---
+
+@charset "utf-8";
+
+@import "minimal-mistakes/skins/{{ site.minimal_mistakes_skin | default: 'default' }}"; // skin
+@import "minimal-mistakes"; // main partials
+
+// Home page (docs/index.md): the four pillars of the feature row as a 2 × 2 grid instead of
+// the theme's three columns, which would leave the fourth card alone on a second row.
+.pillars .feature__wrapper {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 2em;
+  border-bottom: none;
+
+  @include breakpoint($small) {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.pillars .feature__item {
+  float: none;
+  width: auto;
+  margin: 0 !important;
+}
+
+.splash details {
+  margin-bottom: 1.5em;
+}
