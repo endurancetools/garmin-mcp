@@ -74,6 +74,15 @@ jobs:
       - run: |
           git config user.name "Marcin Milewicz"
           git config user.email "marcinmilewicz87@gmail.com"
+      # An explicit version must already have its hand-written CHANGELOG.md section, checked before
+      # anything is tagged (the notes step below checks again for keyword and empty inputs).
+      - if: ${{ !inputs.registry_only && inputs.version != '' }}
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          if [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+ ]] && ! grep -q "^## $VERSION " CHANGELOG.md; then
+            echo "CHANGELOG.md has no '## $VERSION' section" >&2; exit 1
+          fi
       # nx release: version bump (conventional commits, or the explicit input), commit,
       # tag and GitHub release; --skip-publish because npm is published by hand (below).
       - if: ${{ !inputs.registry_only }}
