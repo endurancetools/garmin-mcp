@@ -5,11 +5,13 @@ import {
   DEFAULT_READINESS_RULES,
   READINESS_RED_PAIRS,
   READINESS_SIGNALS,
+  decide,
   isReadinessRuleValue,
   morningReadiness,
   readiness,
   resolveReadinessRules,
   type ReadinessInput,
+  type ReadinessSignal,
   type ReadinessSignalName,
 } from './readiness.js';
 
@@ -331,6 +333,28 @@ describe('readiness', () => {
       });
       it('sleep score 50 with red hrv: no pair, MODIFY (REST hrv + sleep before E6-32)', () => {
         expect(readiness(withRed(['hrv'], { sleep: { score: 50 } })).decision).toBe('MODIFY');
+      });
+      it('Training Readiness 20 (info) alone: GO', () => {
+        const r = readiness(input({ training: trainingRow(20), rules: { decision_rule: 'pairs' } }));
+        expect(r.signals.find((s) => s.name === 'training_readiness')?.rating).toBe('info');
+        expect(r.decision).toBe('GO');
+        expect(r.recommendation[0]).toBe('GO: no red or yellow signal.');
+      });
+      it('Training Readiness 20 (info) with red hrv: no pair, MODIFY not REST', () => {
+        const r = readiness(withRed(['hrv'], { training: trainingRow(20), rules: { decision_rule: 'pairs' } }));
+        expect(r.counts).toEqual({ red: 1, yellow: 0, ok: 3, info: 3, unknown: 0 });
+        expect(r.decision).toBe('MODIFY');
+        expect(r.recommendation[0]).toBe('MODIFY: 1 red (hrv) without a red pair (decision_rule pairs).');
+      });
+      it('decide goes by rating, not by name: an info signal never completes a pair', () => {
+        const rules = { ...DEFAULT_READINESS_RULES, decision_rule: 'pairs' } as const;
+        const red = (name: ReadinessSignalName): ReadinessSignal => ({ name, rating: 'red', value: {}, detail: '' });
+        const info = (name: ReadinessSignalName): ReadinessSignal => ({ name, rating: 'info', value: {}, detail: '' });
+        for (const [a, b] of READINESS_RED_PAIRS) {
+          expect(decide([red(a), info(b)], rules).decision).toBe('MODIFY');
+          expect(decide([info(a), red(b)], rules).decision).toBe('MODIFY');
+          expect(decide([info(a), info(b)], rules).decision).toBe('GO');
+        }
       });
       it('every pair found is named', () => {
         const r = readiness(withRed(['hrv', 'rhr', 'sleep']));
