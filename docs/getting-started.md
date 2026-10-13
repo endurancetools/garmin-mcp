@@ -9,7 +9,7 @@ Everything starts the same way, whichever client you use.
 
 - **Node.js 22 or newer.** Check with `node --version`; get it from [nodejs.org](https://nodejs.org) if needed.
 - **A Garmin Connect account** with a watch or scale syncing to it.
-- **Chrome, Edge, Brave or Chromium** for the sign-in window. Without a browser the sign-in falls back to the terminal, see [Signing in](../sign-in.md).
+- **Chrome, Edge, Brave or Chromium** for the sign-in window. Without a browser the sign-in falls back to the terminal, see [Signing in](sign-in.md).
 
 ## Sign in once
 
