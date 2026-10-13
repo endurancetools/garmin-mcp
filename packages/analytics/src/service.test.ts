@@ -89,6 +89,40 @@ describe('AnalyticsService.getLoad', () => {
     expect(res.meta.note).toMatch(/Ignored flags .*: nope, acwr_warn/);
   });
 
+  it('counts hiking in the intensity and EF only with flags.intensity_sports', async () => {
+    const t = trained();
+    // 2 h mountain walk below LT1 (153): grade adjusted speed 1.5 m/s, EF 90 / 130
+    const hike = activity(9300, addDays(TODAY, -1), {
+      activityName: 'Hike',
+      activityType: { typeId: 3, typeKey: 'hiking' },
+      duration: 7200,
+      distance: 8000,
+      elevationGain: 600,
+      averageHR: 130,
+      avgGradeAdjustedSpeed: 1.5,
+    });
+    t.activities([hike], addDays(TODAY, -1), TODAY);
+    const plain = await t.analytics.getLoad({ include_efficiency: true, include_activities: true, flags: { z1_min_pct: 101 } });
+    expect(plain.data.flags_used.intensity_sports).toEqual(['run', 'bike', 'nordic', 'row']);
+    expect(plain.data.intensity).toMatchObject({ z1_min: 1680, sessions_by_avg_hr: 28 });
+    expect(plain.data.flags?.find((f) => f.code === 'z1_below_target')?.text).toMatch(/^Z1 is 100% of run, bike, nordic and row time /);
+    expect(plain.data.efficiency?.map((e) => e.sport)).toEqual(['run', 'run']);
+    expect(plain.data.activities?.find((a) => a.id === 9300)).toMatchObject({ sport: 'hike', ef: 0.692, ef_gap: 0.692 });
+
+    const sports = ['run', 'bike', 'nordic', 'row', 'hike'];
+    const withHike = await t.analytics.getLoad({ include_efficiency: true, flags: { z1_min_pct: 101, intensity_sports: sports } });
+    expect(loadOutput.safeParse(withHike).success).toBe(true);
+    expect(withHike.data.flags_used.intensity_sports).toEqual(sports);
+    expect(withHike.data.intensity).toMatchObject({ z1_min: 1800, sessions_by_avg_hr: 29 });
+    expect(withHike.data.flags?.find((f) => f.code === 'z1_below_target')?.text).toMatch(/^Z1 is 100% of run, bike, nordic, row and hike time /);
+    expect(withHike.data.efficiency?.at(-1)).toEqual({ period: '2026-10', sport: 'run', n: 8, ef_avg: 1.111, ef_max: 1.111 });
+    expect(withHike.data.efficiency?.at(-2)).toEqual({ period: '2026-10', sport: 'hike', n: 1, ef_avg: 0.692, ef_max: 0.692, ef_gap_avg: 0.692 });
+
+    const bad = await t.analytics.getLoad({ flags: { intensity_sports: ['run', 'walk'] } });
+    expect(bad.data.flags_used.intensity_sports).toEqual(['run', 'bike', 'nordic', 'row']);
+    expect(bad.meta.note).toMatch(/Ignored flags \(unknown key or invalid value\): intensity_sports/);
+  });
+
   it('notes a drift of own load against Garmin load from the usual ratio; none with source garmin_load', async () => {
     const t = setup();
     t.store.markReferenceFetched('profile', NOW);

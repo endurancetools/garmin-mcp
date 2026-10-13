@@ -78,7 +78,8 @@ IF      = (avg_hr − RHR) / (LTHR − RHR)              0 without avg_hr, when 
 hrTSS   = duration_h × IF² × 100                                                                          1 place
 
 EF      = run:  speed in m/min / avg_hr               bike: normalized power / avg_hr                     3 places
-EF-GAP  = run:  grade adjusted speed in m/min / avg_hr                                                    3 places
+          hike: grade adjusted speed in m/min / avg_hr (only with distance and elevation gain)
+EF-GAP  = run, hike: grade adjusted speed in m/min / avg_hr                                               3 places
 ```
 
 IF here is the heart rate reserve between resting and threshold heart rate, so an hour at LTHR scores 100, as an hour at FTP does in the power-based TSS (Allen, Coggan, McGregor 2019). The zone method follows TrainingPeaks' hrTSS, which scores the time in zones derived from LTHR with an estimate of TSS per hour in each zone (Friel: zone 1 about 20-40 an hour, zone 2 about 60, threshold 100) rather than the average heart rate of the whole activity (TrainingPeaks, "Training with TSS vs. hrTSS" and "Estimating Training Stress Score", references 15 and 17). Stress grows with the square of IF, so a session of hard intervals and easy recoveries scores more by zones than from its average: 5 × 3 min in zone 5 with 32 min in zone 1 (average 135 bpm, LTHR 170, resting 50) gives 44 by zones and 39 from the average, while a steady session gives almost the same either way. Zone bounds come from the Garmin profile (`heartRateZones`, cycling the CYCLING zones when the profile has them, every other group the default ones, as in the intensity distribution); time below zone 1 is not in Garmin's zones and adds nothing. `hr_method` of each activity says which method gave its `hrtss`; `flags: {"hr_method": "avg"}` forces the average for every activity (for comparison with models that use the average). hrTSS is one of the load candidates below; the load the model sums is `tss`, with its `if` and `load_source`. `include_activities` returns one row per activity with these values and the inputs: type, sport group, duration, moving time, distance, elevation, heart rate, power, cadence, calories, Garmin training load and training effect, RPE (Foster's CR-10 scale, 1-10; Garmin stores it × 10) and feel (when the activity detail was downloaded), seconds in Garmin's HR zones 1-5, the LTHR and resting heart rate used, and `source` (`db` or `import`).
@@ -124,7 +125,7 @@ The two read differently in absolute numbers; compare directions, not values.
 
 ### Load flags
 
-`flags` raised on `to`. Override any threshold with `flags`, e.g. `{"acwr_high": 1.4, "week_jump_pct": 10}`; missing keys keep the default, unknown keys and invalid values (a non-number, or for `hr_method` anything but `zones` and `avg`) are ignored with a note.
+`flags` raised on `to`. Override any threshold with `flags`, e.g. `{"acwr_high": 1.4, "week_jump_pct": 10}`; missing keys keep the default, unknown keys and invalid values (a non-number, for `hr_method` anything but `zones` and `avg`, for `intensity_sports` anything but a non-empty list of the sport groups above) are ignored with a note.
 
 | Key | Default | Flag |
 | --- | --- | --- |
@@ -135,15 +136,18 @@ The two read differently in absolute numbers; compare directions, not values.
 | `tsb_low` | −30 | `tsb_low`: TSB below it, deep fatigue |
 | `tsb_fresh` | 15 | `tsb_fresh`: TSB above it, fresh (taper or rest) |
 | `week_jump_pct` | 15 | `week_jump`: total hours or running km of the last 7 days ending on `to` grew by more than this percentage against the 7 days before (rolling windows, not ISO weeks, so a heavy week still shows on the Monday or Tuesday after it); not raised when the 7 days before hold less than 1 h |
-| `z1_min_pct` | 75 | `z1_below_target`: Z1 share of run, bike, nordic and row time below this percentage (see intensity) |
+| `z1_min_pct` | 75 | `z1_below_target`: Z1 share of the time of `intensity_sports` below this percentage (see intensity) |
 | `rpe_calibration` | 0.23 | no flag: the multiplier of session RPE × minutes for activities with `load_source: "rpe"` (load sources above) |
 | `hr_method` | `zones` | no flag: `zones` scores hrTSS from the time in HR zones when the activity has them and the profile has zone bounds, `avg` always from the average heart rate (per-activity metrics above) |
+| `intensity_sports` | `[run, bike, nordic, row]` | no flag: the sport groups the intensity distribution counts, e.g. `{"intensity_sports": ["run", "bike", "nordic", "row", "hike"]}` to add mountain walking; with `hike` the EF trend also gets hiking (intensity and efficiency below) |
 
 At most one of the three ACWR flags is raised. While `warming_up` is true, `tsb_low` and `tsb_fresh` are not raised: CTL still reads low, so TSB is deeply negative after a few ordinary days. The ACWR, monotony and week-jump flags work as usual.
 
 ## Intensity distribution
 
-`intensity` splits the time of the endurance groups `run`, `bike`, `nordic` and `row` in the last 28 days of the range (the whole range when shorter) into three zones (Seiler 2010): Z1 below LT1, Z2 between LT1 and LTHR, Z3 above LTHR. Nordic skiing and rowing are judged against the running LT1 and LTHR, which suits whole-body sports with a similar heart rate response; their efficiency factor is not computed (EF stays running and cycling only). Swimming, strength, hiking and other activities are left out.
+`intensity` splits the time of the sport groups in `flags.intensity_sports` (default the endurance groups `run`, `bike`, `nordic` and `row`) in the last 28 days of the range (the whole range when shorter) into three zones (Seiler 2010): Z1 below LT1, Z2 between LT1 and LTHR, Z3 above LTHR. `flags_used.intensity_sports` shows the list the answer used, and the `z1_below_target` text names it. Nordic skiing and rowing are judged against the running LT1 and LTHR, which suits whole-body sports with a similar heart rate response; their efficiency factor is not computed. By default swimming, strength, hiking and other activities are left out.
+
+Hiking can be added with `{"intensity_sports": ["run", "bike", "nordic", "row", "hike"]}`. In mountain weeks a long walk uphill is mostly easy time below LT1; left out, it makes the Z1 share read low and can raise `z1_below_target` in a week that was in fact mostly easy. A hike with heart rate is then split like nordic and row: the default zone bounds of the profile and the running LT1 and LTHR. Its efficiency factor uses Garmin's grade adjusted speed (the same input as EF-GAP of running), and only when the hike has a distance and an elevation gain; without them the hike counts in the intensity but stays out of the EF trend. Walking speed per beat says less than running speed per beat (terrain, poles, pack), so compare hikes with hikes.
 
 - An activity with Garmin's time in HR zones: each Garmin zone goes to Z1, Z2 or Z3 by its heart rate range in the Garmin profile (`heartRateZones`: the zone floors, zone 5 up to the HRmax Garmin uses; cycling uses the CYCLING zones when the profile has them, every other group the default ones) against LT1 and LTHR of the activity's sport and date. A zone whose ceiling is at or below LT1 is Z1, a zone whose floor is at or above LTHR is Z3, the one in between is Z2, and a zone that crosses a threshold is split in proportion to its width in bpm. Example: floors 94/134/154/163/174, HRmax 185, LT1 151, LTHR 168: zone 2 (134-154) is 17/20 Z1 and 3/20 Z2, zone 3 is Z2, zone 4 (163-174) is 5/11 Z2 and 6/11 Z3, zone 5 is Z3.
 - Without zone bounds in the profile (no profile yet, or a profile without them), Z1 = zones 1-2, Z2 = zone 3, Z3 = zones 4-5, and `meta.note` says so.
@@ -156,7 +160,7 @@ The zone bounds come from the profile as it is now, while Garmin counted the tim
 
 ## Efficiency
 
-`include_efficiency` adds the monthly trend (`YYYY-MM`) of the efficiency factor over aerobic sessions: average heart rate below LT1 of the activity's sport and date (Z1 of the intensity distribution) and at least 30 minutes. Each entry of `activities[]` shows the thresholds it was judged with: `lt1_used` next to `lthr_used`. Running uses EF from speed (and EF-GAP when Garmin gave a grade adjusted speed), cycling EF from normalized power when the activity has it. Per month and sport: `n`, `ef_avg`, `ef_max`, `ef_gap_avg`.
+`include_efficiency` adds the monthly trend (`YYYY-MM`) of the efficiency factor over aerobic sessions: average heart rate below LT1 of the activity's sport and date (Z1 of the intensity distribution) and at least 30 minutes. Each entry of `activities[]` shows the thresholds it was judged with: `lt1_used` next to `lthr_used`. Running uses EF from speed (and EF-GAP when Garmin gave a grade adjusted speed), cycling EF from normalized power when the activity has it, and hiking, only when `hike` is in `flags.intensity_sports`, EF from the grade adjusted speed (intensity above). Per month and sport: `n`, `ef_avg`, `ef_max`, `ef_gap_avg`.
 
 Below LT1 heart rate and pace are close to steady state, so EF reflects aerobic fitness rather than how hard a tempo session was; a session between LT1 and LTHR is left out even though it is still below threshold. A rising EF at the same heart rate means more speed or power per beat, i.e. better aerobic fitness. Compare like with like: the same routes and conditions. Hills and walking breaks lower EF by definition; EF-GAP corrects for gradient, not for walking or surface.
 

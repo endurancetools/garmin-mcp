@@ -11,7 +11,7 @@ import {
   type ThresholdRow,
   type ThresholdSource,
 } from 'garmin-mcp-store';
-import { efficiencyTrend, type EfficiencyRow } from './efficiency.js';
+import { efficiencySports, efficiencyTrend, type EfficiencyRow } from './efficiency.js';
 import { intensityDistribution, type IntensityDistribution } from './intensity.js';
 import {
   CTL_WARMUP_DAYS,
@@ -38,7 +38,7 @@ import {
 } from './load.js';
 import { DEFAULT_READINESS_RULES, isReadinessRuleValue, readiness, READINESS_WINDOW_DAYS, type Readiness } from './readiness.js';
 import { buildSessions, sessionFromActivity, sessionFromImported, type Session, type SessionInput } from './session.js';
-import type { SportGroup } from './sport.js';
+import { sportList, type SportGroup } from './sport.js';
 import {
   hrmaxOn,
   profileZoneFloors,
@@ -104,7 +104,7 @@ export interface LoadData {
   flags: LoadFlag[];
   flags_used: LoadFlags;
   weeks: WeekSport[];
-  /** Run, bike, nordic and row intensity of the last 28 days of the range. */
+  /** Intensity of `flags_used.intensity_sports` (default run, bike, nordic, row) in the last 28 days of the range. */
   intensity: IntensityDistribution;
   thresholds_used: ThresholdsUsed;
   /** CTL, ATL, TSB and ACWR on `to` of every sport group with a session up to `to`, each from its own sessions only (`include_by_sport`). */
@@ -345,12 +345,20 @@ export class AnalyticsService {
     const latest: LatestLoad | undefined = day && { ...day, load_ratio_28d: ratio?.ratio_28d, load_ratio_usual: ratio?.usual };
     const inRange = sessions.filter((s) => s.date >= from && s.date <= to);
     const last28 = addDays(to, -(DEFAULT_LOAD_DAYS - 1));
-    const { note: intensityNote, ...intensity } = intensityDistribution(sessions, thresholds, last28 > from ? last28 : from, to, flags.z1_min_pct, floors);
+    const { note: intensityNote, ...intensity } = intensityDistribution(
+      sessions,
+      thresholds,
+      last28 > from ? last28 : from,
+      to,
+      flags.z1_min_pct,
+      floors,
+      flags.intensity_sports,
+    );
     const flagList = loadFlags(latest, sessions, flags);
     if (intensity.z1_below_target) {
       flagList.push({
         code: 'z1_below_target',
-        text: `Z1 is ${intensity.z1_pct}% of run, bike, nordic and row time (${intensity.from}..${intensity.to}), below ${flags.z1_min_pct}%: more easy volume below LT1 is needed for a polarized or pyramidal distribution.`,
+        text: `Z1 is ${intensity.z1_pct}% of ${sportList(flags.intensity_sports)} time (${intensity.from}..${intensity.to}), below ${flags.z1_min_pct}%: more easy volume below LT1 is needed for a polarized or pyramidal distribution.`,
       });
     }
 
@@ -399,7 +407,7 @@ export class AnalyticsService {
       by_sport: perSport && sportLoadOn(perSport, to),
       series: q.include_series ? withSportColumns(series.filter((d) => d.date >= from && d.date <= to), perSport ?? new Map()) : undefined,
       activities: q.include_activities ? inRange : undefined,
-      efficiency: q.include_efficiency ? efficiencyTrend(inRange, 'month') : undefined,
+      efficiency: q.include_efficiency ? efficiencyTrend(inRange, 'month', efficiencySports(flags.intensity_sports)) : undefined,
       note,
     };
     const gap = withProfileGap(this.garmin.coverage('period', from, to, ['daily_summary']), profile.gap);

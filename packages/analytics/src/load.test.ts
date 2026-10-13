@@ -9,6 +9,7 @@ import {
   loadRatio,
   loadSeries,
   loadSeriesBySport,
+  isLoadFlagValue,
   resolveLoadFlags,
   sampleSd,
   sportLoadOn,
@@ -269,6 +270,16 @@ describe('loadFlags', () => {
     expect(DEFAULT_LOAD_FLAGS.hr_method).toBe('zones');
     expect(resolveLoadFlags({ hr_method: 'avg' }).hr_method).toBe('avg');
     expect(resolveLoadFlags({ hr_method: 'peak', acwr_high: 'x' })).toEqual(DEFAULT_LOAD_FLAGS);
+  });
+
+  it('intensity_sports is run, bike, nordic, row by default and takes a non-empty list of known groups', () => {
+    expect(DEFAULT_LOAD_FLAGS.intensity_sports).toEqual(['run', 'bike', 'nordic', 'row']);
+    expect(resolveLoadFlags({ intensity_sports: ['run', 'hike', 'run'] }).intensity_sports).toEqual(['run', 'hike']);
+    expect(isLoadFlagValue('intensity_sports', ['run', 'bike', 'nordic', 'row', 'hike'])).toBe(true);
+    for (const bad of [[], ['run', 'walk'], 'hike', [1]]) {
+      expect(isLoadFlagValue('intensity_sports', bad)).toBe(false);
+      expect(resolveLoadFlags({ intensity_sports: bad })).toEqual(DEFAULT_LOAD_FLAGS);
+    }
   });
 
   it('adds the week jump of the day', () => {

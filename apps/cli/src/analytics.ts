@@ -48,7 +48,7 @@ export function loadMarkdown({ data, meta }: Envelope<LoadData>): string {
   const i = data.intensity;
   out.push(
     '',
-    `## Intensity ${i.from}..${i.to} (run, bike, nordic, row)`,
+    `## Intensity ${i.from}..${i.to} (${data.flags_used.intensity_sports.join(', ')})`,
     '',
     mdTable(
       [

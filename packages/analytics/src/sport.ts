@@ -3,6 +3,17 @@ export type SportGroup = 'run' | 'bike' | 'swim' | 'strength' | 'nordic' | 'row'
 
 export const SPORT_GROUPS: readonly SportGroup[] = ['run', 'bike', 'swim', 'strength', 'nordic', 'row', 'hike', 'other'];
 
+/** Default sport groups of the intensity distribution (`flags.intensity_sports`): the endurance sports measured by HR. */
+export const INTENSITY_SPORTS: readonly SportGroup[] = ['run', 'bike', 'nordic', 'row'];
+
+/** Is `v` a known sport group. */
+export const isSportGroup = (v: unknown): v is SportGroup => typeof v === 'string' && (SPORT_GROUPS as readonly string[]).includes(v);
+
+/** Sport groups as prose: `run, bike, nordic and row`. */
+export function sportList(groups: readonly string[]): string {
+  return groups.length < 2 ? groups.join('') : `${groups.slice(0, -1).join(', ')} and ${groups.at(-1)}`;
+}
+
 // Substring rules, first match wins (so `trail_running` is `run`, `skate_skiing` is `nordic`,
 // `resort_skiing` is `hike`).
 const RULES: readonly (readonly [RegExp, SportGroup])[] = [

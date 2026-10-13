@@ -140,6 +140,21 @@ describe('intensityDistribution', () => {
     expect(d).toMatchObject({ sessions_with_zones: 1, sessions_by_avg_hr: 1 });
   });
 
+  it('counts hike only when on the sport list, with the DEFAULT zone bounds and the running LT1 and LTHR', () => {
+    // a week of one tempo run (avg 160: Z2) and a mountain walk below LT1 151
+    const run = sess('2026-05-04', { lthr_used: 168, avg_hr: 160 });
+    // zone 2 (134–154): 17/20 Z1, 3/20 Z2; zone 4 (163–174): 5/11 Z2, 6/11 Z3
+    const hike = sess('2026-05-06', { sport: 'hike', lthr_used: 168, duration_s: 7200, ...zones(0, 1200, 0, 660, 0) });
+    const walk = sess('2026-05-07', { sport: 'hike', lthr_used: 168, avg_hr: 120, duration_s: 3600 });
+    const without = intensityDistribution([run, hike, walk], THR_P, '2026-05-01', '2026-05-31', 75, FLOORS);
+    expect(without).toEqual(intensityDistribution([run], THR_P, '2026-05-01', '2026-05-31', 75, FLOORS));
+    expect([...minutes(without), without.z1_pct]).toEqual([0, 60, 0, 0]);
+    const withHike = intensityDistribution([run, hike, walk], THR_P, '2026-05-01', '2026-05-31', 75, FLOORS, ['run', 'bike', 'nordic', 'row', 'hike']);
+    expect(minutes(withHike)).toEqual([77, 68, 6]);
+    expect(withHike).toMatchObject({ z1_pct: 51, sessions_with_zones: 1, sessions_by_avg_hr: 2, z1_below_target: true });
+    expect(minutes(intensityDistribution([run, hike, walk], THR_P, '2026-05-01', '2026-05-31', 75, FLOORS, ['hike']))).toEqual([77, 8, 6]);
+  });
+
   it('only run, bike, nordic and row inside the range; skips sessions with neither zones nor HR', () => {
     const d = intensityDistribution(
       [

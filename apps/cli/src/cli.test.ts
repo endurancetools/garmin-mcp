@@ -347,6 +347,8 @@ describe('garmin load', () => {
     expect(res.data.latest.tss).toBe(100);
     expect(res.data.flags_used.acwr_high).toBe(1.2);
     expect(res.meta.note).toContain('Ignored flags (unknown key or invalid value): nope');
+    fs.writeFileSync(file, JSON.stringify({ intensity_sports: ['run', 'hike'] }));
+    expect((await run(deps, 'load', '--flags', file)).stdout).toContain('## Intensity 2026-09-11..2026-10-08 (run, hike)');
     fs.writeFileSync(file, '[1]');
     await expect(run(deps, 'load', '--flags', file)).rejects.toThrow('must hold a JSON object');
     await expect(run(deps, 'load', '--source', 'epoc')).rejects.toThrow('Allowed choices are auto, hrtss, garmin_load');
