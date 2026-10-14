@@ -2,6 +2,12 @@
 
 All notable changes to Garmin MCP. All `garmin-mcp-*` packages share one version. The same list is on the [documentation site](https://endurancetools.github.io/garmin-mcp/changelog/).
 
+## Unreleased
+
+### Morning readiness
+
+- The `load` signal names its source: `source: "hrtss"` in its value and "Own load (hrtss)" in its detail. It sums heart-rate stress only, so its TSB and ACWR differ from the default `get_load` (power, then pace, then heart rate) after sessions where pace understates the effort, such as mountain races with long walking climbs.
+
 ## 0.3.0 (2026-10-13)
 
 ### Claude Desktop extension

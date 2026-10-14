@@ -5,6 +5,12 @@ nav_order: 11
 ---
 What changed in each release. All `garmin-mcp-*` packages share one version; the Claude Desktop extension of every version is attached to its [GitHub release](https://github.com/endurancetools/garmin-mcp/releases).
 
+## Unreleased
+
+### Morning readiness
+
+- The `load` signal names its source: `source: "hrtss"` in its value and "Own load (hrtss)" in its detail. It sums heart-rate stress only, so its TSB and ACWR differ from the default `get_load` (power, then pace, then heart rate) after sessions where pace understates the effort, such as mountain races with long walking climbs.
+
 ## 0.3.0 (2026-10-13)
 
 ### Claude Desktop extension

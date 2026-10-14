@@ -36,7 +36,7 @@ import {
   type SportLoad,
   type WeekSport,
 } from './load.js';
-import { DEFAULT_READINESS_RULES, isReadinessRuleValue, readiness, READINESS_WINDOW_DAYS, type Readiness } from './readiness.js';
+import { DEFAULT_READINESS_RULES, isReadinessRuleValue, readiness, READINESS_LOAD_SOURCE, READINESS_WINDOW_DAYS, type Readiness } from './readiness.js';
 import { buildSessions, decouplingEligible, sessionFromActivity, sessionFromImported, type Session, type SessionInput } from './session.js';
 import { sportList, type SportGroup } from './sport.js';
 import {
@@ -453,8 +453,7 @@ export class AnalyticsService {
 
     const store = this.#store;
     const { sessions, notes } = this.#sessions(date);
-    // The load signal keeps the heart-rate stress (hrTSS), not the power/pace hierarchy of get_load.
-    const series = loadSeries(sessions, 'hrtss', date);
+    const series = loadSeries(sessions, READINESS_LOAD_SOURCE, date);
     const load = loadOn(series, date);
     const result = readiness({
       date,
