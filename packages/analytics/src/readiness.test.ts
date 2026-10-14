@@ -254,6 +254,14 @@ describe('readiness', () => {
       expect(at(1, -21)).toBe('yellow');
       expect(at(1.3, -20)).toBe('ok');
     });
+    it('names its hrTSS source in the value and detail', () => {
+      const s = signal(input({ load: { date: D, acwr: 1.6, tsb: 0, monotony: 1, warming_up: false } }), 'load');
+      expect(s.value).toEqual({ tsb: 0, acwr: 1.6, monotony: 1, date: D, source: 'hrtss' });
+      expect(s.detail).toBe('Own load (hrtss): ACWR 1.6 > 1.5.');
+      expect(signal(input({ load: { date: D, acwr: 1, tsb: 0, monotony: 1, warming_up: false } }), 'load').detail).toBe(
+        'Own load (hrtss): ACWR 1 ≤ 1.3, TSB 0 ≥ -20.',
+      );
+    });
     it('unknown without a load point', () => {
       expect(rating(input({ load: null }), 'load')).toBe('unknown');
     });

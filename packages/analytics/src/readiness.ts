@@ -1,7 +1,7 @@
 import { addDays, dateIn, daysBetween, type IsoDate } from 'garmin-mcp-config';
 import { round } from 'garmin-mcp-domain';
 import type { DailyRows } from 'garmin-mcp-store';
-import { CTL_WARMUP_DAYS, type LoadDay } from './load.js';
+import { CTL_WARMUP_DAYS, type LoadDay, type LoadSource } from './load.js';
 
 /**
  * How the rated signals become the decision. `count`: REST at `decision_red_min` red signals,
@@ -154,6 +154,13 @@ export interface ReadinessInput {
   load_start?: IsoDate;
   rules?: Partial<Record<keyof ReadinessRules, unknown>>;
 }
+
+/**
+ * Daily stress the `load` signal sums: heart rate only, not the power/pace hierarchy of `get_load`
+ * (as its `source: "hrtss"`). Named in the signal's value and detail, so its TSB and ACWR are not
+ * read as the default `get_load` numbers.
+ */
+export const READINESS_LOAD_SOURCE: LoadSource = 'hrtss';
 
 /** Days before D whose means the HRV and resting HR rules use. */
 export const READINESS_WINDOW_DAYS = 28;
@@ -345,14 +352,14 @@ function loadSignal(load: ReadinessInput['load'], start: IsoDate | undefined, r:
       load.acwr > acwr ? `ACWR ${load.acwr} > ${acwr}` : undefined,
       load.tsb < tsb ? `TSB ${load.tsb} < ${tsb}` : undefined,
     ].filter(Boolean);
-    return parts.length ? `Own load: ${parts.join(', ')}.` : undefined;
+    return parts.length ? `Own load (${READINESS_LOAD_SOURCE}): ${parts.join(', ')}.` : undefined;
   };
   const { rating, detail } = rate(why(r.acwr_red, r.tsb_red), why(r.acwr_yellow, r.tsb_yellow));
   return {
     name: 'load',
     rating,
-    value: { tsb: load.tsb, acwr: load.acwr, monotony: load.monotony, date: load.date },
-    detail: detail ?? `Own load: ACWR ${load.acwr} ≤ ${r.acwr_yellow}, TSB ${load.tsb} ≥ ${r.tsb_yellow}.`,
+    value: { tsb: load.tsb, acwr: load.acwr, monotony: load.monotony, date: load.date, source: READINESS_LOAD_SOURCE },
+    detail: detail ?? `Own load (${READINESS_LOAD_SOURCE}): ACWR ${load.acwr} ≤ ${r.acwr_yellow}, TSB ${load.tsb} ≥ ${r.tsb_yellow}.`,
   };
 }
 
