@@ -2,7 +2,7 @@
 
 All notable changes to Garmin MCP. All `garmin-mcp-*` packages share one version. The same list is on the [documentation site](https://endurancetools.github.io/garmin-mcp/changelog/).
 
-## Unreleased
+## 0.3.1 (2026-10-14)
 
 ### Morning readiness
 
