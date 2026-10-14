@@ -77,7 +77,7 @@ One question, one `get_readiness` call. The assistant gets a decision built from
 Every threshold in `rules_used` can be changed ([Morning readiness](methods.md#morning-readiness)). Training information, not medical advice.
 </details>
 
-## Works with your assistant
+## A Garmin Connect integration for Claude and other AI assistants
 
 - [Claude Code](getting-started/claude-code.md)
 - [Claude Desktop](getting-started/claude-desktop.md): one-click extension or one line of configuration
@@ -86,7 +86,7 @@ Every threshold in `rules_used` can be changed ([Morning readiness](methods.md#m
 
 The server has {{ site.data.facts.tools_default }} tools and costs the model about {{ site.data.facts.tool_tokens }} tokens of context; in the last tool-choice evaluation the assistant picked the right one in {{ site.data.facts.eval_pass }} of {{ site.data.facts.eval_total }} questions ([how it works](how-it-works.md#designed-tools)).
 
-## Three steps
+## Connect Garmin to Claude in three steps
 
 1. **Sign in to Garmin once.** A browser window opens Garmin's own sign-in page; only the tokens Garmin issues are kept on your machine.
 2. **Add the server to your client.** One command or one line of configuration ([Getting started](getting-started.md)).

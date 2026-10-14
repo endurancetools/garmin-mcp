@@ -24,7 +24,7 @@ Ask in your own words. The assistant picks the right tool; you do not need to kn
 - "Rename activity 21001 to Parkrun PB." / "Mark yesterday's run as a trail run."
 - "Download the GPX of activity 21001."
 
-## Workouts and calendar
+## Plan workouts with AI and put them on your Garmin calendar {#workouts-and-calendar}
 
 - "When is my next race?" / "What is planned for this week?"
 - "What are the steps of my workout 'Hill repeats'?"

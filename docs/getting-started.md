@@ -1,5 +1,5 @@
 ---
-title: "Getting started with Garmin MCP"
+title: "Getting started: connect Garmin Connect to Claude"
 description: "Set up Garmin MCP in a few minutes: Node.js 22, a one-time Garmin Connect sign-in in your browser, then Claude Code, Claude Desktop or another MCP client."
 nav_order: 2
 ---
@@ -25,7 +25,7 @@ To check at any time:
 npx -y garmin-mcp-cli status
 ```
 
-## Add the server to your client
+## Connect Garmin to your AI assistant
 
 Pick the guide for your client:
 
