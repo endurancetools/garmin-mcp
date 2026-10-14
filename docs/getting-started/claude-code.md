@@ -1,5 +1,5 @@
 ---
-title: "Garmin Connect in Claude Code"
+title: "Connect Garmin to Claude Code"
 description: "Add the Garmin MCP server to Claude Code with one command, check it with /mcp, and ask Claude about your Garmin Connect training, sleep and recovery."
 parent: Getting started
 nav_order: 1
