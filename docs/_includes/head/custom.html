@@ -42,7 +42,10 @@
 {%- comment %}
   GoatCounter: page views without cookies. Only in production builds (GitHub Pages sets JEKYLL_ENV), so
   `jekyll serve` does not count. Clicks are sent from the footer script as events.
+  count.v4.js is a fixed version pinned by `integrity` (the hash GoatCounter lists at
+  goatcounter.com/help/countjs-versions), so a changed file is not run. A new version means a new hash.
 {% endcomment %}
 {%- if jekyll.environment == "production" %}
-<script data-goatcounter="https://github-mcp.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
+<script data-goatcounter="https://github-mcp.goatcounter.com/count" async src="https://gc.zgo.at/count.v4.js"
+        crossorigin="anonymous" integrity="sha384-nRw6qfbWyJha9LhsOtSb2YJDyZdKvvCFh0fJYlkquSFjUxp9FVNugbfy8q1jdxI+"></script>
 {%- endif %}
