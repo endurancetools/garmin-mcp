@@ -13,6 +13,7 @@ header:
       url: /getting-started/
     - label: "Install for Claude Desktop"
       url: https://github.com/endurancetools/garmin-mcp/releases/latest
+      track: "Install for Claude Desktop (hero)"
 feature_row:
   - title: "Answers you can check"
     excerpt: "Load, form and morning readiness worked out with methods from published sports-science literature, with citations. Every answer shows the values and rules it used, and you can change them to fit you."
