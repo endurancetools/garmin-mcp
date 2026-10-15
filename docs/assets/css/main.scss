@@ -30,3 +30,155 @@ search: false
 .splash details {
   margin-bottom: 1.5em;
 }
+
+// Footer (_includes/footer/custom.html): the Instagram row across the top, then the author's round
+// photo in a left column spanning the rest of the footer (author line, disclaimer, links, copyright),
+// the footer text in the middle column and the Buy me a coffee button on the right. On phones the
+// button goes to its own centered row below the rest.
+.page__footer footer {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 1.5em;
+
+  @include breakpoint($medium) {
+    grid-template-columns: auto 1fr auto;
+  }
+  align-items: center;
+
+  > * {
+    grid-column: 2;
+  }
+
+  > .page__footer-instagram {
+    grid-column: 1 / -1;
+    grid-row: 1;
+  }
+
+  > .page__footer-coffee {
+    grid-column: 1 / -1;
+    grid-row: 6;
+    margin-top: 1.5em;
+    text-align: center;
+
+    @include breakpoint($medium) {
+      grid-column: 3;
+      grid-row: 2 / span 4;
+      margin-top: 0;
+    }
+  }
+
+  > .page__footer-photo {
+    grid-column: 1;
+    grid-row: 2 / span 4;
+    width: 96px;
+    height: 96px;
+    border-radius: 50%;
+    object-fit: cover;
+
+    @include breakpoint($medium) {
+      width: 160px;
+      height: 160px;
+    }
+  }
+}
+
+// Instagram row at the top of the footer, in the footer's own look (grey text, the theme's sans-serif
+// sizes, a separator line below): avatar with an Instagram badge, name and handle, a tagline and a
+// Follow button styled like the footer's follow links; stacked and centered on phones.
+$footer-line-color: darken($footer-background-color, 10%);
+
+.page__footer .page__footer-instagram {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1em;
+  margin: 0 0 1.5em;
+  padding: 0 0 1.5em;
+  border-bottom: 1px solid $footer-line-color;
+  color: inherit;
+  font-family: $sans-serif;
+  text-align: center;
+  text-decoration: none;
+
+  @include breakpoint($small) {
+    flex-direction: row;
+    text-align: left;
+  }
+
+  &:hover {
+    text-decoration: none;
+  }
+
+  svg {
+    width: 1em;
+    height: 1em;
+  }
+}
+
+.page__footer-instagram-avatar {
+  position: relative;
+  flex-shrink: 0;
+
+  img {
+    display: block;
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    box-shadow: 0 0 0 1px $footer-line-color;
+    object-fit: cover;
+  }
+}
+
+.page__footer-instagram-badge {
+  position: absolute;
+  right: -0.2em;
+  bottom: -0.2em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5em;
+  height: 1.5em;
+  border-radius: 50%;
+  background: $dark-gray;
+  box-shadow: 0 0 0 2px $footer-background-color;
+  color: $footer-background-color;
+  font-size: $type-size-6;
+}
+
+.page__footer-instagram-text {
+  flex: 1;
+}
+
+.page__footer-instagram-name {
+  display: block;
+  font-size: $type-size-6;
+  font-weight: bold;
+
+  span {
+    font-weight: normal;
+  }
+}
+
+.page__footer-instagram-tagline {
+  display: block;
+  margin-top: 0.25em;
+  font-size: 0.6875em;
+}
+
+.page__footer-instagram-follow {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 0.5em;
+  padding: 0.5em 1em;
+  border: 1px solid $footer-line-color;
+  border-radius: $border-radius;
+  font-size: $type-size-6;
+  font-weight: bold;
+  text-transform: uppercase;
+  transition: background-color 0.2s;
+
+  .page__footer-instagram:hover & {
+    background-color: darken($footer-background-color, 4%);
+  }
+}
