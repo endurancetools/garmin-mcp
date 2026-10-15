@@ -45,11 +45,11 @@ Totals for the 111 reads: 55 full, 16 partial, 40 missing.
 
 | Garmin Connect data | garmin-mcp | Coverage | Note |
 | --- | --- | --- | --- |
-| Daily stats | `query_health` `metrics: [steps, calories, resting_hr, stress, body_battery, intensity_minutes, floors]`, `from` = `to` = date | full | daily distance as `distance_km` next to `steps` |
+| Daily stats | `query_health` `metrics: [steps, calories, resting_hr, stress, body_battery, intensity_minutes, floors]`, `from` = `to` = date | full | daily distance as `distance_km` next to `steps`; calories eaten as `calories_consumed_kcal` next to `calories_total_kcal` and `calories_active_kcal` (absent on days without food entries) |
 | Daily user summary | as daily stats | full | as daily stats |
 | Daily stats over a date range | `query_health` `metrics: [steps, calories]`, `from`, `to` | full | |
 | Daily stats with body composition | `query_health` + `get_body_composition` | full | two calls |
-| Energy balance | `get_period_summary` → `energy` | partial | burned vs resting only, week, month or range; food intake is nutrition. |
+| Energy balance | `get_period_summary` → `energy`; `query_health` `metrics: [calories]` | partial | `energy`: burned vs resting, week, month or range; calories eaten per day or week in `query_health` (`calories_consumed_kcal`), from a food log linked to Garmin Connect (e.g. MyFitnessPal). |
 | Daily steps | `query_health` `metrics: [steps]` | full | |
 | Weekly steps | `query_health` `metrics: [steps]`, `granularity: "week"` | full | |
 | Steps in 15-minute intervals | — | missing | 15-minute series. |
@@ -150,7 +150,7 @@ Totals for the 111 reads: 55 full, 16 partial, 40 missing.
 
 | Garmin Connect data | garmin-mcp | Coverage | Note |
 | --- | --- | --- | --- |
-| Daily food log | — | missing | |
+| Daily food log | — | missing | the daily total of calories eaten is in `query_health` `metrics: [calories]` → `calories_consumed_kcal`; no foods, meals or macros. |
 | Nutrition summary over a date range | — | missing | |
 | Daily meals | — | missing | |
 | Daily nutrition settings | — | missing | |
