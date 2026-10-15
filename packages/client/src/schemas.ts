@@ -251,6 +251,8 @@ export const dailySummarySchema = z.looseObject({
   totalKilocalories: num,
   activeKilocalories: num,
   bmrKilocalories: num,
+  consumedKilocalories: num,
+  includesCalorieConsumedData: bool,
   restingHeartRate: num,
   minHeartRate: num,
   maxHeartRate: num,

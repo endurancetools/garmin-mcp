@@ -36,6 +36,17 @@ describe('GarminService', () => {
     expect(second.data.summary?.sleep?.avg).toBe(8);
   });
 
+  it('returns the calories eaten next to the calories burned, absent on days without food entries', async () => {
+    const { service } = setup();
+    const res = await service.queryHealth(['calories'], '2026-10-06', '2026-10-07');
+    expect(res.data.rows).toEqual([
+      { date: '2026-10-06', calories_total_kcal: 2400, calories_active_kcal: 600 },
+      { date: '2026-10-07', calories_total_kcal: 2400, calories_active_kcal: 600, calories_consumed_kcal: 2150 },
+    ]);
+    const week = await service.queryHealth(['calories'], '2026-10-05', '2026-10-08', 'week');
+    expect(week.data.rows?.[0]).toMatchObject({ week: '2026-W41', days: 4, calories_total_kcal_avg: 2400, calories_consumed_kcal_avg: 2150 });
+  });
+
   it('returns partial data with coverage when Garmin is slow', async () => {
     const { service } = setup({ budgetMs: 30, delayMs: 50 });
     const res = await service.queryHealth(['steps'], '2026-09-01', '2026-10-08');
@@ -636,7 +647,8 @@ describe('GarminService', () => {
     await fits(output.activityOutput, service.getActivity(1, 'full'));
     await fits(output.activityOutput, service.getActivity(1, 'splits'));
     await fits(output.updateActivityOutput, service.updateActivity(1, { name: 'Tempo' }));
-    await fits(output.healthOutput, service.queryHealth(['steps', 'sleep', 'hrv', 'resting_hr'], '2026-09-01', '2026-10-08', 'week'));
+    await fits(output.healthOutput, service.queryHealth(['steps', 'sleep', 'hrv', 'resting_hr', 'calories'], '2026-09-01', '2026-10-08', 'week'));
+    await fits(output.healthOutput, service.queryHealth(['calories'], '2026-10-01', '2026-10-08'));
     await fits(output.sleepOutput, service.getSleep({ date: '2026-10-07' }));
     await fits(output.sleepOutput, service.getSleep({ from: '2026-10-01', to: '2026-10-07' }));
     await fits(output.trainingStatusOutput, service.getTrainingStatus({ include_series: true }));

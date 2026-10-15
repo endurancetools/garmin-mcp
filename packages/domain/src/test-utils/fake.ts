@@ -122,7 +122,20 @@ export function setup(opts: { activities?: ActivitySummary[]; zip?: Uint8Array; 
       rec('updateActivity', [id, patch], () => {
         if (patch.name) names.set(id, patch.name);
       }),
-    getDailySummary: (date: string) => rec('getDailySummary', [date], () => ({ totalSteps: 8000, restingHeartRate: 52, totalKilocalories: 2400, bmrKilocalories: 1800, activeKilocalories: 600 })),
+    // Food is logged (linked nutrition app) on days ending in 7 only; other days carry Garmin's "nothing logged" shape.
+    getDailySummary: (date: string) =>
+      rec('getDailySummary', [date], () => {
+        const logged = date.endsWith('7');
+        return {
+          totalSteps: 8000,
+          restingHeartRate: 52,
+          totalKilocalories: 2400,
+          bmrKilocalories: 1800,
+          activeKilocalories: 600,
+          consumedKilocalories: logged ? 2150 : null,
+          includesCalorieConsumedData: logged,
+        };
+      }),
     getSleep: (date: string) => rec('getSleep', [date], () => ({ dailySleepDTO: { calendarDate: date, sleepTimeSeconds: 28_800, deepSleepSeconds: 5000, remSleepSeconds: 6000, sleepScores: { overall: { value: 81, qualifierKey: 'GOOD' } } } })),
     getHrv: (date: string) => rec('getHrv', [date], () => ({ hrvSummary: { lastNightAvg: 60 } })),
     getTrainingStatus: (date: string) =>
