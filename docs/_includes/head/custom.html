@@ -39,3 +39,10 @@
 }
 </script>
 {%- endif %}
+{%- comment %}
+  GoatCounter: page views without cookies. Only in production builds (GitHub Pages sets JEKYLL_ENV), so
+  `jekyll serve` does not count. Clicks are sent from the footer script as events.
+{% endcomment %}
+{%- if jekyll.environment == "production" %}
+<script data-goatcounter="https://github-mcp.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
+{%- endif %}
