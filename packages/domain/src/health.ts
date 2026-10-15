@@ -67,10 +67,25 @@ function dayFields(metric: HealthMetric, d: DailyRows['daily_summary'] | undefin
     case 'intensity_minutes':
       return { intensity_min: d?.intensity_minutes ?? undefined };
     case 'calories':
-      return { calories_total_kcal: d?.total_calories ?? undefined, calories_active_kcal: d?.active_calories ?? undefined };
+      return {
+        calories_total_kcal: d?.total_calories ?? undefined,
+        calories_active_kcal: d?.active_calories ?? undefined,
+        calories_consumed_kcal: consumedKcal(d?.raw),
+      };
     case 'floors':
       return { floors: rawNum(d?.raw, 'floorsAscended') };
   }
+}
+
+/**
+ * Calories eaten that day, from the nutrition log linked to Garmin Connect (e.g. MyFitnessPal).
+ * Garmin sends `consumedKilocalories: null` and `includesCalorieConsumedData: false` for a day
+ * without food entries; 0 also means nothing was logged, so both read as no data.
+ */
+function consumedKcal(raw: unknown): number | undefined {
+  if (raw && typeof raw === 'object' && (raw as Record<string, unknown>).includesCalorieConsumedData === false) return undefined;
+  const v = rawNum(raw, 'consumedKilocalories');
+  return v !== undefined && v > 0 ? v : undefined;
 }
 
 const km = (m: number | undefined): number | undefined => (m === undefined ? undefined : m / 1000);

@@ -10,6 +10,7 @@ import { decodeCursor, encodeCursor, pageBySize } from './paging.js';
 import { trend } from './stats.js';
 import { statusLabel, trainingOverview } from './training.js';
 import { unzip } from './zip.js';
+import { fixture } from './test-utils/fake.js';
 import { makeZip } from './test-utils/zip.js';
 
 const day = (i: number) => new Date(Date.UTC(2026, 0, 1 + i)).toISOString().slice(0, 10);
@@ -156,6 +157,28 @@ describe('healthTable', () => {
 
     const empty = healthTable(['steps'], { daily: [dailyRow(day(4), 10_000, 30)], sleep: [], hrv: [] }, day(4), day(4), 'day');
     expect(empty.rows[0]).toHaveProperty('distance_km', undefined);
+  });
+
+  it('returns the calories eaten from the raw summary, empty when nothing was logged', () => {
+    // Garmin's own shape for a day without a linked nutrition log (recorded fixture).
+    const unlogged = fixture('daily-summary');
+    const raws: unknown[] = [
+      { consumedKilocalories: 2_150.4, includesCalorieConsumedData: true },
+      unlogged,
+      { consumedKilocalories: 0, includesCalorieConsumedData: true },
+      { consumedKilocalories: 1_850 },
+    ];
+    const src = { daily: raws.map((raw, i) => ({ ...dailyRow(day(5 + i), 10_000, 30), raw })), sleep: [], hrv: [] };
+
+    const t = healthTable(['calories'], src, day(5), day(8), 'day');
+    expect(t.rows.map((r) => r.calories_consumed_kcal)).toEqual([2_150.4, undefined, undefined, 1_850]);
+    expect(t.rows[0]).toEqual({ date: day(5), calories_total_kcal: 2_500, calories_active_kcal: 500, calories_consumed_kcal: 2_150.4 });
+    // The summary and trend stay on the calories burned.
+    expect(t.summary.calories).toMatchObject({ avg: 2_500, days_with_data: 4 });
+
+    // 2026-01-05 is a Monday: the week averages the days with food entries only.
+    const w = healthTable(['calories'], src, day(5), day(8), 'week');
+    expect(w.rows[0]).toMatchObject({ days: 4, calories_total_kcal_avg: 2_500, calories_active_kcal_avg: 500, calories_consumed_kcal_avg: 2_000.2 });
   });
 });
 

@@ -210,7 +210,7 @@ export const TOOLS: ToolDef[] = [
       'For "how did I sleep this week", "calories and intensity minutes this week", "steps yesterday" or any single health metric over days: ' +
       'a table per day or per ISO week plus summary with averages, totals, min/max and 7/28-day trend. Metrics: ' +
       steps_desc() +
-      ' steps also returns the daily distance in km, resting_hr the daily min/max HR, hrv the Garmin HRV status and baseline range, floors the floors climbed.' +
+      ' steps also returns the daily distance in km, resting_hr the daily min/max HR, hrv the Garmin HRV status and baseline range, floors the floors climbed, calories the kcal burned (total, active) and eaten (calories_consumed_kcal, absent without food log entries).' +
       ' Ask for several metrics in one call (e.g. calories and intensity_minutes together). ' +
       'Use get_sleep for sleep stages of particular nights. Example: {"metrics":["hrv","resting_hr","sleep"],"from":"2026-07-01","to":"2026-09-30","granularity":"week"}.',
     input: {
