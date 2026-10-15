@@ -1,7 +1,7 @@
 {
   "name": "garmin-mcp-server",
   "mcpName": "io.github.endurancetools/garmin-mcp",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "Unofficial, open-source MCP server for Garmin Connect. Ask Claude or any MCP client about your training: load, form and morning readiness computed locally with cited sports-science methods, and workouts sent to your watch. Not affiliated with Garmin.",
   "keywords": [
     "garmin",
