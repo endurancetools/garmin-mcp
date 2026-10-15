@@ -1,6 +1,6 @@
 {
   "name": "garmin-mcp-cli",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "Command line for Garmin MCP, the unofficial MCP server for Garmin Connect: sign in, sync to a local cache, and training load and morning readiness in the terminal. Not affiliated with Garmin.",
   "keywords": [
     "garmin",
