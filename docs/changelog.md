@@ -5,6 +5,12 @@ nav_order: 11
 ---
 What changed in each release. All `garmin-mcp-*` packages share one version; the Claude Desktop extension of every version is attached to its [GitHub release](https://github.com/endurancetools/garmin-mcp/releases).
 
+## Unreleased
+
+### Health metrics
+
+- **Calories eaten.** `query_health` with `metrics: ["calories"]` and `garmin health calories` return `calories_consumed_kcal` next to the calories burned: the day's total from a food log linked to Garmin Connect (e.g. MyFitnessPal), averaged over the days with entries in a weekly table. Days without food entries leave the field out, never 0. Garmin already sent the value with the daily summary, so days synced before this version have it without downloading them again; food logged after a past day was stored (it is not refreshed once the day is over) needs `garmin sync --scope health --from <date> --to <date> --force`.
+
 ## 0.3.1 (2026-10-14)
 
 ### Morning readiness

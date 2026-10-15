@@ -73,7 +73,7 @@ Measured on a real account after a 90-day sync (433 requests in about an hour): 
 | `get_activity` | one activity: `summary`, `splits`, `hr_zones`, `power_zones`, `weather`, `exercise_sets` (strength sets), or `full` (all sections plus the raw stream, 50 KB pages) |
 | `update_activity` | name, type, description, RPE, feel |
 | `download_activity_file` | FIT (unzipped), GPX, TCX, KML, CSV to the download directory (`GARMIN_FIT_DOWNLOAD_DIR`) |
-| `query_health` | steps (with daily distance), resting HR (with daily min/max HR), HRV (with status and baseline), sleep, stress, body battery, respiration, SpO2, intensity minutes, calories, floors; per day or week, with 7/28-day trends |
+| `query_health` | steps (with daily distance), resting HR (with daily min/max HR), HRV (with status and baseline), sleep, stress, body battery, respiration, SpO2, intensity minutes, calories (burned, and eaten when a food log is linked), floors; per day or week, with 7/28-day trends |
 | `get_sleep` | one night with stages, or a range with averages |
 | `get_training_status` | VO2max, readiness, recovery time, Garmin status, load and load focus, `garmin_load_model` (CTL/ATL/TSB from Garmin's training load, optionally the daily series); race predictions, endurance/hill score, fitness age, personal records, acclimation |
 | `get_body_composition` | weigh-ins in kg with trend |

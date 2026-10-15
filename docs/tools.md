@@ -11,7 +11,7 @@ You do not need to call tools by name; the assistant does. This page tells you w
 | `get_activity` | one activity: summary, splits, heart rate zones, power zones, weather, strength sets, or everything including the raw stream |
 | `update_activity` | rename, change the type, description, RPE and feel |
 | `download_activity_file` | FIT, GPX, TCX, KML or CSV saved to your download folder |
-| `query_health` | steps and daily distance, resting heart rate, HRV with status and baseline, sleep, stress, body battery, respiration, SpO2, intensity minutes, calories, floors; per day or per week, with 7- and 28-day trends |
+| `query_health` | steps and daily distance, resting heart rate, HRV with status and baseline, sleep, stress, body battery, respiration, SpO2, intensity minutes, calories (burned, and eaten when a food log is linked), floors; per day or per week, with 7- and 28-day trends |
 | `get_sleep` | one night with stages, or a range with averages |
 | `get_training_status` | VO2max, training readiness, recovery time, Garmin's status, load and load focus, CTL/ATL/TSB from Garmin's training load (`garmin_load_model`), race predictions, endurance and hill scores, fitness age, personal records, heat and altitude acclimation |
 | `get_body_composition` | weigh-ins with trend |
