@@ -9,6 +9,8 @@ export const TTL = {
   trainingToday: 60 * MIN,
   activityList: 15 * MIN,
   reference: 60 * MIN,
+  /** A calendar month not over yet (races and scheduled workouts the user adds or moves in Connect). */
+  calendarMonth: 15 * MIN,
 } as const;
 
 /**
