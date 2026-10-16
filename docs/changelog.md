@@ -5,7 +5,7 @@ nav_order: 11
 ---
 What changed in each release. All `garmin-mcp-*` packages share one version; the Claude Desktop extension of every version is attached to its [GitHub release](https://github.com/endurancetools/garmin-mcp/releases).
 
-## Unreleased
+## 0.4.1 (2026-10-16)
 
 ### Races in the calendar
 
