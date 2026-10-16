@@ -67,7 +67,9 @@ export interface ScheduleRow {
 }
 
 export interface CalendarEventRow {
-  id: number;
+  /** Calendar id as text, or "uuid:<shareableEventUuid>" for a race from Garmin's event catalogue (id null). */
+  key: string;
+  id: number | null;
   date: string | null;
   raw: CalendarItem;
   fetched_at: number;
@@ -224,6 +226,13 @@ export interface ActivityQuery {
 }
 
 type RawRow = { raw: string } & Record<string, unknown>;
+
+/** Key of a calendar event: its calendar id, else the uuid of a race from Garmin's event catalogue. */
+function calendarEventKey(it: CalendarItem): string | undefined {
+  if (it.id != null) return String(it.id);
+  const uuid = (it as { shareableEventUuid?: unknown }).shareableEventUuid;
+  return typeof uuid === 'string' && uuid !== '' ? `uuid:${uuid}` : undefined;
+}
 
 function parseRow<T>(row: RawRow | undefined): T | undefined {
   if (!row) return undefined;
@@ -498,7 +507,8 @@ export class Store {
    * races and events (type "event") to `calendar_events`. Other item types (activities,
    * weigh-ins, badges, …) duplicate other tables and are skipped, and so are items outside
    * [from, to]: a month's calendar also shows the last days of the previous month, which only
-   * that month's own refresh may replace.
+   * that month's own refresh may replace. Events without a calendar id (races added from Garmin's
+   * event catalogue) are kept under their `shareableEventUuid`.
    */
   replaceSchedule(from: IsoDate, to: IsoDate, items: readonly CalendarItem[], fetchedAt: number): void {
     const workout = this.db.prepare(
@@ -506,22 +516,25 @@ export class Store {
        ON CONFLICT(id) DO UPDATE SET workout_id = excluded.workout_id, date = excluded.date, raw = excluded.raw, fetched_at = excluded.fetched_at`,
     );
     const event = this.db.prepare(
-      `INSERT INTO calendar_events (id, date, raw, fetched_at) VALUES (?, ?, ?, ?)
-       ON CONFLICT(id) DO UPDATE SET date = excluded.date, raw = excluded.raw, fetched_at = excluded.fetched_at`,
+      `INSERT INTO calendar_events (key, id, date, raw, fetched_at) VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(key) DO UPDATE SET id = excluded.id, date = excluded.date, raw = excluded.raw, fetched_at = excluded.fetched_at`,
     );
     this.db.transaction(() => {
       this.db.prepare('DELETE FROM workout_schedule WHERE date >= ? AND date <= ?').run(from, to);
       this.db.prepare('DELETE FROM calendar_events WHERE date >= ? AND date <= ?').run(from, to);
       for (const it of items) {
-        if (it.id == null || !it.date || it.date < from || it.date > to) continue;
-        if (it.itemType === 'workout') workout.run(it.id, it.workoutId ?? null, it.date ?? null, JSON.stringify(it), fetchedAt);
-        else if (it.itemType === 'event') event.run(it.id, it.date ?? null, JSON.stringify(it), fetchedAt);
+        if (!it.date || it.date < from || it.date > to) continue;
+        if (it.itemType === 'workout' && it.id != null) workout.run(it.id, it.workoutId ?? null, it.date, JSON.stringify(it), fetchedAt);
+        else if (it.itemType === 'event') {
+          const key = calendarEventKey(it);
+          if (key !== undefined) event.run(key, it.id ?? null, it.date, JSON.stringify(it), fetchedAt);
+        }
       }
     })();
   }
 
   getCalendarEvents(from: IsoDate, to: IsoDate): CalendarEventRow[] {
-    return (this.db.prepare('SELECT * FROM calendar_events WHERE date >= ? AND date <= ? ORDER BY date, id').all(from, to) as RawRow[]).map(
+    return (this.db.prepare('SELECT * FROM calendar_events WHERE date >= ? AND date <= ? ORDER BY date, key').all(from, to) as RawRow[]).map(
       (r) => parseRow<CalendarEventRow>(r) as CalendarEventRow,
     );
   }

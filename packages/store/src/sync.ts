@@ -320,10 +320,13 @@ export class Syncer {
     return gaps(this.#ranges('weighins'), from, to > this.today() ? this.today() : to);
   }
 
-  /** The part of [from, to] whose calendar months were never fetched: first to last missing month, clipped to the range. */
+  /**
+   * The part of [from, to] whose calendar months need a fetch: never fetched, or not final and
+   * older than the reference TTL (#staleMonths) - a race added in Connect to a cached future month
+   * shows up after the next read. First to last such month, clipped to the range.
+   */
   calendarGap(from: IsoDate, to: IsoDate): { from: IsoDate; to: IsoDate } | undefined {
-    const fetched = this.#calendarMonths();
-    const missing = monthsIn(from, to).filter((m) => fetched[m] === undefined);
+    const missing = this.#staleMonths(from, to, false, 0);
     if (missing.length === 0) return undefined;
     const start = `${missing[0] as string}-01` as IsoDate;
     const end = endOfMonth(`${missing.at(-1) as string}-01` as IsoDate);

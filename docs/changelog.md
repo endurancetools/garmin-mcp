@@ -5,6 +5,13 @@ nav_order: 11
 ---
 What changed in each release. All `garmin-mcp-*` packages share one version; the Claude Desktop extension of every version is attached to its [GitHub release](https://github.com/endurancetools/garmin-mcp/releases).
 
+## Unreleased
+
+### Races in the calendar
+
+- **Races from Garmin's event catalogue show up in `list_workouts`.** Garmin sends a race added from its event search with no calendar id, only an event uuid; such races were skipped, so `upcoming_events` missed them. Calendar events are now keyed by the calendar id or, without one, by the event uuid (database schema 7). The upgrade drops the list of cached calendar months, so the next `list_workouts` fetches them again.
+- **A race added to a future month appears without a manual sync.** A calendar month that is not over yet goes stale after an hour, as before, but a read now treats it as missing too, so `list_workouts` refreshes it through the automatic sync (`GARMIN_AUTO_FETCH`). Before, a month fetched once was never fetched again by a read, and a race added later stayed invisible until `garmin sync --scope reference --force`.
+
 ## 0.4.0 (2026-10-15)
 
 ### Health metrics
