@@ -245,4 +245,22 @@ export const MIGRATIONS: readonly string[] = [
   );
   CREATE INDEX imported_activities_date ON imported_activities(date);
   `,
+  /* 7 */ `
+  -- Races added from Garmin's event catalogue come in the calendar with id null and only a
+  -- shareableEventUuid, so calendar events are keyed by text: the calendar id, else "uuid:<uuid>".
+  CREATE TABLE calendar_events_new (
+    key TEXT PRIMARY KEY,
+    id INTEGER,
+    date TEXT,
+    raw TEXT NOT NULL,
+    fetched_at INTEGER NOT NULL
+  );
+  INSERT INTO calendar_events_new (key, id, date, raw, fetched_at)
+    SELECT CAST(id AS TEXT), id, date, raw, fetched_at FROM calendar_events;
+  DROP TABLE calendar_events;
+  ALTER TABLE calendar_events_new RENAME TO calendar_events;
+  CREATE INDEX calendar_events_date ON calendar_events(date);
+  -- Months cached before skipped those races: the next read fetches them again.
+  DELETE FROM meta WHERE key = 'calendar:months';
+  `,
 ];

@@ -11,8 +11,8 @@ const T = 1_791_400_000_000;
 describe('Store', () => {
   it('migrates a fresh database', () => {
     const store = Store.open(':memory:');
-    expect(schemaVersion(store.db)).toBe(6);
-    expect(store.getMeta('schema_version')).toBe('6');
+    expect(schemaVersion(store.db)).toBe(7);
+    expect(store.getMeta('schema_version')).toBe('7');
   });
 
   it('keeps cached activity details when migration 3 widens the detail kinds', () => {
@@ -107,14 +107,20 @@ describe('Store', () => {
       { id: 3, itemType: 'activity', date: '2026-10-07', title: 'run' },
       { id: 4, itemType: 'weight', date: '2026-10-07' },
       { id: null, itemType: 'nap', date: '2026-10-07' },
+      // A race added from Garmin's event catalogue: no calendar id, only the event uuid.
+      { id: null, itemType: 'event', date: '2026-10-18', title: 'Trail', isRace: true, shareableEventUuid: 'e-1' },
+      { id: null, itemType: 'event', date: '2026-10-19', title: 'no key' },
       // October's calendar grid starts with the end of September.
       { id: 6, itemType: 'workout', workoutId: 5, date: '2026-09-28', title: 'Z2' },
     ];
     store.replaceSchedule('2026-10-01', '2026-10-31', items, T);
     expect(store.getSchedule('2026-10-01', '2026-10-31').map((r) => r.id)).toEqual([1]);
     expect(store.getSchedule('2026-09-01', '2026-09-30')).toEqual([]);
-    expect(store.getCalendarEvents('2026-10-01', '2026-10-31')).toEqual([{ id: 2, date: '2026-10-25', raw: items[1], fetched_at: T }]);
-    expect(store.tableStats().find((t) => t.table === 'calendar_events')).toEqual({ table: 'calendar_events', rows: 1, from: '2026-10-25', to: '2026-10-25' });
+    expect(store.getCalendarEvents('2026-10-01', '2026-10-31')).toEqual([
+      { key: 'uuid:e-1', id: null, date: '2026-10-18', raw: items[5], fetched_at: T },
+      { key: '2', id: 2, date: '2026-10-25', raw: items[1], fetched_at: T },
+    ]);
+    expect(store.tableStats().find((t) => t.table === 'calendar_events')).toEqual({ table: 'calendar_events', rows: 2, from: '2026-10-18', to: '2026-10-25' });
     store.replaceSchedule('2026-10-01', '2026-10-31', [], T);
     expect(store.getCalendarEvents('2026-10-01', '2026-10-31')).toEqual([]);
   });
@@ -126,9 +132,9 @@ describe('Store', () => {
     db.prepare(`INSERT INTO devices (id, name, raw, settings, fetched_at) VALUES (7, 'FR965', '{"deviceId":7}', '{"deviceId":7}', ?)`).run(T);
     db.prepare(`INSERT INTO meta (key, value) VALUES ('ref:devices:fetched_at', ?)`).run(String(T));
     migrate(db);
-    expect(schemaVersion(db)).toBe(6);
+    expect(schemaVersion(db)).toBe(MIGRATIONS.length);
     const store = new Store(db);
-    expect(store.getMeta('schema_version')).toBe('6');
+    expect(store.getMeta('schema_version')).toBe(String(MIGRATIONS.length));
     expect(store.getDevices()[0]?.settings).toEqual({ deviceId: 7 });
     expect(store.referenceFetchedAt('devices')).toBe(T);
     expect(store.listThresholds()).toEqual([]);
@@ -137,6 +143,18 @@ describe('Store', () => {
     expect(indexes.map((r) => (r as { name: string }).name)).toEqual(
       expect.arrayContaining(['imported_activities_date', 'thresholds_param_date']),
     );
+  });
+
+  it('keys calendar events by text in migration 7 and refetches the cached months', () => {
+    const db = new Database(':memory:');
+    for (const sql of MIGRATIONS.slice(0, 6)) db.exec(sql);
+    db.pragma('user_version = 6');
+    db.prepare(`INSERT INTO calendar_events (id, date, raw, fetched_at) VALUES (2, '2026-10-25', '{"id":2}', ?)`).run(T);
+    db.prepare(`INSERT INTO meta (key, value) VALUES ('calendar:months', '{"2026-10":1}')`).run();
+    migrate(db);
+    const store = new Store(db);
+    expect(store.getCalendarEvents('2026-10-01', '2026-10-31')).toEqual([{ key: '2', id: 2, date: '2026-10-25', raw: { id: 2 }, fetched_at: T }]);
+    expect(store.getMeta('calendar:months')).toBeUndefined();
   });
 
   it('keeps threshold history and ignores a duplicate (date, param, source)', () => {
