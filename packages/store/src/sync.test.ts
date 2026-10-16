@@ -176,9 +176,11 @@ describe('Syncer', () => {
     ]);
     expect(syncer.calendarGap('2026-08-15', '2027-02-10')).toBeUndefined();
     expect((await syncer.syncCalendar('2026-08-15', '2027-02-10')).requests).toBe(0);
-    // After the reference TTL: months fetched after they ended stay final, the rest is refetched -
+    // After the calendar TTL (15 min): months fetched after they ended stay final, the rest is refetched -
     // and reported as a gap, so a read's auto sync picks up a race added to a cached future month.
-    now += 2 * 3_600_000;
+    now += 10 * 60_000;
+    expect(syncer.calendarGap('2026-08-15', '2027-02-10')).toBeUndefined();
+    now += 10 * 60_000;
     expect(syncer.calendarGap('2026-08-01', '2026-09-30')).toBeUndefined();
     expect(syncer.calendarGap('2026-08-15', '2027-02-10')).toEqual({ from: '2026-10-01', to: '2027-02-10' });
     expect((await syncer.syncCalendar('2026-08-15', '2027-02-10')).requests).toBe(5);

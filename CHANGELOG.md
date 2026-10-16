@@ -2,6 +2,12 @@
 
 All notable changes to Garmin MCP. All `garmin-mcp-*` packages share one version. The same list is on the [documentation site](https://endurancetools.github.io/garmin-mcp/changelog/).
 
+## Unreleased
+
+### Races in the calendar
+
+- **Calendar months that are not over yet go stale after 15 minutes instead of an hour,** like today's health data. A race added or moved in Garmin Connect shows up in `list_workouts` at most 15 minutes later, through the automatic sync; months fetched after they ended stay final.
+
 ## 0.4.1 (2026-10-16)
 
 ### Races in the calendar

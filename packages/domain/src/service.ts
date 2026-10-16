@@ -304,7 +304,7 @@ export class GarminService {
   #calendarGap(from: IsoDate, to: IsoDate): Partial<ResponseMeta> {
     if (this.store.referenceFetchedAt('workouts') === undefined) return this.#gap('reference', from, to, `workout library and calendar ${from}..${to}`);
     const gap = this.syncer.calendarGap(from, to);
-    return gap ? this.#gap('reference', gap.from, gap.to, `calendar ${gap.from}..${gap.to} (never fetched or older than 1 h)`) : {};
+    return gap ? this.#gap('reference', gap.from, gap.to, `calendar ${gap.from}..${gap.to} (never fetched or older than 15 min)`) : {};
   }
 
   // ------------------------------------------------------------ sync

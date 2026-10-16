@@ -322,7 +322,7 @@ export class Syncer {
 
   /**
    * The part of [from, to] whose calendar months need a fetch: never fetched, or not final and
-   * older than the reference TTL (#staleMonths) - a race added in Connect to a cached future month
+   * older than the calendar TTL of 15 min (#staleMonths) - a race added in Connect to a cached future month
    * shows up after the next read. First to last such month, clipped to the range.
    */
   calendarGap(from: IsoDate, to: IsoDate): { from: IsoDate; to: IsoDate } | undefined {
@@ -354,7 +354,7 @@ export class Syncer {
   /**
    * Months to fetch: never fetched; with `force`, fetched before `since`; otherwise
    * like days: a month fetched after it ended is final, any other month
-   * (current, future, or cached while it was running) goes stale after the reference TTL.
+   * (current, future, or cached while it was running) goes stale after the calendar TTL (15 min).
    */
   #staleMonths(from: IsoDate, to: IsoDate, force: boolean, since: number): string[] {
     const fetched = this.#calendarMonths();
@@ -365,7 +365,7 @@ export class Syncer {
       if (force) return at < since;
       const end = endOfMonth(`${m}-01` as IsoDate);
       if (dateIn(this.#tz, new Date(at)) > end) return false;
-      return !isFresh(at, TTL.reference, now);
+      return !isFresh(at, TTL.calendarMonth, now);
     });
   }
 
