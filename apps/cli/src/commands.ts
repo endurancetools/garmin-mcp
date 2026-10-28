@@ -228,6 +228,7 @@ export function buildProgram(deps: ProgramDeps = {}): Command {
       out(`\n${report.status === 'done' ? 'Done' : `Stopped: ${report.status}`} - ${report.requests} requests in ${((report.finished_at - report.started_at) / 1000).toFixed(0)} s`);
       const fetched = Object.entries(report.fetched).map(([what, n]) => ({ what, stored: n }));
       if (fetched.length) out(table(fetched));
+      for (const [what, n] of Object.entries(report.removed ?? {})) out(`Removed ${n} ${what} deleted in Garmin Connect.`);
       if (report.reason) err(report.reason);
       if (report.remaining) {
         const when = report.resume_at ? ` after ${new Date(report.resume_at).toLocaleString()}` : '';

@@ -42,6 +42,8 @@ export interface SyncJobReport {
   status: SyncJobStatus;
   requests: number;
   fetched: Record<string, number>;
+  /** Stored items removed because Garmin no longer has them; left out when nothing was removed. */
+  removed?: Record<string, number>;
   errors: { item: string; code: string; message: string }[];
   chunks_done: number;
   chunks_total: number;
@@ -191,6 +193,7 @@ export class SyncJobRunner {
     const to = calendar ? req.to : datedTo;
     const chunks = SCOPE_DAILY[req.scope].length && dated ? this.chunks(from, datedTo) : [];
     const fetched: Record<string, number> = {};
+    const removed: Record<string, number> = {};
     const errors: SyncJobReport['errors'] = [];
     let requests = 0;
     let chunksDone = 0;
@@ -209,6 +212,7 @@ export class SyncJobRunner {
         status,
         requests,
         fetched,
+        ...(Object.keys(removed).length ? { removed } : {}),
         errors,
         chunks_done: chunksDone,
         chunks_total: chunks.length,
@@ -220,7 +224,8 @@ export class SyncJobRunner {
         ...extra,
       };
       const logStatus = status === 'done' ? (errors.length ? 'partial' : 'ok') : requests > 0 ? 'partial' : 'error';
-      this.#store.finishSync(id, logStatus, finishedAt, { ...fetched, requests }, report.reason ?? (errors.length ? errors.slice(0, 20).map((e) => `${e.item}: ${e.message}`).join('\n') : undefined));
+      const removedStats = Object.fromEntries(Object.entries(removed).map(([k, v]) => [`removed_${k}`, v]));
+      this.#store.finishSync(id, logStatus, finishedAt, { ...fetched, ...removedStats, requests }, report.reason ?? (errors.length ? errors.slice(0, 20).map((e) => `${e.item}: ${e.message}`).join('\n') : undefined));
       return report;
     };
 
@@ -240,6 +245,7 @@ export class SyncJobRunner {
       requests += res.requests;
       this.#spend(res.requests);
       for (const [k, v] of Object.entries(res.fetched)) fetched[k] = (fetched[k] ?? 0) + v;
+      for (const [k, v] of Object.entries(res.removed)) removed[k] = (removed[k] ?? 0) + v;
       errors.push(...res.errors);
       const failedShare = res.requests > 0 ? res.errors.length / res.requests : 0;
       if (!res.fatal && !(res.requests >= 4 && failedShare > 0.5)) return undefined;

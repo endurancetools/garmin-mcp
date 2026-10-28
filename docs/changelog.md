@@ -7,6 +7,11 @@ What changed in each release. All `garmin-mcp-*` packages share one version; the
 
 ## Unreleased
 
+### Activities
+
+- **An activity deleted in Garmin Connect disappears from the local cache too.** Before, a sync only added and updated activities, so one deleted in Connect stayed in `get_activities` and the analytics until it was removed by hand. Now, once a sync has the whole activity list of a range, a stored activity of that range missing from the list is checked with Garmin and removed when Garmin answers 404 for it; any other answer keeps it, and a list that fails part way removes nothing. More than 20 such activities in one list are taken for a bad list and none is removed. The list of today and yesterday is fetched again when it is older than 15 minutes, so a recent deletion goes with the next read or sync; for an older one run `garmin sync --scope activities --from <date> --to <date> --force`. `garmin sync` and `garmin_sync` report the removals (`removed`). This mirrors your account and needs no `GARMIN_ENABLE_DESTRUCTIVE`: nothing is deleted in Garmin Connect.
+- **`get_activity` on an activity deleted in Garmin Connect** removes it from the cache and says so, instead of a bare 404, when it has to ask Garmin for a section it has not stored yet.
+
 ### Races in the calendar
 
 - **Calendar months that are not over yet go stale after 15 minutes instead of an hour,** like today's health data. A race added or moved in Garmin Connect shows up in `list_workouts` at most 15 minutes later, through the automatic sync; months fetched after they ended stay final.

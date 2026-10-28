@@ -127,6 +127,17 @@ describe('GarminService', () => {
     expect((next.data.stream as { offset: number }).offset).toBe(stream.samples.length);
   });
 
+  it('removes an activity deleted in Garmin Connect when get_activity finds it gone', async () => {
+    const gone = new Set<number>();
+    const { service, store } = setup({ activities: [summary(1, '2026-10-07')], gone });
+    await service.getActivity(1, 'summary');
+    gone.add(1);
+    await expect(service.getActivity(1, 'splits')).rejects.toMatchObject({ code: 'NOT_FOUND', message: expect.stringContaining('no longer exists in Garmin Connect') });
+    expect(store.getActivity(1)).toBeUndefined();
+    expect(store.getActivityDetail(1, 'summary')).toBeUndefined();
+    await expect(service.getActivity(1, 'summary')).rejects.toMatchObject({ code: 'NOT_FOUND' });
+  });
+
   it('serves power zones, weather and strength sets as detail levels and in full', async () => {
     const { service, store, count } = setup({ activities: [summary(1, '2026-10-07'), summary(2, '2026-10-07')] });
     const p = await service.getActivity(1, 'power_zones');
