@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Store } from './store.js';
-import { Syncer, withBudget } from './sync.js';
+import { MAX_GONE_ACTIVITIES, Syncer, withBudget } from './sync.js';
 import { activity, fakeClient } from './test-utils/fake-client.js';
 
 const NOW = Date.parse('2026-10-08T12:00:00Z');
@@ -116,6 +116,47 @@ describe('Syncer', () => {
     now += 16 * 60_000;
     expect((await syncer.syncActivities('2026-10-01', '2026-10-08')).requests).toBe(1);
     expect(calls.listAllActivities).toBe(2);
+  });
+
+  it('removes stored activities deleted in Garmin Connect once Garmin confirms them gone', async () => {
+    const { syncer, store, calls, remove } = setup({ activities: [activity(1, '2026-09-10'), activity(2, '2026-09-10'), activity(3, '2026-09-20')] });
+    await syncer.syncActivities('2026-09-01', '2026-09-30');
+    remove(2);
+    const res = await syncer.syncActivities('2026-09-01', '2026-09-15', true);
+    expect(res).toMatchObject({ requests: 2, removed: { activities: 1 }, errors: [] });
+    expect(calls.getActivity).toBe(1);
+    expect(store.queryActivities().map((a) => a.id)).toEqual([3, 1]);
+    // Stored but unchanged ranges are not listed again, so nothing more is checked.
+    expect((await syncer.syncActivities('2026-09-01', '2026-09-30')).requests).toBe(0);
+  });
+
+  it('keeps a stored activity missing from the list while Garmin still has it or cannot say', async () => {
+    let fail: string | undefined;
+    const { syncer, store } = setup({
+      activities: [activity(1, '2026-09-10'), activity(2, '2026-09-10')],
+      unlisted: [2],
+      failWith: (m) => (fail && m === 'getActivity' ? Object.assign(new Error('x'), { code: fail }) : undefined),
+    });
+    store.upsertActivities([activity(2, '2026-09-10')], NOW);
+    expect((await syncer.syncActivities('2026-09-01', '2026-09-30')).removed).toEqual({});
+    fail = 'SERVER_ERROR';
+    expect(await syncer.syncActivities('2026-09-01', '2026-09-30', true)).toMatchObject({ removed: {}, errors: [] });
+    fail = 'AUTH_EXPIRED';
+    expect((await syncer.syncActivities('2026-09-01', '2026-09-30', true)).fatal).toMatchObject({ code: 'AUTH_EXPIRED' });
+    expect(store.queryActivities().map((a) => a.id)).toEqual([2, 1]);
+  });
+
+  it('removes nothing when the list fails or leaves out too many stored activities', async () => {
+    let failList = false;
+    const { syncer, store, calls } = setup({ activities: [activity(1, '2026-09-10')], failWith: (m) => (failList && m === 'listAllActivities' ? new Error('x') : undefined) });
+    const extra = Array.from({ length: MAX_GONE_ACTIVITIES + 1 }, (_, i) => activity(100 + i, '2026-09-11'));
+    store.upsertActivities(extra, NOW);
+    failList = true;
+    expect((await syncer.syncActivities('2026-09-01', '2026-09-30')).errors).toHaveLength(1);
+    failList = false;
+    expect((await syncer.syncActivities('2026-09-01', '2026-09-30')).removed).toEqual({});
+    expect(calls.getActivity).toBeUndefined();
+    expect(store.queryActivities()).toHaveLength(extra.length + 1);
   });
 
   it('syncs weigh-ins once per range', async () => {

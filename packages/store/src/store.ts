@@ -361,6 +361,11 @@ export class Store {
     return parseRow<ActivityRow>(this.db.prepare('SELECT * FROM activities WHERE id = ?').get(id) as RawRow | undefined);
   }
 
+  /** Ids of stored activities whose local start date falls in [from, to]. */
+  activityIdsBetween(from: IsoDate, to: IsoDate): number[] {
+    return (this.db.prepare('SELECT id FROM activities WHERE date >= ? AND date <= ?').all(from, to) as { id: number }[]).map((r) => r.id);
+  }
+
   latestActivityDate(): string | undefined {
     const row = this.db.prepare('SELECT max(date) AS d FROM activities').get() as { d: string | null };
     return row.d ?? undefined;

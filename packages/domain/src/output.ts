@@ -117,6 +117,7 @@ export const syncOutput = envelope({
   requests: num,
   chunks: str,
   fetched: z.record(z.string(), z.number()).optional(),
+  removed: z.record(z.string(), z.number()).optional(),
   remaining: obj({ from: str, to: str }),
   resume_at: str,
   reason: str,

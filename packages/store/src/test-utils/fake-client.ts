@@ -2,6 +2,8 @@ import type { ActivitySummary, GarminClient } from 'garmin-mcp-client';
 
 export interface FakeClientOptions {
   activities?: ActivitySummary[];
+  /** Activities Garmin still has but leaves out of its list (e.g. a different start date). */
+  unlisted?: number[];
   delayMs?: number;
   failWith?: (method: string, arg?: unknown) => Error | undefined;
 }
@@ -54,10 +56,16 @@ export function fakeClient(opts: FakeClientOptions = {}) {
       call('listAllActivities', params, () => {
         const list = activities.filter((a) => {
           const d = String(a.startTimeLocal).slice(0, 10);
-          return (!params.from || d >= params.from) && (!params.to || d <= params.to);
+          return !opts.unlisted?.includes(a.activityId) && (!params.from || d >= params.from) && (!params.to || d <= params.to);
         });
         onPage?.(list, list.length);
         return list;
+      }),
+    getActivity: (id: number) =>
+      call('getActivity', id, () => {
+        const a = activities.find((x) => x.activityId === id);
+        if (!a) throw Object.assign(new Error(`Garmin returned 404 for /activity-service/activity/${id}`), { code: 'NOT_FOUND' });
+        return { activityId: id, activityName: a.activityName, summaryDTO: { startTimeLocal: a.startTimeLocal } };
       }),
     getWeighIns: (from: string, to: string) =>
       call('getWeighIns', { from, to }, () => ({
@@ -89,5 +97,7 @@ export function fakeClient(opts: FakeClientOptions = {}) {
         ],
       })),
   };
-  return { client: client as unknown as GarminClient, calls };
+  /** Deletes an activity in "Garmin Connect". */
+  const remove = (id: number) => activities.splice(activities.findIndex((a) => a.activityId === id), 1);
+  return { client: client as unknown as GarminClient, calls, remove };
 }

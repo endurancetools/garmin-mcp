@@ -46,7 +46,7 @@ export function summary(id: number, day: string, extra: Partial<ActivitySummary>
   };
 }
 
-export function setup(opts: { activities?: ActivitySummary[]; zip?: Uint8Array; budgetMs?: number; delayMs?: number; autoFetch?: boolean; autoSync?: boolean } = {}) {
+export function setup(opts: { activities?: ActivitySummary[]; gone?: ReadonlySet<number>; zip?: Uint8Array; budgetMs?: number; delayMs?: number; autoFetch?: boolean; autoSync?: boolean } = {}) {
   const calls: { method: string; args: unknown[] }[] = [];
   const activities = opts.activities ?? [];
   const names = new Map<number, string>();
@@ -66,15 +66,23 @@ export function setup(opts: { activities?: ActivitySummary[]; zip?: Uint8Array; 
         onPage?.(list, list.length);
         return list;
       }),
+    // Ids in `gone` were deleted in Garmin Connect: the activity and its sections answer 404.
     getActivity: (id: number) =>
-      rec('getActivity', [id], () => ({
-        activityId: id,
-        activityName: names.get(id) ?? `Run ${id}`,
-        description: 'desc',
-        activityTypeDTO: { typeKey: 'running' },
-        summaryDTO: { startTimeLocal: '2026-10-07T07:00:00.0', movingDuration: 2950, directWorkoutRpe: 60 },
-      })),
-    getActivitySplits: (id: number) => rec('getActivitySplits', [id], () => ({ lapDTOs: [{ lapIndex: 1, distance: 1000, duration: 300, averageHR: 140 }] })),
+      rec('getActivity', [id], () => {
+        if (opts.gone?.has(id)) throw notFound(`activity/${id}`);
+        return {
+          activityId: id,
+          activityName: names.get(id) ?? `Run ${id}`,
+          description: 'desc',
+          activityTypeDTO: { typeKey: 'running' },
+          summaryDTO: { startTimeLocal: '2026-10-07T07:00:00.0', movingDuration: 2950, directWorkoutRpe: 60 },
+        };
+      }),
+    getActivitySplits: (id: number) =>
+      rec('getActivitySplits', [id], () => {
+        if (opts.gone?.has(id)) throw notFound(`activity/${id}/splits`);
+        return { lapDTOs: [{ lapIndex: 1, distance: 1000, duration: 300, averageHR: 140 }] };
+      }),
     getActivityHrZones: (id: number) => rec('getActivityHrZones', [id], () => [{ zoneNumber: 1, secsInZone: 100, zoneLowBoundary: 100 }, { zoneNumber: 2, secsInZone: 300, zoneLowBoundary: 120 }]),
     // Synthetic shapes (no recorded fixtures yet, E2-8). Activity 2 has none of these (404).
     getActivityPowerZones: (id: number) =>

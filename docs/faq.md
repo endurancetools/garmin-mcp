@@ -35,7 +35,7 @@ The [getting started guides](getting-started.md) cover Claude Code, Claude Deskt
 
 ## Can it change or delete things in my Garmin account?
 
-It can rename and edit activities, create workouts and put them on your calendar. A new workout is shown to you first and saved only after you agree. Deleting activities, workouts and weigh-ins ({{ site.data.facts.tools_destructive }} tools) and overwriting a saved workout are off unless you set `GARMIN_ENABLE_DESTRUCTIVE=true` yourself ([Tools reference](tools.md)).
+It can rename and edit activities, create workouts and put them on your calendar. A new workout is shown to you first and saved only after you agree. Deleting activities, workouts and weigh-ins ({{ site.data.facts.tools_destructive }} tools) and overwriting a saved workout are off unless you set `GARMIN_ENABLE_DESTRUCTIVE=true` yourself ([Tools reference](tools.md)). An activity you delete in Garmin Connect yourself also goes from the local cache: the next sync of its day removes it once Garmin confirms it is gone. That only follows your account, so it needs no setting.
 
 ## Can I check how the numbers are computed?
 

@@ -3,6 +3,7 @@ import {
   addDays,
   assertIsoDate,
   endOfMonth,
+  GarminError,
   InputError,
   silentLogger,
   startOfMonth,
@@ -330,6 +331,7 @@ export class GarminService {
         requests: report?.requests ?? current?.progress.requests,
         chunks: report ? `${report.chunks_done}/${report.chunks_total}` : current ? `${current.progress.chunks_done}/${current.progress.chunks_total}` : undefined,
         fetched: report?.fetched,
+        removed: report?.removed,
         remaining: report?.remaining,
         resume_at: iso(report?.resume_at),
         reason: report?.reason,
@@ -412,12 +414,32 @@ export class GarminService {
   async #activityRow(id: number) {
     let row = this.store.getActivity(id);
     if (!row) {
-      const a = await this.client.getActivity(id);
+      const a = await this.client.getActivity(id).catch((err: unknown) => this.#forgetIfGone(id, err, true));
       const start = typeof a.summaryDTO?.startTimeLocal === 'string' ? a.summaryDTO.startTimeLocal.slice(0, 10) : undefined;
       if (start) await this.syncer.ensureActivities(start, start, this.#budget);
       row = this.store.getActivity(id);
     }
     return row;
+  }
+
+  /**
+   * Rethrows `err`, except for a 404 for an activity Garmin no longer has (deleted in Garmin
+   * Connect): that one is removed from the cache and reported as such. `confirmed` says the 404
+   * came from the activity itself; a 404 for one of its sections is checked against it first.
+   */
+  async #forgetIfGone(id: number, err: unknown, confirmed: boolean): Promise<never> {
+    if (errInfo(err).code !== 'NOT_FOUND') throw err;
+    if (!confirmed) {
+      const gone = await this.client.getActivity(id).then(
+        () => false,
+        (probe: unknown) => errInfo(probe).code === 'NOT_FOUND',
+      );
+      if (!gone) throw err;
+    }
+    this.store.deleteActivity(id);
+    throw new GarminError('NOT_FOUND', `Activity ${id} no longer exists in Garmin Connect; it was deleted there and is now removed from the local cache.`, {
+      hint: 'List current activities with get_activities.',
+    });
   }
 
   /**
@@ -433,7 +455,8 @@ export class GarminService {
     try {
       raw = await fetch();
     } catch (err) {
-      if (!notFoundIsEmpty || errInfo(err).code !== 'NOT_FOUND') throw err;
+      if (!notFoundIsEmpty) return this.#forgetIfGone(id, err, kind === 'summary');
+      if (errInfo(err).code !== 'NOT_FOUND') throw err;
       raw = null as T;
     }
     const at = this.#now();

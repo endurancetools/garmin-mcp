@@ -33,6 +33,8 @@ export interface StepResult {
   /** Requests issued (one per call; each list page counts). */
   requests: number;
   fetched: Record<string, number>;
+  /** Stored items removed because Garmin no longer has them (deleted in Garmin Connect). */
+  removed: Record<string, number>;
   errors: { item: string; code: string; message: string }[];
   /** Set when Garmin refused further work (auth, Cloudflare, rate limit). */
   fatal: { code: string; message: string } | undefined;
@@ -73,7 +75,13 @@ export const FATAL_CODES = new Set([
   'AUTH_INVALID_CREDENTIALS',
 ]);
 
-const emptyStep = (): StepResult => ({ requests: 0, fetched: {}, errors: [], fatal: undefined });
+const emptyStep = (): StepResult => ({ requests: 0, fetched: {}, removed: {}, errors: [], fatal: undefined });
+
+/**
+ * Most stored activities one list may find missing. More points at a bad or partial
+ * list rather than deletions in Garmin Connect, so none is checked or removed.
+ */
+export const MAX_GONE_ACTIVITIES = 20;
 
 /**
  * Requests of one training-metrics fetch: race predictions, fitness age, personal
@@ -122,6 +130,7 @@ export class Syncer {
         const pages = await this.#fetchActivities(a, b);
         res.requests += pages.requests;
         res.fetched.activities = (res.fetched.activities ?? 0) + pages.count;
+        if (pages.removed) res.removed.activities = (res.removed.activities ?? 0) + pages.removed;
       }
     });
   }
@@ -403,18 +412,58 @@ export class Syncer {
     return ranges;
   }
 
-  async #fetchActivities(from: IsoDate, to: IsoDate): Promise<{ count: number; requests: number }> {
+  /**
+   * The activity list of [from, to], stored. Once the whole list is in, stored activities of
+   * the range it no longer has are removed (#removeGone), so the cache mirrors deletions made
+   * in Garmin Connect; a list that fails part way removes nothing.
+   */
+  async #fetchActivities(from: IsoDate, to: IsoDate): Promise<{ count: number; requests: number; removed: number }> {
     const startedAt = this.#now();
-    let count = 0;
+    const listed = new Set<number>();
     let requests = 0;
     await this.#client.listAllActivities({ from, to, pageSize: 100 }, (page) => {
       requests++;
       this.#store.upsertActivities(page, this.#now());
-      count += page.length;
+      for (const a of page) listed.add(a.activityId);
     });
     this.#markCovered('activities', from, to);
     if (to >= addDays(this.today(), -1)) this.#store.setMeta('activities:listed_at', String(startedAt));
-    return { count, requests: Math.max(requests, 1) };
+    const gone = await this.#removeGone(from, to, listed);
+    return { count: listed.size, requests: Math.max(requests, 1) + gone.requests, removed: gone.removed };
+  }
+
+  /**
+   * Stored activities of [from, to] missing from Garmin's complete list for that range. Each
+   * is removed only after Garmin answers 404 for the activity itself: the list filters by a
+   * start date Garmin computes, which may differ from ours near midnight or across time zones.
+   * Any other answer keeps the activity; fatal errors still stop the sync.
+   */
+  async #removeGone(from: IsoDate, to: IsoDate, listed: ReadonlySet<number>): Promise<{ removed: number; requests: number }> {
+    const missing = this.#store.activityIdsBetween(from, to).filter((id) => !listed.has(id));
+    if (missing.length === 0) return { removed: 0, requests: 0 };
+    if (missing.length > MAX_GONE_ACTIVITIES) {
+      this.#log.warn({ from, to, missing: missing.length }, 'many stored activities missing from the Garmin list; none removed');
+      return { removed: 0, requests: 0 };
+    }
+    let removed = 0;
+    let requests = 0;
+    for (const id of missing) {
+      requests++;
+      try {
+        await this.#client.getActivity(id);
+      } catch (err) {
+        const info = errInfo(err);
+        if (FATAL_CODES.has(info.code)) throw err;
+        if (info.code !== 'NOT_FOUND') {
+          this.#log.warn({ id, err: info }, 'could not check an activity missing from the Garmin list; kept');
+          continue;
+        }
+        this.#store.deleteActivity(id);
+        removed++;
+        this.#log.info({ id }, 'activity deleted in Garmin Connect, removed from the cache');
+      }
+    }
+    return { removed, requests };
   }
 
   /** Covered and, for ranges reaching yesterday or today, fetched within the TTL. */
