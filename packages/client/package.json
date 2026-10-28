@@ -1,6 +1,6 @@
 {
   "name": "garmin-mcp-client",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "Typed Garmin Connect API client for Garmin MCP, the unofficial MCP server for Garmin Connect, with zod schemas, retries and rate limits. Not affiliated with Garmin.",
   "keywords": [
     "garmin",

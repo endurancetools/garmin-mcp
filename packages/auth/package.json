@@ -1,6 +1,6 @@
 {
   "name": "garmin-mcp-auth",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "Garmin Connect sign-in for Garmin MCP, the unofficial MCP server for Garmin Connect: SSO, MFA, DI OAuth2 tokens and refresh. Not affiliated with Garmin.",
   "keywords": [
     "garmin",
