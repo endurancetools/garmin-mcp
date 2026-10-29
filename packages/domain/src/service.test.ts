@@ -226,7 +226,7 @@ describe('GarminService', () => {
           { splitType: 'RWD_RUN', duration: 2940 },
           { splitType: 'RWD_WALK', duration: 60 },
         ],
-        metadataDTO: { sensors: [{ serialNumber: 1, sourceType: 'BLUETOOTH_LOW_ENERGY', bleDeviceType: 'HEART_RATE', batteryLevel: 45 }] },
+        metadataDTO: { associatedWorkoutId: 709174715, sensors: [{ serialNumber: 1, sourceType: 'BLUETOOTH_LOW_ENERGY', bleDeviceType: 'HEART_RATE', batteryLevel: 45 }] },
       },
       NOW,
     );
@@ -235,7 +235,7 @@ describe('GarminService', () => {
       'splits',
       {
         lapDTOs: [
-          { lapIndex: 1, distance: 1000, duration: 300, movingDuration: 298, averageHR: 140, averageRunCadence: 166, groundContactTime: 272.3, verticalOscillation: 8.62, verticalRatio: 8.76, strideLength: 98.41, avgGradeAdjustedSpeed: 3.4, avgRespirationRate: 30.1, elevationLoss: 1, normalizedPower: 327.4 },
+          { lapIndex: 1, intensityType: 'ACTIVE', wktStepIndex: 1, distance: 1000, duration: 300, movingDuration: 298, averageHR: 140, averageRunCadence: 166, groundContactTime: 272.3, verticalOscillation: 8.62, verticalRatio: 8.76, strideLength: 98.41, avgGradeAdjustedSpeed: 3.4, avgRespirationRate: 30.1, elevationLoss: 1, normalizedPower: 327.4 },
         ],
       },
       NOW,
@@ -250,11 +250,14 @@ describe('GarminService', () => {
       motion: { run: '49:00', run_pct: 98, walk: '1:00', walk_pct: 2 },
       hr_source: 'external_sensor',
       hr_sensor: { connection: 'ble', battery_pct: 45 },
+      workout_id: 709174715,
     });
     const laps = await service.getActivity(1, 'splits');
     expect(laps.data.splits).toEqual([
       {
         lap: 1,
+        intensity: 'active',
+        wkt_step_index: 1,
         distance_km: 1,
         duration: '5:00',
         moving_time: '4:58',
@@ -301,6 +304,33 @@ describe('GarminService', () => {
     const raw = await full(false);
     expect(raw.raw).toMatchObject({ userProfileId: 7, summaryDTO: { startLatitude: 51.1 } });
     expect(raw.stream.samples).toEqual([{ directHeartRate: 120, directLatitude: 51.1, directLongitude: 17.1 }]);
+  });
+
+  it('aggregates the stream per bucket and filters the raw stream by metrics and spacing', async () => {
+    const { service, store, count } = setup({ activities: [summary(1, '2026-10-07')] });
+    // The fake stream: 3000 samples 1 s apart with timestamp and heart rate, no distance.
+    const halves = await service.getActivity(1, 'stream_summary', undefined, { bucket: 'halves' });
+    expect(halves.data.stream_summary).toMatchObject({ bucket: 'halves', samples: 3000, buckets: [{ n: 1, from: '0:00', to: '24:59' }, { n: 2, from: '24:59', to: '49:59' }] });
+    expect(halves.data.stream).toBeUndefined();
+    expect(halves.data.raw_summary).toBeUndefined();
+    const kms = await service.getActivity(1, 'stream_summary');
+    expect(kms.data.stream_summary).toBeUndefined();
+    expect(kms.meta.note).toBe('Garmin has no a usable stream with distance for this activity.');
+    expect(count('getActivityDetails')).toBe(1);
+
+    const thin = await service.getActivity(1, 'full', undefined, { metrics: ['directHeartRate', 'directLatitude'], downsample_s: 60 });
+    expect(thin.data.stream).toMatchObject({ metrics: ['directTimestamp', 'directHeartRate'], total_samples: 50 });
+    expect(thin.meta.note).toBe('This stream has no directLatitude; its metrics are directTimestamp, directHeartRate.');
+
+    store.putActivityDetail(
+      1,
+      'details',
+      { metricDescriptors: [{ metricsIndex: 0, key: 'directHeartRate' }, { metricsIndex: 1, key: 'directLatitude' }], activityDetailMetrics: [{ metrics: [120, 51.1] }] },
+      NOW,
+    );
+    const gps = await service.getActivity(1, 'full', undefined, { metrics: ['directLatitude'] });
+    expect(gps.data.stream).toEqual({ total_samples: 1, offset: 0 });
+    expect(gps.meta.note).toBe('directLatitude left out: GPS is removed while GARMIN_REDACT is on.');
   });
 
   it('converts weather wind from mph for statute_us accounts', async () => {

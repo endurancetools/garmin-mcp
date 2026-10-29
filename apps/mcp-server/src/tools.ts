@@ -155,18 +155,23 @@ export const TOOLS: ToolDef[] = [
     title: 'Get one activity',
     description:
       'Details of one activity by id. detail="summary" (default) for the overview incl. description, RPE, feel, GAP, running dynamics (cadence, GCT, balance, VO, VR, stride), breathing rate, stamina, ' +
-      'Training Effect label, run/walk/stand time and HR source (strap or watch); "splits" adds laps with the same dynamics; "hr_zones" adds time in HR zones; ' +
+      'Training Effect label, run/walk/stand time, HR source (strap or watch) and workout_id (for get_workout); "splits" adds laps with the same dynamics, intensity (warmup, active, rest...) and workout step index; ' +
+      '"hr_zones" adds time in HR zones; ' +
       '"power_zones" adds time in power zones (power meter); "weather" adds temperature, wind and conditions during the activity; "exercise_sets" adds strength sets ' +
-      '(exercise, reps, weight, rest); "full" adds all of these plus the raw second-by-second stream (HR, pace, GPS...) paginated with next_cursor, 50 KB per page - ' +
-      'only when the user needs raw samples.',
+      '(exercise, reps, weight, rest); "stream_summary" aggregates the stream per `bucket` (pace, GAP, HR, power, dynamics, breathing, Performance Condition, elevation, stamina; ' +
+      'compares halves or kilometres without raw samples); "full" adds all sections plus the raw stream (HR, pace, power...) paginated with next_cursor, 50 KB per page, ' +
+      'optionally only `metrics` and one sample per `downsample_s` - only when the user needs raw samples.',
     input: {
       id: id.describe('Activity id from get_activities'),
-      detail: z.enum(['summary', 'splits', 'hr_zones', 'power_zones', 'weather', 'exercise_sets', 'full']).default('summary'),
-      cursor: z.string().optional().describe('For detail="full": next_cursor of the previous page'),
+      detail: z.enum(['summary', 'splits', 'hr_zones', 'power_zones', 'weather', 'exercise_sets', 'stream_summary', 'full']).default('summary'),
+      bucket: z.enum(['km', '5min', 'halves', 'quarters']).default('km').describe('For detail="stream_summary"'),
+      metrics: z.array(z.string()).optional().describe('For detail="full": stream keys to keep, e.g. ["directHeartRate","directPower"]'),
+      downsample_s: z.number().int().positive().optional().describe('For detail="full": at most one sample per this many seconds'),
+      cursor: z.string().optional().describe('For detail="full": next_cursor of the previous page (same metrics and downsample_s)'),
     },
     output: activityOutput,
     annotations: READ,
-    run: (s, a) => s.getActivity(a.id, a.detail, a.cursor),
+    run: (s, a) => s.getActivity(a.id, a.detail, a.cursor, { bucket: a.bucket, metrics: a.metrics, downsample_s: a.downsample_s }),
   }),
   tool({
     name: 'update_activity',

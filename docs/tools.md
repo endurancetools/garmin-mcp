@@ -8,7 +8,7 @@ You do not need to call tools by name; the assistant does. This page tells you w
 | Tool | What it gives |
 | --- | --- |
 | `get_activities` | a dense list of activities with paging; filter by date and Garmin type (`running`, `trail_running`, `cycling`, ...) |
-| `get_activity` | one activity: summary (with grade adjusted pace, running dynamics, breathing rate, stamina, Training Effect label, run/walk/stand time and heart rate source), splits with the same dynamics per lap, heart rate zones, power zones, weather, strength sets, or everything including the raw stream (without personal data and GPS unless `GARMIN_REDACT=false`) |
+| `get_activity` | one activity: summary (with grade adjusted pace, running dynamics, breathing rate, stamina, Training Effect label, run/walk/stand time and heart rate source), splits with the same dynamics, lap intensity and workout step per lap, heart rate zones, power zones, weather, strength sets, the stream aggregated per kilometre, 5 minutes, half or quarter (`stream_summary`, with Performance Condition), or everything including the raw stream, optionally only some metrics and thinned out (without personal data and GPS unless `GARMIN_REDACT=false`) |
 | `update_activity` | rename, change the type, description, RPE and feel |
 | `download_activity_file` | FIT, GPX, TCX, KML or CSV saved to your download folder |
 | `query_health` | steps and daily distance, resting heart rate, HRV with status and baseline, sleep, stress, body battery, respiration, SpO2, intensity minutes, calories (burned, and eaten when a food log is linked), floors; per day or per week, with 7- and 28-day trends |

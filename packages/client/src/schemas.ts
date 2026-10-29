@@ -150,7 +150,7 @@ export const activitySchema = z.looseObject({
       directWorkoutFeel: num,
     })
     .nullish(),
-  metadataDTO: z.looseObject({ deviceMetaDataDTO: z.looseObject({ deviceId: z.unknown() }).nullish() }).nullish(),
+  metadataDTO: z.looseObject({ deviceMetaDataDTO: z.looseObject({ deviceId: z.unknown() }).nullish(), associatedWorkoutId: int }).nullish(),
 });
 export type Activity = z.infer<typeof activitySchema>;
 
@@ -172,6 +172,8 @@ export const activitySplitsSchema = z.looseObject({
         elevationGain: num,
         elevationLoss: num,
         averageRunCadence: num,
+        intensityType: str,
+        wktStepIndex: int,
       }),
     )
     .nullish(),

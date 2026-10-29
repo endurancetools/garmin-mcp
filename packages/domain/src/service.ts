@@ -25,6 +25,7 @@ import { compact, hms, isFootSport, iso, km, round, speedOrPace } from './format
 import { healthTable, tablesFor, type HealthMetric } from './health.js';
 import { decodeCursor, encodeCursor, pageBySize } from './paging.js';
 import { sleepNight, sleepRange } from './sleep.js';
+import { filterStream, streamSummary, type StreamBucket, type StreamSummary } from './stream.js';
 import { trend } from './stats.js';
 import { trainingOverview } from './training.js';
 import { compileWorkout, describeWorkout, estimateWorkoutDuration, isGarminWorkoutJson, presetDefinition, SPORT_KEYS, type WorkoutDefinition, type WorkoutPreset } from './workouts/index.js';
@@ -101,6 +102,8 @@ export interface WorkoutInput {
 interface ActivitySections {
   splits?: ({
     lap?: number | null;
+    intensity?: string;
+    wkt_step_index?: number;
     distance_km?: number;
     duration?: string;
     moving_time?: string;
@@ -120,12 +123,20 @@ interface ActivitySections {
   weather?: ActivityWeather;
   exercise_sets?: StrengthSets;
   raw_summary?: Record<string, unknown>;
+  stream_summary?: StreamSummary;
   stream?: { metrics: string[]; total_samples: number; offset: number; samples: Record<string, unknown>[] };
   next_cursor?: string;
 }
 
-/** `get_activity` levels: the overview, one extra section, or everything incl. the raw stream. */
-export type ActivityDetailLevel = 'summary' | 'splits' | 'hr_zones' | 'power_zones' | 'weather' | 'exercise_sets' | 'full';
+/** `get_activity` levels: the overview, one extra section, the stream aggregated per bucket, or everything incl. the raw stream. */
+export type ActivityDetailLevel = 'summary' | 'splits' | 'hr_zones' | 'power_zones' | 'weather' | 'exercise_sets' | 'stream_summary' | 'full';
+
+/** Options of the stream levels: `bucket` for `stream_summary`, `metrics` and `downsample_s` for `full` (keep them the same on every page). */
+export interface ActivityStreamOptions {
+  bucket?: StreamBucket;
+  metrics?: readonly string[];
+  downsample_s?: number;
+}
 
 function autoSyncNote(report: SyncJobReport | undefined): string {
   if (!report) return 'The missing days are downloading from Garmin in the background; ask again in a minute for the rest.';
@@ -474,7 +485,7 @@ export class GarminService {
     return { raw, fetched_at: at, live: true };
   }
 
-  async getActivity(id: number, detail: ActivityDetailLevel = 'summary', cursor?: string) {
+  async getActivity(id: number, detail: ActivityDetailLevel = 'summary', cursor?: string, opts: ActivityStreamOptions = {}) {
     const row = await this.#activityRow(id);
     const summary = await this.#detail(id, 'summary', () => this.client.getActivity(id));
     const s = summary.raw.summaryDTO ?? {};
@@ -495,6 +506,7 @@ export class GarminService {
       stamina: stamina(s),
       motion: motionTime(summary.raw.splitSummaries),
       ...hrSource(summary.raw.metadataDTO, (s.averageHR ?? row?.avg_hr ?? 0) > 0),
+      workout_id: summary.raw.metadataDTO?.associatedWorkoutId ?? undefined,
       rpe: typeof s.directWorkoutRpe === 'number' ? s.directWorkoutRpe / 10 : undefined,
       feel: typeof s.directWorkoutFeel === 'number' ? s.directWorkoutFeel : undefined,
       gear_uuid: row?.gear_uuid ?? undefined,
@@ -510,6 +522,8 @@ export class GarminService {
       extra.splits = (splits.raw?.lapDTOs ?? []).map((l) =>
         compact({
           lap: l.lapIndex,
+          intensity: l.intensityType?.toLowerCase(),
+          wkt_step_index: l.wktStepIndex ?? undefined,
           distance_km: km(l.distance),
           duration: hms(l.duration),
           moving_time: hms(l.movingDuration),
@@ -555,24 +569,36 @@ export class GarminService {
       extra.exercise_sets = strengthSets(sets.raw);
       if (!extra.exercise_sets && detail === 'exercise_sets') missing.push('exercise sets (not a strength activity or no sets recorded)');
     }
-    if (detail === 'full') {
+    const notes: string[] = [];
+    if (detail === 'full' || detail === 'stream_summary') {
       const details = await this.#detail(id, 'details', () => this.client.getActivityDetails(id));
       sources.push({ source: details.live ? 'live' : 'cache' });
       times.push(details.fetched_at);
-      const keys = (details.raw?.metricDescriptors ?? []).toSorted((a, b) => (a.metricsIndex ?? 0) - (b.metricsIndex ?? 0)).map((d) => d.key ?? `m${d.metricsIndex}`);
-      const kept = keys.flatMap((k, i) => (this.#redact && GPS_STREAM_METRICS.has(k) ? [] : [[k, i] as const]));
-      const samples = (details.raw?.activityDetailMetrics ?? []).map((m) => Object.fromEntries(kept.map(([k, i]) => [k, m.metrics[i] ?? null])));
-      const offset = decodeCursor(cursor);
-      const { page, next } = pageBySize(samples, offset, 40 * 1024);
-      extra = {
-        ...extra,
-        raw_summary: offset === 0 ? (this.#redact ? redactActivityRaw(summary.raw) : summary.raw) : undefined,
-        stream: { metrics: kept.map(([k]) => k), total_samples: samples.length, offset, samples: page },
-        next_cursor: next === undefined ? undefined : encodeCursor(next),
-      };
+      const all = (details.raw?.metricDescriptors ?? []).toSorted((a, b) => (a.metricsIndex ?? 0) - (b.metricsIndex ?? 0)).map((d) => d.key ?? `m${d.metricsIndex}`);
+      const indexed = all.flatMap((k, i) => (this.#redact && GPS_STREAM_METRICS.has(k) ? [] : [[k, i] as const]));
+      const samples = (details.raw?.activityDetailMetrics ?? []).map((m) => Object.fromEntries(indexed.map(([k, i]) => [k, m.metrics[i] ?? null])));
+      if (detail === 'stream_summary') {
+        extra.stream_summary = streamSummary(samples, opts.bucket ?? 'km', footSport);
+        if (!extra.stream_summary) missing.push(`a usable stream${(opts.bucket ?? 'km') === 'km' ? ' with distance' : ''}`);
+      } else {
+        const keys = indexed.map(([k]) => k);
+        const filtered = filterStream(keys, samples, { metrics: opts.metrics, downsampleS: opts.downsample_s });
+        const hidden = filtered.unknown.filter((k) => all.includes(k));
+        const absent = filtered.unknown.filter((k) => !all.includes(k));
+        if (hidden.length > 0) notes.push(`${hidden.join(', ')} left out: GPS is removed while GARMIN_REDACT is on.`);
+        if (absent.length > 0) notes.push(`This stream has no ${absent.join(', ')}; its metrics are ${keys.join(', ')}.`);
+        const offset = decodeCursor(cursor);
+        const { page, next } = pageBySize(filtered.samples, offset, 40 * 1024);
+        extra = {
+          ...extra,
+          raw_summary: offset === 0 ? (this.#redact ? redactActivityRaw(summary.raw) : summary.raw) : undefined,
+          stream: { metrics: filtered.keys, total_samples: filtered.samples.length, offset, samples: page },
+          next_cursor: next === undefined ? undefined : encodeCursor(next),
+        };
+      }
     }
-    const note = missing.length > 0 ? `Garmin has no ${missing.join(', ')} for this activity.` : undefined;
-    return { data: compact({ ...base, ...extra }), meta: this.#meta(sources, times, note ? { note } : {}) };
+    if (missing.length > 0) notes.unshift(`Garmin has no ${missing.join(', ')} for this activity.`);
+    return { data: compact({ ...base, ...extra }), meta: this.#meta(sources, times, notes.length > 0 ? { note: notes.join(' ') } : {}) };
   }
 
   /** Account measurement system from the cached profile, without fetching it. */
