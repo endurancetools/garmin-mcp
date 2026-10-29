@@ -77,6 +77,11 @@ export interface GarminConfig {
    * the user asks for a sync.
    */
   autoFetch: boolean;
+  /**
+   * Strip personal data (name, profile and photo URLs, device and sensor serials) and GPS
+   * positions from raw activity output. On by default; false returns Garmin's JSON as sent.
+   */
+  redact: boolean;
   /** Days per chunk of a sync job. */
   syncChunkDays: number;
   /** Pause after a chunk that made requests, drawn at random from the range. */
@@ -112,6 +117,7 @@ const rawSchema = z
     concurrency: z.union([z.number(), z.string()]),
     minRequestIntervalMs: z.union([z.number(), z.string()]),
     autoFetch: z.union([z.boolean(), z.string()]),
+    redact: z.union([z.boolean(), z.string()]),
     syncChunkDays: z.union([z.number(), z.string()]),
     syncPauseSeconds: z.union([z.number(), z.string()]),
     syncMaxRequestsPerDay: z.union([z.number(), z.string()]),
@@ -154,6 +160,7 @@ const ENV_MAP: Record<string, keyof RawConfig> = {
   GARMIN_CONCURRENCY: 'concurrency',
   GARMIN_MIN_REQUEST_INTERVAL_MS: 'minRequestIntervalMs',
   GARMIN_AUTO_FETCH: 'autoFetch',
+  GARMIN_REDACT: 'redact',
   GARMIN_SYNC_CHUNK_DAYS: 'syncChunkDays',
   GARMIN_SYNC_PAUSE_S: 'syncPauseSeconds',
   GARMIN_SYNC_MAX_REQUESTS_PER_DAY: 'syncMaxRequestsPerDay',
@@ -300,6 +307,7 @@ export function loadConfig(options: LoadConfigOptions = {}): GarminConfig {
     concurrency: int(merged.concurrency, 4, 'concurrency'),
     minRequestIntervalMs: int(merged.minRequestIntervalMs, 250, 'minRequestIntervalMs', 0),
     autoFetch: merged.autoFetch === undefined ? true : bool(merged.autoFetch),
+    redact: merged.redact === undefined ? true : bool(merged.redact),
     syncChunkDays: int(merged.syncChunkDays, 7, 'syncChunkDays'),
     syncPause: parsePauseSeconds(merged.syncPauseSeconds ?? DEFAULT_SYNC_PAUSE_SECONDS, 'syncPauseSeconds'),
     syncMaxRequestsPerDay: int(merged.syncMaxRequestsPerDay, 600, 'syncMaxRequestsPerDay'),

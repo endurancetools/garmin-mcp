@@ -78,6 +78,8 @@ describe('loadConfig', () => {
     });
     // The Claude Desktop manifest passes the boolean user_config as the string "false".
     expect(loadConfig({ env: { HOME: tmp, GARMIN_AUTO_FETCH: 'false' } }).autoFetch).toBe(false);
+    expect(loadConfig({ env: { HOME: tmp } }).redact).toBe(true);
+    expect(loadConfig({ env: { HOME: tmp, GARMIN_REDACT: 'false' } }).redact).toBe(false);
     expect(loadConfig({ env: { HOME: tmp, GARMIN_SYNC_PAUSE_S: '30-90' } }).syncPause).toEqual({ minMs: 30_000, maxMs: 90_000 });
     expect(parsePauseSeconds(' 2.5 ')).toEqual({ minMs: 2500, maxMs: 2500 });
     for (const bad of ['11-1', '-3', 'abc', '1-']) expect(() => parsePauseSeconds(bad)).toThrow(ConfigError);

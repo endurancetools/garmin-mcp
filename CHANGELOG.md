@@ -2,6 +2,19 @@
 
 All notable changes to Garmin MCP. All `garmin-mcp-*` packages share one version. The same list is on the [documentation site](https://endurancetools.github.io/garmin-mcp/changelog/).
 
+## Unreleased
+
+### Activities
+
+- **Running dynamics without the raw stream.** `get_activity` with the default `detail: "summary"` now returns the grade adjusted pace (`avg_gap_pace`), `running_dynamics` (cadence, ground contact time and its left/right balance, vertical oscillation, vertical ratio, stride length), `respiration` (average, min and max breaths per minute), `stamina` (start, end, lowest available), the Training Effect `label` and messages in `training_effect`, run/walk/stand time from Garmin's run-walk detection (`motion`) and where the heart rate came from (`hr_source`: `external_sensor` with the sensor's connection and battery in `hr_sensor`, or `watch_optical`; Garmin does not say whether a sensor is a chest strap or an arm band). Before, these were only in `raw_summary` of `detail: "full"`, next to the second-by-second stream. Fields the activity has no data for are left out.
+- **Laps with running dynamics.** Each lap of `detail: "splits"` adds moving time, grade adjusted pace, normalized power, ground contact time and balance, vertical oscillation and ratio, stride length, breathing rate and elevation loss, so the first and last kilometres can be compared.
+- **No personal data or GPS in the raw output by default.** `raw_summary` of `detail: "full"` leaves out your name, profile id and photo links, activity photos, device and sensor serial numbers, install ids, the start and end position and the activity's time zone, and the stream leaves out latitude and longitude. `GARMIN_REDACT=false` returns Garmin's data as sent. The data in the local cache is unchanged.
+- `meta.fetched_at` is when the oldest record in an answer was downloaded; the server instructions now say so. A list with a session from today can still show an older time when other sessions on the page were fetched earlier.
+
+### Training analytics
+
+- **Pw:Hr for running.** In `get_load` with `include_activities`, runs with running power get `ef_power` (normalized power, else average power, per beat) and, when they qualify for decoupling, `decoupling_pw_pct` next to the Pa:Hr `decoupling_pct`. Every `decoupling_pct` names its basis in `decoupling_basis` (`pa_hr` or `pw_hr`); a run whose laps have power but no grade adjusted speed reports Pw:Hr there instead of nothing. `include_efficiency` adds `ef_power_avg` for running.
+
 ## 0.4.2 (2026-10-28)
 
 ### Activities

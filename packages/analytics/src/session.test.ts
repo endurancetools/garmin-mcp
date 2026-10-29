@@ -552,8 +552,27 @@ describe('aerobic decoupling (Pa:Hr, Pw:Hr)', () => {
     expect(sessionMetrics(ride({ laps: steadyRide.slice(0, 3) }), CTX).decoupling_pct).toBeUndefined();
     expect(sessionMetrics(ride({ type: 'lap_swimming' }), CTX).decoupling_pct).toBeUndefined();
     expect(sessionMetrics(ride({ type: 'hiking' }), CTX).decoupling_pct).toBeUndefined();
-    // A run without grade adjusted speed in its laps has no running metric.
-    expect(sessionMetrics(input({ laps: steadyRide }), CTX).decoupling_pct).toBeUndefined();
+  });
+
+  it('running reports Pw:Hr next to Pa:Hr, or instead of it when its laps have no grade adjusted speed, and names the basis', () => {
+    const laps: Lap[] = [3.2, 3.2, 3.1, 3.0].map((gap, i) => ({ duration_s: 900, avg_hr: 145, gap_mps: gap, avg_power_w: [300, 300, 290, 290][i] }));
+    expect(sessionMetrics(input({ duration_s: 3600, avg_hr: 145, laps }), CTX)).toMatchObject({
+      decoupling_pct: round((1 - 3.05 / 3.2) * 100, 1),
+      decoupling_basis: 'pa_hr',
+      decoupling_pw_pct: round((1 - 290 / 300) * 100, 1),
+    });
+    const powerOnly = sessionMetrics(input({ laps: steadyRide }), CTX);
+    expect(powerOnly).toMatchObject({ decoupling_pct: 4.3, decoupling_basis: 'pw_hr' });
+    expect(powerOnly.decoupling_pw_pct).toBeUndefined();
+    expect(sessionMetrics(ride(), CTX)).toMatchObject({ decoupling_pct: 4.3, decoupling_basis: 'pw_hr' });
+    expect(sessionMetrics(ride(), CTX).decoupling_pw_pct).toBeUndefined();
+  });
+
+  it('ef_power for runs with power: normalized power, else average power, per beat', () => {
+    expect(sessionMetrics(input({ avg_hr: 150, np_w: 300, avg_power_w: 290 }), CTX).ef_power).toBe(2);
+    expect(sessionMetrics(input({ avg_hr: 145, avg_power_w: 290 }), CTX).ef_power).toBe(2);
+    expect(sessionMetrics(input({ avg_hr: 150 }), CTX).ef_power).toBeUndefined();
+    expect(sessionMetrics(input({ type: 'road_biking', avg_hr: 140, np_w: 200 }), CTX).ef_power).toBeUndefined();
   });
 
   it('nordic and row use power like the bike', () => {

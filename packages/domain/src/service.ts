@@ -16,11 +16,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { activityBrief, periodActivitySummary } from './activities.js';
 import { activityWeather, strengthSets, zoneTimes, type ActivityWeather, type StrengthSets, type ZoneTime } from './activity-extras.js';
+import { gapPace, GPS_STREAM_METRICS, hrSource, motionTime, redactActivityRaw, respiration, runningDynamics, stamina, trainingEffectText, type RunningDynamics } from './activity-metrics.js';
 import { bodyComposition } from './body.js';
 import { calendarEvent } from './calendar.js';
 import { deviceSettings } from './devices.js';
 import { energyBalance } from './energy.js';
-import { compact, hms, iso, km, round, speedOrPace } from './format.js';
+import { compact, hms, isFootSport, iso, km, round, speedOrPace } from './format.js';
 import { healthTable, tablesFor, type HealthMetric } from './health.js';
 import { decodeCursor, encodeCursor, pageBySize } from './paging.js';
 import { sleepNight, sleepRange } from './sleep.js';
@@ -35,6 +36,7 @@ export { InputError } from 'garmin-mcp-config';
 /** Every response carries where the data came from; `local` is computed here without Garmin or the cache. */
 export interface ResponseMeta {
   source: 'cache' | 'live' | 'partial' | 'local';
+  /** When the oldest record in the answer was downloaded from Garmin; newer records may be fresher. */
   fetched_at?: string;
   coverage?: { from: IsoDate; to: IsoDate; complete: boolean; missing_days?: Record<string, number> };
   note?: string;
@@ -77,6 +79,8 @@ export interface GarminServiceOptions {
   budgetMs?: number;
   /** Let `withAutoSync` download data a read reports missing (GARMIN_AUTO_FETCH, on by default). */
   autoSync?: boolean;
+  /** Strip personal data and GPS from `get_activity`'s raw output (GARMIN_REDACT, on by default). */
+  redact?: boolean;
   downloadDir: string;
   logger?: Logger;
   now?: () => number;
@@ -95,18 +99,22 @@ export interface WorkoutInput {
 
 /** Optional sections `get_activity` adds to the overview, by detail level. */
 interface ActivitySections {
-  splits?: {
+  splits?: ({
     lap?: number | null;
     distance_km?: number;
     duration?: string;
+    moving_time?: string;
     avg_pace?: string;
+    avg_gap_pace?: string;
     avg_speed_kmh?: number;
     avg_hr_bpm?: number;
     max_hr_bpm?: number;
     avg_power_w?: number;
-    cadence_spm?: number;
+    normalized_power_w?: number;
     elevation_gain_m?: number;
-  }[];
+    elevation_loss_m?: number;
+    avg_respiration_brpm?: number;
+  } & RunningDynamics)[];
   hr_zones?: ZoneTime[];
   power_zones?: ZoneTime[];
   weather?: ActivityWeather;
@@ -165,6 +173,7 @@ export class GarminService {
   readonly #downloadDir: string;
   readonly #now: () => number;
   readonly #autoSync: boolean;
+  readonly #redact: boolean;
   readonly #log: Logger;
 
   constructor(opts: GarminServiceOptions) {
@@ -177,6 +186,7 @@ export class GarminService {
     this.#downloadDir = opts.downloadDir;
     this.#now = opts.now ?? Date.now;
     this.#autoSync = opts.autoSync ?? false;
+    this.#redact = opts.redact ?? true;
     this.#log = opts.logger ?? silentLogger;
   }
 
@@ -468,14 +478,23 @@ export class GarminService {
     const row = await this.#activityRow(id);
     const summary = await this.#detail(id, 'summary', () => this.client.getActivity(id));
     const s = summary.raw.summaryDTO ?? {};
+    const brief = row ? activityBrief(row) : { id, name: summary.raw.activityName ?? undefined };
+    const footSport = isFootSport(row?.type ?? summary.raw.activityTypeDTO?.typeKey);
     const base = compact({
-      ...(row ? activityBrief(row) : { id, name: summary.raw.activityName ?? undefined }),
+      ...brief,
       description: summary.raw.description ?? undefined,
       location: summary.raw.locationName ?? undefined,
       moving_time: hms(s.movingDuration),
       elevation_loss_m: round(s.elevationLoss, 0),
+      avg_gap_pace: footSport ? gapPace(s) : undefined,
       max_power_w: round(s.maxPower, 0),
       normalized_power_w: round(s.normalizedPower, 0),
+      training_effect: { ...('training_effect' in brief ? brief.training_effect : {}), ...trainingEffectText(s) },
+      running_dynamics: runningDynamics(s),
+      respiration: respiration(s),
+      stamina: stamina(s),
+      motion: motionTime(summary.raw.splitSummaries),
+      ...hrSource(summary.raw.metadataDTO, (s.averageHR ?? row?.avg_hr ?? 0) > 0),
       rpe: typeof s.directWorkoutRpe === 'number' ? s.directWorkoutRpe / 10 : undefined,
       feel: typeof s.directWorkoutFeel === 'number' ? s.directWorkoutFeel : undefined,
       gear_uuid: row?.gear_uuid ?? undefined,
@@ -493,12 +512,18 @@ export class GarminService {
           lap: l.lapIndex,
           distance_km: km(l.distance),
           duration: hms(l.duration),
+          moving_time: hms(l.movingDuration),
           ...speedOrPace(row?.type, l.distance, l.duration),
+          avg_gap_pace: footSport ? gapPace(l) : undefined,
           avg_hr_bpm: round(l.averageHR, 0),
           max_hr_bpm: round(l.maxHR, 0),
           avg_power_w: round(l.averagePower, 0),
+          normalized_power_w: round(l.normalizedPower, 0),
           cadence_spm: round(l.averageRunCadence, 0),
+          ...runningDynamics(l),
+          avg_respiration_brpm: respiration(l)?.avg_brpm,
           elevation_gain_m: round(l.elevationGain, 0),
+          elevation_loss_m: round(l.elevationLoss, 0),
         }),
       );
     }
@@ -535,13 +560,14 @@ export class GarminService {
       sources.push({ source: details.live ? 'live' : 'cache' });
       times.push(details.fetched_at);
       const keys = (details.raw?.metricDescriptors ?? []).toSorted((a, b) => (a.metricsIndex ?? 0) - (b.metricsIndex ?? 0)).map((d) => d.key ?? `m${d.metricsIndex}`);
-      const samples = (details.raw?.activityDetailMetrics ?? []).map((m) => Object.fromEntries(keys.map((k, i) => [k, m.metrics[i] ?? null])));
+      const kept = keys.flatMap((k, i) => (this.#redact && GPS_STREAM_METRICS.has(k) ? [] : [[k, i] as const]));
+      const samples = (details.raw?.activityDetailMetrics ?? []).map((m) => Object.fromEntries(kept.map(([k, i]) => [k, m.metrics[i] ?? null])));
       const offset = decodeCursor(cursor);
       const { page, next } = pageBySize(samples, offset, 40 * 1024);
       extra = {
         ...extra,
-        raw_summary: offset === 0 ? summary.raw : undefined,
-        stream: { metrics: keys, total_samples: samples.length, offset, samples: page },
+        raw_summary: offset === 0 ? (this.#redact ? redactActivityRaw(summary.raw) : summary.raw) : undefined,
+        stream: { metrics: kept.map(([k]) => k), total_samples: samples.length, offset, samples: page },
         next_cursor: next === undefined ? undefined : encodeCursor(next),
       };
     }

@@ -196,6 +196,113 @@ describe('GarminService', () => {
     expect(full2.meta.note).toBeUndefined();
   });
 
+  it('adds running dynamics, respiration, stamina, run/walk time and the heart rate source to a run and its laps', async () => {
+    const { service, store, count } = setup({ activities: [summary(1, '2026-10-07')] });
+    await service.getActivities({});
+    store.putActivityDetail(
+      1,
+      'summary',
+      {
+        activityId: 1,
+        activityName: 'Run',
+        activityTypeDTO: { typeKey: 'running' },
+        summaryDTO: {
+          averageHR: 150,
+          averageRunCadence: 165.2,
+          groundContactTime: 276.3,
+          groundContactBalanceLeft: 49.48,
+          verticalOscillation: 8.6,
+          verticalRatio: 8.87,
+          strideLength: 96.91,
+          avgGradeAdjustedSpeed: 3.2,
+          avgRespirationRate: 34.75,
+          beginPotentialStamina: 100,
+          endPotentialStamina: 87,
+          minAvailableStamina: 87,
+          trainingEffectLabel: 'AEROBIC_BASE',
+          aerobicTrainingEffectMessage: 'IMPROVING_AEROBIC_BASE_8',
+        },
+        splitSummaries: [
+          { splitType: 'RWD_RUN', duration: 2940 },
+          { splitType: 'RWD_WALK', duration: 60 },
+        ],
+        metadataDTO: { sensors: [{ serialNumber: 1, sourceType: 'BLUETOOTH_LOW_ENERGY', bleDeviceType: 'HEART_RATE', batteryLevel: 45 }] },
+      },
+      NOW,
+    );
+    store.putActivityDetail(
+      1,
+      'splits',
+      {
+        lapDTOs: [
+          { lapIndex: 1, distance: 1000, duration: 300, movingDuration: 298, averageHR: 140, averageRunCadence: 166, groundContactTime: 272.3, verticalOscillation: 8.62, verticalRatio: 8.76, strideLength: 98.41, avgGradeAdjustedSpeed: 3.4, avgRespirationRate: 30.1, elevationLoss: 1, normalizedPower: 327.4 },
+        ],
+      },
+      NOW,
+    );
+    const s = await service.getActivity(1, 'summary');
+    expect(s.data).toMatchObject({
+      avg_gap_pace: '5:13 /km',
+      training_effect: { label: 'aerobic_base', aerobic_message: 'improving_aerobic_base' },
+      running_dynamics: { cadence_spm: 165, gct_ms: 276, gct_balance_left_pct: 49.5, vertical_oscillation_cm: 8.6, vertical_ratio_pct: 8.9, stride_m: 0.97 },
+      respiration: { avg_brpm: 34.8 },
+      stamina: { start_pct: 100, end_pct: 87, min_available_pct: 87 },
+      motion: { run: '49:00', run_pct: 98, walk: '1:00', walk_pct: 2 },
+      hr_source: 'external_sensor',
+      hr_sensor: { connection: 'ble', battery_pct: 45 },
+    });
+    const laps = await service.getActivity(1, 'splits');
+    expect(laps.data.splits).toEqual([
+      {
+        lap: 1,
+        distance_km: 1,
+        duration: '5:00',
+        moving_time: '4:58',
+        avg_pace: '5:00 /km',
+        avg_gap_pace: '4:54 /km',
+        avg_hr_bpm: 140,
+        normalized_power_w: 327,
+        cadence_spm: 166,
+        gct_ms: 272,
+        vertical_oscillation_cm: 8.6,
+        vertical_ratio_pct: 8.8,
+        stride_m: 0.98,
+        avg_respiration_brpm: 30.1,
+        elevation_loss_m: 1,
+      },
+    ]);
+    expect(count('getActivity')).toBe(0);
+    expect(count('getActivitySplits')).toBe(0);
+  });
+
+  it('redacts personal data and GPS from the raw output unless redaction is off', async () => {
+    const full = async (redact?: boolean) => {
+      const { service, store } = setup({ activities: [summary(1, '2026-10-07')], redact });
+      store.putActivityDetail(1, 'summary', { activityId: 1, userProfileId: 7, summaryDTO: { startLatitude: 51.1 }, metadataDTO: { userInfoDto: { fullname: 'Jan Kowalski' } } }, NOW);
+      store.putActivityDetail(
+        1,
+        'details',
+        {
+          metricDescriptors: [
+            { metricsIndex: 0, key: 'directHeartRate' },
+            { metricsIndex: 1, key: 'directLatitude' },
+            { metricsIndex: 2, key: 'directLongitude' },
+          ],
+          activityDetailMetrics: [{ metrics: [120, 51.1, 17.1] }],
+        },
+        NOW,
+      );
+      const { data } = await service.getActivity(1, 'full');
+      return { raw: data.raw_summary, stream: data.stream as { metrics: string[]; samples: unknown[] } };
+    };
+    const redacted = await full();
+    expect(JSON.stringify(redacted.raw)).not.toMatch(/Kowalski|userProfileId|Latitude/);
+    expect(redacted.stream).toMatchObject({ metrics: ['directHeartRate'], samples: [{ directHeartRate: 120 }] });
+    const raw = await full(false);
+    expect(raw.raw).toMatchObject({ userProfileId: 7, summaryDTO: { startLatitude: 51.1 } });
+    expect(raw.stream.samples).toEqual([{ directHeartRate: 120, directLatitude: 51.1, directLongitude: 17.1 }]);
+  });
+
   it('converts weather wind from mph for statute_us accounts', async () => {
     const { service, store } = setup({ activities: [summary(1, '2026-10-07')] });
     store.setProfile({ social: {}, settings: { userData: { measurementSystem: 'statute_us' } }, heartRateZones: [], powerZones: [] }, NOW);

@@ -33,11 +33,16 @@ export function hours(seconds: number | null | undefined, digits = 2): number | 
 
 const PACE_SPORTS = /run|walk|hik/i;
 
+/** Running, walking and hiking types, which get pace instead of speed. */
+export function isFootSport(type: string | null | undefined): boolean {
+  return PACE_SPORTS.test(type ?? '');
+}
+
 /** Pace for foot sports, speed for everything else. */
 export function speedOrPace(type: string | null | undefined, distanceM: number | null | undefined, durationS: number | null | undefined) {
   if (!distanceM || !durationS) return {};
   const mps = distanceM / durationS;
-  return PACE_SPORTS.test(type ?? '') ? { avg_pace: pacePerKm(mps) } : { avg_speed_kmh: round(mps * 3.6, 1) };
+  return isFootSport(type) ? { avg_pace: pacePerKm(mps) } : { avg_speed_kmh: round(mps * 3.6, 1) };
 }
 
 export function iso(ms: number | null | undefined): string | undefined {

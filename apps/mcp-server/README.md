@@ -159,6 +159,7 @@ Precedence: CLI flag > environment > `<data dir>/config.json` > default. `~`, `$
 | `GARMIN_ENABLED_TOOLS`, `GARMIN_DISABLED_TOOLS` | | comma-separated allow/deny lists |
 | `GARMIN_ENABLE_DESTRUCTIVE` | `false` | delete tools and workout overwrite |
 | `GARMIN_AUTO_FETCH` | `true` | read tools download missing data themselves; `false`: only explicit syncs |
+| `GARMIN_REDACT` | `true` | `get_activity` `full` leaves out name, profile/photo URLs, device and sensor serials and GPS; `false`: raw as sent |
 | `GARMIN_FIT_DOWNLOAD_DIR` | `$GARMIN_DATA_DIR/downloads` | |
 | `GARMIN_MCP_TRANSPORT`, `GARMIN_MCP_PORT`, `GARMIN_MCP_HOST`, `GARMIN_MCP_HTTP_TOKEN` | `stdio`, `8000`, `127.0.0.1`, | |
 | `GARMIN_HTTP_ALLOWED_HOSTS` | | comma-separated hostnames (no port, IPv6 in brackets) accepted in `Host`/`Origin` on top of `localhost`, `127.0.0.1`, `[::1]`; others get 403 |

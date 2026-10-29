@@ -54,6 +54,7 @@ const session = z.looseObject({
   hr_method: str,
   ef: num,
   ef_gap: num,
+  ef_power: num,
   gap_mps: num,
   z1_s: num,
   z2_s: num,
@@ -64,6 +65,8 @@ const session = z.looseObject({
   lt1_used: num,
   rhr_used: num,
   decoupling_pct: num,
+  decoupling_basis: str,
+  decoupling_pw_pct: num,
   source: str,
 });
 
@@ -115,7 +118,7 @@ export const loadOutput = envelope({
   by_sport: obj({ run: sportLoad, bike: sportLoad, swim: sportLoad, strength: sportLoad, nordic: sportLoad, row: sportLoad, hike: sportLoad, other: sportLoad }),
   series: list(z.looseObject(loadDay)),
   activities: list(session),
-  efficiency: list(z.looseObject({ period: str, sport: str, n: num, ef_avg: num, ef_max: num, ef_gap_avg: num, decoupling_mean_pct: num, decoupling_n: num })),
+  efficiency: list(z.looseObject({ period: str, sport: str, n: num, ef_avg: num, ef_max: num, ef_gap_avg: num, ef_power_avg: num, decoupling_mean_pct: num, decoupling_n: num })),
   note: str,
 });
 
