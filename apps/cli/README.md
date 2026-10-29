@@ -72,7 +72,7 @@ Measured on a real account after a 90-day sync (433 requests in about an hour): 
 | Tool | Purpose |
 | --- | --- |
 | `get_activities` | dense activity list with cursor paging; `type` takes a Garmin type key (all keys in `garmin://activity-types`) |
-| `get_activity` | one activity: `summary`, `splits`, `hr_zones`, `power_zones`, `weather`, `exercise_sets` (strength sets), or `full` (all sections plus the raw stream, 50 KB pages) |
+| `get_activity` | one activity: `summary` (with running dynamics, breathing, stamina, HR source), `splits` (laps with dynamics and workout steps), `hr_zones`, `power_zones`, `weather`, `exercise_sets` (strength sets), `stream_summary` (stream per km, 5 min, half or quarter), or `full` (all sections plus the raw stream, 50 KB pages, optional `metrics` and `downsample_s`) |
 | `update_activity` | name, type, description, RPE, feel |
 | `download_activity_file` | FIT (unzipped), GPX, TCX, KML, CSV to the download directory (`GARMIN_FIT_DOWNLOAD_DIR`) |
 | `query_health` | steps (with daily distance), resting HR (with daily min/max HR), HRV (with status and baseline), sleep, stress, body battery, respiration, SpO2, intensity minutes, calories (burned, and eaten when a food log is linked), floors; per day or week, with 7/28-day trends |

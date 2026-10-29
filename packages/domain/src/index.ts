@@ -13,6 +13,7 @@ export * from './runtime.js';
 export * from './service.js';
 export * from './sleep.js';
 export * from './stats.js';
+export * from './stream.js';
 export * from './training.js';
 export * from './workouts/index.js';
 export * from './zip.js';
