@@ -88,6 +88,8 @@ export interface Session {
   hr_method: HrMethod;
   ef?: number;
   ef_gap?: number;
+  /** Running with power: normalized (else average) power per beat, W/bpm (3 places); cycling has it as `ef`. */
+  ef_power?: number;
   gap_mps?: number;
   z1_s?: number;
   z2_s?: number;
@@ -100,8 +102,14 @@ export interface Session {
   rhr_used: number;
   /** Aerobic decoupling (Pa:Hr for running, Pw:Hr from power), % (1 place): drop of EF from the first to the second half; see {@link decoupling}. */
   decoupling_pct?: number;
+  /** Output `decoupling_pct` was computed from: `pa_hr` (grade adjusted speed) or `pw_hr` (power); a run without GAP in its laps falls back to power. */
+  decoupling_basis?: DecouplingBasis;
+  /** Running with power in its laps: Pw:Hr decoupling next to the Pa:Hr of `decoupling_pct`, % (1 place). */
+  decoupling_pw_pct?: number;
   source: 'db' | 'import';
 }
+
+export type DecouplingBasis = 'pa_hr' | 'pw_hr';
 
 type Obj = Record<string, unknown>;
 
@@ -361,6 +369,22 @@ export const DECOUPLING_MIN_LAPS = 4;
 /** Output of the EF of each sport group with decoupling: grade adjusted speed for running, average power for the others. */
 export const DECOUPLING_METRIC: Partial<Record<SportGroup, 'gap_mps' | 'avg_power_w'>> = { run: 'gap_mps', bike: 'avg_power_w', nordic: 'avg_power_w', row: 'avg_power_w' };
 
+const BASIS: Record<'gap_mps' | 'avg_power_w', DecouplingBasis> = { gap_mps: 'pa_hr', avg_power_w: 'pw_hr' };
+
+/**
+ * Decoupling of an eligible session: with the metric of its sport, and for running also from
+ * power. A run whose laps have no grade adjusted speed reports its Pw:Hr as `decoupling_pct`
+ * (basis `pw_hr`); one with both reports Pa:Hr there and Pw:Hr as `decoupling_pw_pct`.
+ */
+function sessionDecoupling(sport: SportGroup, laps: readonly Lap[]): Pick<Session, 'decoupling_pct' | 'decoupling_basis' | 'decoupling_pw_pct'> {
+  const metric = DECOUPLING_METRIC[sport];
+  if (!metric) return {};
+  const main = round(decoupling(laps, metric), 1);
+  const power = sport === 'run' ? round(decoupling(laps, 'avg_power_w'), 1) : undefined;
+  if (main !== undefined) return { decoupling_pct: main, decoupling_basis: BASIS[metric], decoupling_pw_pct: power };
+  return power === undefined ? {} : { decoupling_pct: power, decoupling_basis: 'pw_hr' };
+}
+
 /** Whether a session qualifies for decoupling, laps aside: a sport with a metric, at least 60 min, average HR below LTHR. */
 export function decouplingEligible(s: Pick<Session, 'sport' | 'duration_s' | 'avg_hr' | 'lthr_used'>): boolean {
   return DECOUPLING_METRIC[s.sport] !== undefined && (s.duration_s ?? 0) >= DECOUPLING_MIN_DURATION_S && s.avg_hr !== undefined && s.avg_hr < s.lthr_used;
@@ -446,7 +470,7 @@ export const NO_CSS_NOTE =
  * in zones with the profile's zone bounds, else from the average HR; `hr_method`), `rpe`
  * (session RPE, any sport); the first positive one gives `tss`, `if` and `load_source`. LT1 notes are not reported: `get_load`
  * takes them from `thresholds_used`. `decoupling_pct` from the laps ({@link decoupling}) for
- * {@link decouplingEligible} sessions. Rounding: IF, EF, EF-GAP, GAP 3 places; TSS, hrTSS,
+ * {@link decouplingEligible} sessions ({@link sessionDecoupling}); `ef_power` for runs with power. Rounding: IF, EF, EF-GAP, EF-power, GAP 3 places; TSS, hrTSS,
  * Garmin load, TE, RHR 1 place; durations, distances, HR, power, cadence, calories whole numbers.
  */
 export function sessionMetrics(input: SessionInput, ctx: SessionContext, onNote?: NoteSink): Session {
@@ -474,8 +498,8 @@ export function sessionMetrics(input: SessionInput, ctx: SessionContext, onNote?
     rpeCandidate(input.rpe, input.duration_s, ctx.rpe_calibration),
   ]);
   const z = input.zones_s;
-  const decMetric = DECOUPLING_METRIC[sport];
-  const decOk = input.laps && decMetric && decouplingEligible({ sport, duration_s: input.duration_s, avg_hr: input.avg_hr, lthr_used: lthr.value });
+  const decOk = input.laps !== undefined && decouplingEligible({ sport, duration_s: input.duration_s, avg_hr: input.avg_hr, lthr_used: lthr.value });
+  const power = input.np_w ?? input.avg_power_w;
   return {
     id: input.id,
     date: input.date,
@@ -508,6 +532,7 @@ export function sessionMetrics(input: SessionInput, ctx: SessionContext, onNote?
     hr_method: hrZones ? 'zones' : 'avg',
     ef: round(efficiencyFactor(sport, input), 3),
     ef_gap: round(efficiencyFactorGap(sport, input.avg_hr, sport === 'hike' ? hikeGap(input) : input.gap_mps), 3),
+    ef_power: sport === 'run' && power !== undefined && power > 0 && (input.avg_hr ?? 0) > 0 ? round(power / (input.avg_hr ?? 1), 3) : undefined,
     gap_mps: round(input.gap_mps, 3),
     z1_s: round(z?.[0], 0),
     z2_s: round(z?.[1], 0),
@@ -517,7 +542,7 @@ export function sessionMetrics(input: SessionInput, ctx: SessionContext, onNote?
     lthr_used: lthr.value,
     lt1_used: lt1.value,
     rhr_used: round(rhr.value, 1) ?? rhr.value,
-    decoupling_pct: decOk ? round(decoupling(input.laps ?? [], decMetric), 1) : undefined,
+    ...(decOk ? sessionDecoupling(sport, input.laps ?? []) : {}),
     source: input.source,
   };
 }

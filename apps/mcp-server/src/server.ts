@@ -15,7 +15,7 @@ export const SERVER_VERSION: string = (JSON.parse(readFileSync(new URL('../packa
 const INSTRUCTIONS = `Garmin Connect data for the signed-in user, served from a local cache. Read tools download data that is not in the cache yet by themselves (within the daily Garmin request limit), so just call them and answer; there is no need to ask about or describe syncing. If auto fetch is turned off (GARMIN_AUTO_FETCH=false), missing data comes back as meta.sync_hint; then ask the user before calling garmin_sync with it.
 - Dates are YYYY-MM-DD in the user's local time zone; "today" is resolved by the server.
 - Prefer one coarse call (query_health with several metrics, get_period_summary) over many small ones.
-- Every result has meta.source: "cache", "live", "partial" or "local" (computed by the server without Garmin, e.g. create_workout with dry_run: true). On "partial", mention briefly that some days are still downloading (meta.note says when to ask again).
+- Every result has meta.source: "cache", "live", "partial" or "local" (computed by the server without Garmin, e.g. create_workout with dry_run: true). On "partial", mention briefly that some days are still downloading (meta.note says when to ask again). meta.fetched_at is when the oldest record in the answer was downloaded; newer ones may be fresher.
 - Errors come back as {"error":{"code","message","hint"}}; relay the hint to the user (e.g. to run \`garmin login\`).
 - Every result is also in structuredContent (the same JSON, typed by the tool's outputSchema), and a workout is saved only after you showed the user its steps from create_workout with dry_run: true and they agreed.`;
 

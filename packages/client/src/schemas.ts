@@ -168,6 +168,7 @@ export const activitySplitsSchema = z.looseObject({
         averageHR: num,
         maxHR: num,
         averagePower: num,
+        normalizedPower: num,
         elevationGain: num,
         elevationLoss: num,
         averageRunCadence: num,

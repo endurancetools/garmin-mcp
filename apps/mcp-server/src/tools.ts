@@ -154,7 +154,8 @@ export const TOOLS: ToolDef[] = [
     name: 'get_activity',
     title: 'Get one activity',
     description:
-      'Details of one activity by id. detail="summary" (default) for the overview incl. description, RPE and feel; "splits" adds laps; "hr_zones" adds time in HR zones; ' +
+      'Details of one activity by id. detail="summary" (default) for the overview incl. description, RPE, feel, GAP, running dynamics (cadence, GCT, balance, VO, VR, stride), breathing rate, stamina, ' +
+      'Training Effect label, run/walk/stand time and HR source (strap or watch); "splits" adds laps with the same dynamics; "hr_zones" adds time in HR zones; ' +
       '"power_zones" adds time in power zones (power meter); "weather" adds temperature, wind and conditions during the activity; "exercise_sets" adds strength sets ' +
       '(exercise, reps, weight, rest); "full" adds all of these plus the raw second-by-second stream (HR, pace, GPS...) paginated with next_cursor, 50 KB per page - ' +
       'only when the user needs raw samples.',
@@ -378,8 +379,8 @@ export const TOOLS: ToolDef[] = [
       "Own transparent load model (TSS per activity from power, else pace, else heart rate, else session RPE, with date-dependent thresholds), not Garmin's EPOC load; for Garmin's status and CTL/ATL/TSB from Garmin's load (`garmin_load_model`) use get_training_status. " +
       'Returns CTL/ATL/TSB, ACWR, monotony and strain on `to` (`latest`), warning `flags`, ISO weeks per sport (sessions, hours, km, TSS, hrTSS, Garmin load, hours in Z1-2/Z3/Z4-5), ' +
       'the 3-zone intensity split against LT1/LTHR of the last 28 days (Z1/Z2/Z3 minutes and %; answers time below LT1, % in Z1, polarisation) and the thresholds used. ' +
-      'include_series adds the daily curve, include_activities TSS/IF/load_source/EF per activity, include_efficiency the monthly EF trend, ' +
-      'both with aerobic decoupling (Pa:Hr/Pw:Hr, % EF drop from first to second half) of sessions of 60+ min below LTHR with downloaded laps, ' +
+      'include_series adds the daily curve, include_activities TSS/IF/load_source/EF (runs with power also ef_power) per activity, include_efficiency the monthly EF trend, ' +
+      'both with aerobic decoupling (% EF drop from first to second half, `decoupling_basis` pa_hr or pw_hr; runs with power also decoupling_pw_pct) of sessions of 60+ min below LTHR with downloaded laps, ' +
       'include_by_sport CTL/ATL/TSB/ACWR per sport group (`by_sport`, plus run_ctl… columns in the series) next to the total, which stays the default. ' +
       'Example: {"from":"2026-09-01","to":"2026-09-30","include_activities":true}.',
     input: {

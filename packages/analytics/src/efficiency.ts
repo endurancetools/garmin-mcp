@@ -30,12 +30,14 @@ export interface EfficiencyRow {
   ef_max?: number;
   /** Running and hiking, over the sessions that have a grade adjusted speed. */
   ef_gap_avg?: number;
+  /** Running, over the sessions with power: power per beat (W/bpm). */
+  ef_power_avg?: number;
   /** Mean `decoupling_pct` of the sessions of the period and sport that have it (1 place), and their count. */
   decoupling_mean_pct?: number;
   decoupling_n?: number;
 }
 
-type EfficiencySession = Pick<Session, 'date' | 'week' | 'sport' | 'duration_s' | 'avg_hr' | 'lt1_used' | 'ef' | 'ef_gap' | 'decoupling_pct'>;
+type EfficiencySession = Pick<Session, 'date' | 'week' | 'sport' | 'duration_s' | 'avg_hr' | 'lt1_used' | 'ef' | 'ef_gap' | 'ef_power' | 'decoupling_pct'>;
 
 /**
  * EF per month or ISO week for running (speed per beat), cycling (normalized power per beat)
@@ -49,11 +51,11 @@ export function efficiencyTrend(
   period: EfficiencyPeriod = 'month',
   sports: readonly EfficiencySport[] = EF_SPORTS,
 ): EfficiencyRow[] {
-  const acc = new Map<string, { period: string; sport: SportGroup; ef: number[]; gap: number[]; dec: number[] }>();
+  const acc = new Map<string, { period: string; sport: SportGroup; ef: number[]; gap: number[]; pw: number[]; dec: number[] }>();
   const group = (s: EfficiencySession) => {
     const key = period === 'month' ? s.date.slice(0, 7) : s.week;
     const id = `${key}|${s.sport}`;
-    const g = acc.get(id) ?? { period: key, sport: s.sport, ef: [], gap: [], dec: [] };
+    const g = acc.get(id) ?? { period: key, sport: s.sport, ef: [], gap: [], pw: [], dec: [] };
     acc.set(id, g);
     return g;
   };
@@ -65,6 +67,7 @@ export function efficiencyTrend(
     const g = group(s);
     g.ef.push(s.ef);
     if (s.ef_gap !== undefined) g.gap.push(s.ef_gap);
+    if (s.ef_power !== undefined) g.pw.push(s.ef_power);
   }
   const avg = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
   return [...acc.values()]
@@ -75,6 +78,7 @@ export function efficiencyTrend(
       ef_avg: g.ef.length ? round(avg(g.ef), 3) : undefined,
       ef_max: g.ef.length ? round(Math.max(...g.ef), 3) : undefined,
       ef_gap_avg: g.gap.length ? round(avg(g.gap), 3) : undefined,
+      ef_power_avg: g.pw.length ? round(avg(g.pw), 3) : undefined,
       decoupling_mean_pct: g.dec.length ? round(avg(g.dec), 1) : undefined,
       decoupling_n: g.dec.length || undefined,
     }))

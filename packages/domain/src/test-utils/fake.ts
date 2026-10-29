@@ -46,7 +46,7 @@ export function summary(id: number, day: string, extra: Partial<ActivitySummary>
   };
 }
 
-export function setup(opts: { activities?: ActivitySummary[]; gone?: ReadonlySet<number>; zip?: Uint8Array; budgetMs?: number; delayMs?: number; autoFetch?: boolean; autoSync?: boolean } = {}) {
+export function setup(opts: { activities?: ActivitySummary[]; gone?: ReadonlySet<number>; zip?: Uint8Array; budgetMs?: number; delayMs?: number; autoFetch?: boolean; autoSync?: boolean; redact?: boolean } = {}) {
   const calls: { method: string; args: unknown[] }[] = [];
   const activities = opts.activities ?? [];
   const names = new Map<number, string>();
@@ -242,6 +242,7 @@ export function setup(opts: { activities?: ActivitySummary[]; gone?: ReadonlySet
     downloadDir,
     budgetMs: opts.budgetMs ?? 2000,
     autoSync: opts.autoSync ?? false,
+    redact: opts.redact,
     now: () => NOW,
   });
   const count = (method: string) => calls.filter((c) => c.method === method).length;

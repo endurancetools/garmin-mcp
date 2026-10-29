@@ -11,6 +11,7 @@ Everything works without configuration. Settings are environment variables passe
 | --- | --- | --- |
 | `GARMIN_AUTO_FETCH` | `true` | the server downloads missing days by itself; `false`: it reports what is missing and the assistant asks you first |
 | `GARMIN_ENABLE_DESTRUCTIVE` | `false` | `true` adds deleting activities, workouts and weigh-ins, and overwriting saved workouts |
+| `GARMIN_REDACT` | `true` | the raw activity output (`get_activity` with `detail: "full"`) leaves out your name, profile and photo links, device and sensor serial numbers and GPS positions; `false` returns Garmin's data as sent |
 | `GARMIN_DATA_DIR` | `~/.garmin-mcp` | where tokens, the database and `config.json` live |
 | `GARMIN_FIT_DOWNLOAD_DIR` | `~/.garmin-mcp/downloads` | where activity files are saved |
 | `GARMIN_TIMEZONE` | your system's | IANA zone used for "today" and week boundaries |

@@ -80,6 +80,7 @@ export function createRuntime(config: GarminConfig, options: RuntimeOptions = {}
           timeZone: config.timezone,
           budgetMs: options.budgetMs,
           autoSync: config.autoFetch,
+          redact: config.redact,
           downloadDir: config.fitDownloadDir ?? path.join(config.dataDir, 'downloads'),
           logger: logger.child({ layer: 'domain' }),
         });
