@@ -4,7 +4,7 @@
 [![CI](https://github.com/endurancetools/garmin-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/endurancetools/garmin-mcp/actions/workflows/ci.yml)
 [![MCP registry](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fregistry.modelcontextprotocol.io%2Fv0.1%2Fservers%2Fio.github.endurancetools%252Fgarmin-mcp%2Fversions&query=%24.servers%5B-1%3A%5D.server.version&label=MCP%20registry&color=blue)](https://registry.modelcontextprotocol.io/v0.1/servers/io.github.endurancetools%2Fgarmin-mcp/versions)
 
-**Ask your AI assistant how your training is really going.** Garmin MCP is an unofficial, open-source MCP server for your Garmin Connect data: training load, form and morning readiness computed on your machine with methods from published sports-science literature, with citations; 20 tools designed around the questions athletes ask, not a mirror of Garmin's API; a local SQLite cache that downloads only what a question needs; and structured workouts that go from the answer to your Garmin calendar and watch. It also reads activities, health, sleep, training status, body composition, gear, devices and the workout library.
+**Ask your AI assistant how your training is really going.** Garmin MCP is an unofficial, open-source MCP server for your Garmin Connect data: training load, form and morning readiness computed on your machine with methods from published sports-science literature, with citations; 21 tools designed around the questions athletes ask, not a mirror of Garmin's API; a local SQLite cache that downloads only what a question needs; and structured workouts that go from the answer to your Garmin calendar and watch. It also reads activities, health, sleep, training status, body composition, gear, devices and the workout library.
 
 Works with Claude Code, Claude Desktop, Codex, Antigravity CLI, opencode and any other MCP client (stdio or streamable HTTP).
 
@@ -15,7 +15,7 @@ Unofficial. Garmin and Garmin Connect are trademarks of Garmin Ltd. or its subsi
 ## Why Garmin MCP
 
 - **Answers you can check.** Training load (TSS from power, pace, heart rate or session RPE), fitness, fatigue and form (CTL/ATL/TSB), ACWR, intensity distribution and morning readiness from your own HRV, resting heart rate, sleep and load against your own baselines, with methods from published sports-science literature, with citations. Every answer returns the values and rules it used, and you can change them. [Methods and evidence](https://endurancetools.github.io/garmin-mcp/methods/)
-- **Designed tools, not an API mirror.** 20 tools built around questions like "review my week" or "can I train hard today?", so one call answers one question. The whole tool list costs the model about 7,800 tokens of context, and the first tool call was the right one in 42 of 42 tool-selection scenarios. [Designed tools](https://endurancetools.github.io/garmin-mcp/how-it-works/#designed-tools)
+- **Designed tools, not an API mirror.** 21 tools built around questions like "review my week" or "can I train hard today?", so one call answers one question. The whole tool list costs the model about 8,600 tokens of context, and the first tool call was the right one in 42 of 42 tool-selection scenarios. [Designed tools](https://endurancetools.github.io/garmin-mcp/how-it-works/#designed-tools)
 - **Local and private.** You sign in on Garmin's own page, so your password never passes through the tool. What it downloads stays in a local database on your computer, answers come back from it in milliseconds, downloads are paced to stay gentle with Garmin, and tool answers go only to the AI client you connect. [What is stored where](https://endurancetools.github.io/garmin-mcp/how-it-works/#what-is-stored-where)
 - **From answer to watch.** Ask for "6×400 m with 90 s rest on Thursday": you see the steps and estimated duration first, nothing is saved until you agree, and then it goes to your Garmin calendar and syncs to the watch. [Workouts and calendar](https://endurancetools.github.io/garmin-mcp/asking/#workouts-and-calendar)
 
@@ -69,7 +69,7 @@ Measured on a real account after a 90-day sync (433 requests in about an hour): 
 
 | Tool | Purpose |
 | --- | --- |
-| `get_activities` | dense activity list with cursor paging; `type` takes a Garmin type key (all keys in `garmin://activity-types`) |
+| `get_activities` | dense activity list with cursor paging (GAP, cadence, NP, Training Effect label, temperature when downloaded); `type` takes a Garmin type key (all keys in `garmin://activity-types`), plus `name`, `min_duration_min`/`max_duration_min` and a `pace` range |
 | `get_activity` | one activity: `summary` (with running dynamics, breathing, stamina, HR source), `splits` (laps with dynamics and workout steps), `hr_zones`, `power_zones`, `weather`, `exercise_sets` (strength sets), `stream_summary` (stream per km, 5 min, half or quarter), or `full` (all sections plus the raw stream, 50 KB pages, optional `metrics` and `downsample_s`) |
 | `update_activity` | name, type, description, RPE, feel |
 | `download_activity_file` | FIT (unzipped), GPX, TCX, KML, CSV to the download directory (`GARMIN_FIT_DOWNLOAD_DIR`) |
@@ -82,7 +82,8 @@ Measured on a real account after a 90-day sync (433 requests in about an hour): 
 | `create_workout`, `schedule_workouts` | workouts from presets (run intervals, walk/run, easy Z2, strength circuit) or a typed definition (nestable repeats, HR/pace/power targets); `create_workout` with `dry_run: true` shows the steps and estimated duration without saving; `schedule_workouts` puts workouts on the calendar and takes them off again |
 | `get_gear`, `get_devices` | gear with distance, devices with last sync and settings |
 | `garmin_sync` | explicit download of a scope (all/activities/health/training/reference) and date range, with progress notifications |
-| `get_load` | own load model (TSS per activity from power, pace, heart rate or RPE, with the thresholds valid on each date): CTL/ATL/TSB, ACWR 7:28, monotony and strain, flags with overridable thresholds, ISO weeks per sport, 3-zone intensity split; optional daily series, per-activity TSS/IF/load source/EF, monthly EF trend |
+| `get_load` | own load model (TSS per activity from power, pace, heart rate or RPE, with the thresholds valid on each date): CTL/ATL/TSB, ACWR 7:28, monotony and strain, flags with overridable thresholds, ISO weeks per sport, 3-zone intensity split; optional daily series, per-activity TSS/IF/load source/EF and running dynamics, monthly EF trend, monthly running dynamics at a reference pace |
+| `compare_activities` | sessions side by side (`ids`), or the ones similar to an activity (`similar_to`: same type, duration and pace, optionally same route or easy only): pace, GAP, HR, power, EF, decoupling, TSS, dynamics, weather |
 | `get_readiness` | morning GO / MODIFY / REST from HRV, resting HR, sleep hours and load, with Garmin's Training Readiness, Body Battery, stress and sleep score shown, not counted; overridable `rules`, every signal with value, reference and rating |
 | `get_thresholds`, `set_threshold` | threshold history per date (LTHR per sport, LT1, HRmax, FTP, VO2max...; Garmin profile changes recorded automatically), heart rate and power zones per sport from the Garmin profile, and recording a test result, locally only |
 

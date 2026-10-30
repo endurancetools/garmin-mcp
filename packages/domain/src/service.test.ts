@@ -21,6 +21,39 @@ describe('GarminService', () => {
     expect(count('listAllActivities')).toBe(1);
   });
 
+  it('lists activities with cadence, GAP, NP, the Training Effect label and downloaded weather, filtered by duration, pace and name', async () => {
+    const { service, store } = setup({
+      activities: [
+        summary(1, '2026-10-01', { activityName: 'Ślęża loop', averageRunningCadenceInStepsPerMinute: 171.4, avgGradeAdjustedSpeed: 3.4, normPower: 312.6, trainingEffectLabel: 'TEMPO' }),
+        summary(2, '2026-10-02', { duration: 1800, distance: 5000 }),
+        summary(3, '2026-10-03', { activityType: { typeId: 2, typeKey: 'road_biking' }, distance: 40_000, duration: 4800, averageBikingCadenceInRevPerMinute: 88 }),
+      ],
+    });
+    store.putActivityDetail(1, 'weather', { temp: 59, dewPoint: 50 }, NOW);
+    const all = await service.getActivities({ sort: 'asc' });
+    expect(all.data.activities?.[0]).toMatchObject({
+      id: 1,
+      avg_pace: '5:00 /km',
+      avg_gap_pace: '4:54 /km',
+      cadence_spm: 171,
+      normalized_power_w: 313,
+      training_effect: { label: 'tempo' },
+      temp_c: 15,
+      dew_point_c: 10,
+    });
+    expect(all.data.activities?.[2]).toMatchObject({ id: 3, cadence_rpm: 88 });
+    expect(all.data.activities?.[2]?.cadence_spm).toBeUndefined();
+    const ids = async (q: Parameters<typeof service.getActivities>[0]) => (await service.getActivities({ sort: 'asc', ...q })).data.activities?.map((a) => a.id);
+    expect(await ids({ min_duration_min: 45 })).toEqual([1, 3]);
+    expect(await ids({ max_duration_min: 30 })).toEqual([2]);
+    // 5:00 /km and 6:00 /km runs, the ride at 2:00 /km.
+    expect(await ids({ pace: '5:30-4:45' })).toEqual([1]);
+    expect(await ids({ pace: '5:45-6:15' })).toEqual([2]);
+    expect(await ids({ name: 'ślęża' })).toEqual([1]);
+    await expect(service.getActivities({ pace: '5:00' })).rejects.toMatchObject({ code: 'INVALID_INPUT' });
+    await expect(service.getActivities({ pace: '5-6' })).rejects.toMatchObject({ code: 'INVALID_INPUT' });
+  });
+
   it('answers a 90-day health question from the cache after the first fetch', async () => {
     const { service, count } = setup();
     const first = await service.queryHealth(['steps', 'sleep', 'hrv'], '2026-07-11', '2026-10-08', 'week');

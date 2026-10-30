@@ -67,14 +67,14 @@ describe('MCP server', () => {
     expect((await connect(runtime())).getServerVersion()?.version).toBe(pkg.version);
   });
 
-  it('exposes 20 tools, and destructive ones only when enabled', async () => {
+  it('exposes 21 tools, and destructive ones only when enabled', async () => {
     const tools = (await (await connect(runtime())).listTools()).tools.map((t) => t.name);
-    expect(tools).toHaveLength(20);
+    expect(tools).toHaveLength(21);
     expect(tools).not.toContain('preview_workout');
-    expect(tools.slice(-4)).toEqual(['get_load', 'get_readiness', 'get_thresholds', 'set_threshold']);
+    expect(tools.slice(-5)).toEqual(['get_load', 'compare_activities', 'get_readiness', 'get_thresholds', 'set_threshold']);
     expect(tools).not.toContain('delete_activity');
     const all = (await (await connect(runtime({ enableDestructive: true }))).listTools()).tools;
-    expect(all).toHaveLength(23);
+    expect(all).toHaveLength(24);
     const del = all.find((t) => t.name === 'delete_activity');
     expect(del?.annotations?.destructiveHint).toBe(true);
     expect(del?.description?.startsWith('PERMANENTLY deletes')).toBe(true);
@@ -121,11 +121,11 @@ describe('MCP server', () => {
     const all = (await (await connect(runtime({ enableDestructive: true }))).listTools()).tools;
     const create = tools.find((t) => t.name === 'create_workout')?.inputSchema;
     const overwrite = all.find((t) => t.name === 'create_workout')?.inputSchema;
-    expect(context(tools)).toBeLessThanOrEqual(33_601);
+    expect(context(tools)).toBeLessThanOrEqual(35_478);
     expect(size(create)).toBeLessThanOrEqual(11_500);
-    expect(context(all)).toBeLessThanOrEqual(35_183);
-    expect(size(tools)).toBeLessThanOrEqual(76_517);
-    expect(size(all)).toBeLessThanOrEqual(80_240);
+    expect(context(all)).toBeLessThanOrEqual(37_060);
+    expect(size(tools)).toBeLessThanOrEqual(80_656);
+    expect(size(all)).toBeLessThanOrEqual(84_379);
     // Without destructive tools create_workout is a strict object (a stray workout_id fails loudly).
     const { workout_id: _overwrite, ...properties } = overwrite?.properties ?? {};
     expect(create).toEqual({ ...overwrite, properties, additionalProperties: false });
@@ -146,7 +146,7 @@ describe('MCP server', () => {
 
   it('publishes an output schema for every tool: the { data, meta } envelope', async () => {
     const all = (await (await connect(runtime({ enableDestructive: true }))).listTools()).tools;
-    expect(all).toHaveLength(23);
+    expect(all).toHaveLength(24);
     // SDK 2 types `properties` as a plain object, so the fields are looked up through a record.
     const props = (t: (typeof all)[number]) => (t.outputSchema?.properties ?? {}) as Record<string, unknown>;
     const envelope = (t: (typeof all)[number]) => ({ name: t.name, type: t.outputSchema?.type, required: t.outputSchema?.required, meta: props(t)['meta'] });
@@ -399,7 +399,7 @@ describe('HTTP transport', () => {
     await client.connect(transport);
     expect(client.getProtocolEra()).toBe('modern');
     const tools = await client.listTools();
-    expect(tools.tools).toHaveLength(20);
+    expect(tools.tools).toHaveLength(21);
     expect(tools).toMatchObject({ ttlMs: 3_600_000, cacheScope: 'private' });
     const res = await client.callTool({ name: 'get_activities', arguments: { limit: 1 } });
     expect(res.structuredContent).toMatchObject({ data: { activities: [{ id: 1 }] }, meta });
