@@ -112,7 +112,7 @@ function tool<S extends Record<string, z.ZodType>, O extends z.ZodType>(def: Omi
   return def as unknown as ToolDef;
 }
 
-/** The 20 coarse tools, plus opt-in destructive ones. */
+/** The 21 coarse tools, plus opt-in destructive ones. */
 export const TOOLS: ToolDef[] = [
   tool({
     name: 'garmin_sync',

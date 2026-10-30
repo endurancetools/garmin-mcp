@@ -1,14 +1,14 @@
 # Numbers used across the documentation site, as `{{ site.data.facts.<key> }}`.
 # Change a number here, and only after checking its source; every page that uses it follows.
 
-# Default tools (apps/mcp-server/src/tools.ts, "The 20 coarse tools"; DEVELOPMENT.md, "Tool-list budget").
-tools_default: 20
+# Default tools (apps/mcp-server/src/tools.ts, "The 21 coarse tools"; DEVELOPMENT.md, "Tool-list budget").
+tools_default: 21
 # Destructive tools, off unless GARMIN_ENABLE_DESTRUCTIVE=true (delete_activity, delete_workout, delete_weigh_in).
 tools_destructive: 3
-# Approximate tokens of the default tools' name + description + inputSchema (DEVELOPMENT.md, "Tool-list budget": 31 393 bytes).
-tool_tokens: "7,800"
+# Approximate tokens of the default tools' name + description + inputSchema (DEVELOPMENT.md, "Tool-list budget": 34 478 bytes).
+tool_tokens: "8,600"
 # Last tool-selection eval (DEVELOPMENT.md, "Evals", last sentence; docs/evals/tool-selection.jsonl has one scenario per line).
-eval_pass: 42
-eval_total: 42
+eval_pass: 48
+eval_total: 48
 # Entries in the References list of analytics.md.
 references: 20
