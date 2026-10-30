@@ -1,6 +1,6 @@
 {
   "name": "garmin-mcp-store",
-  "version": "0.4.2",
+  "version": "0.5.0",
   "description": "Local SQLite cache and synchronisation of Garmin Connect data for Garmin MCP, the unofficial MCP server for Garmin Connect. Not affiliated with Garmin.",
   "keywords": [
     "garmin",
