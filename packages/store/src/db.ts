@@ -23,6 +23,8 @@ export function openDatabase(file: string): Db {
   db.pragma('synchronous = NORMAL');
   db.pragma('foreign_keys = ON');
   db.pragma('busy_timeout = 5000');
+  // SQLite's lower() folds ASCII only; names are matched case-insensitively in any script ("Ślęża").
+  db.function('unicode_lower', { deterministic: true }, (v: unknown) => (typeof v === 'string' ? v.toLowerCase() : v));
   migrate(db);
   return db;
 }

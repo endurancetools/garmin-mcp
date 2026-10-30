@@ -1,6 +1,7 @@
 import { addDays, assertIsoDate, dateIn, InputError, type IsoDate } from 'garmin-mcp-config';
-import { compact, type Envelope, type GarminService, type ResponseMeta, type SyncProgressOptions } from 'garmin-mcp-domain';
+import { activityWeather, compact, type Envelope, type GarminService, type ResponseMeta, type SyncProgressOptions } from 'garmin-mcp-domain';
 import {
+  errInfo,
   parseRangeSet,
   SCOPE_DAILY,
   THRESHOLD_PARAMS,
@@ -11,6 +12,8 @@ import {
   type ThresholdRow,
   type ThresholdSource,
 } from 'garmin-mcp-store';
+import { compareRow, DEFAULT_COMPARE_CRITERIA, routeEnds, similarity, type CompareCriteria, type CompareRow } from './compare.js';
+import { dynamicsTrend, type DynamicsTrend } from './dynamics.js';
 import { efficiencySports, efficiencyTrend, type EfficiencyRow } from './efficiency.js';
 import { intensityDistribution, type IntensityDistribution } from './intensity.js';
 import {
@@ -74,6 +77,8 @@ export interface LoadQuery {
   include_series?: boolean;
   include_activities?: boolean;
   include_efficiency?: boolean;
+  /** Adds `dynamics`: the monthly running dynamics normalized to speed ({@link dynamicsTrend}). */
+  include_dynamics?: boolean;
   /** Adds `by_sport` (the load model of each sport group on `to`) and, with `include_series`, its columns in the series. */
   include_by_sport?: boolean;
   /** Overrides of `DEFAULT_LOAD_FLAGS`; unknown keys and non-numbers are ignored with a note. */
@@ -112,8 +117,38 @@ export interface LoadData {
   series?: LoadSeriesDay[];
   activities?: Session[];
   efficiency?: EfficiencyRow[];
+  dynamics?: DynamicsTrend;
   note: string;
 }
+
+export interface CompareQuery {
+  /** 2-10 activities to compare, in this order. */
+  ids?: number[];
+  /** Reference activity: compared with the stored sessions similar to it. */
+  similar_to?: number;
+  /** Most similar sessions returned, newest first (default 5, max 20). */
+  limit?: number;
+  /** Earliest date searched for similar sessions (default: 365 days before the reference). */
+  from?: string;
+  duration_pct?: number;
+  pace_s_per_km?: number;
+  same_route?: boolean;
+  easy_only?: boolean;
+}
+
+export interface CompareData {
+  reference?: number;
+  /** The similarity rules and the date range searched (`similar_to`). */
+  criteria?: CompareCriteria & { from: IsoDate; to: IsoDate };
+  activities: CompareRow[];
+  /** Asked ids Garmin does not know. */
+  not_found?: number[];
+}
+
+/** Default and largest number of similar sessions `compare_activities` returns. */
+export const COMPARE_LIMIT = { default: 5, max: 20 } as const;
+/** Days before the reference searched for similar sessions by default. */
+export const COMPARE_DEFAULT_DAYS = 365;
 
 export interface ReadinessQuery {
   date?: string;
@@ -425,10 +460,104 @@ export class AnalyticsService {
       series: q.include_series ? withSportColumns(series.filter((d) => d.date >= from && d.date <= to), perSport ?? new Map()) : undefined,
       activities: q.include_activities ? inRange : undefined,
       efficiency: q.include_efficiency ? efficiencyTrend(inRange, 'month', efficiencySports(flags.intensity_sports)) : undefined,
+      dynamics: q.include_dynamics ? dynamicsTrend(inRange) : undefined,
       note,
     };
     const gap = withProfileGap(this.garmin.coverage('period', from, to, ['daily_summary']), profile.gap);
     return { data: compact(data), meta: readMeta([profile.ensured, ...ensured], gap, [...allNotes]) };
+  }
+
+  // ------------------------------------------------------------ compare_activities
+
+  /** Sessions side by side: the given ids, or a reference and the stored sessions similar to it. */
+  async compareActivities(q: CompareQuery, opts: SyncProgressOptions = {}): Promise<Envelope<CompareData>> {
+    return this.garmin.withAutoSync(() => this.#compare(q), opts);
+  }
+
+  async #compare(q: CompareQuery): Promise<Envelope<CompareData>> {
+    if ((q.ids === undefined) === (q.similar_to === undefined)) throw new InputError('Give either ids or similar_to.', 'ids compares the listed activities; similar_to finds sessions like one activity.');
+    if (q.ids && (q.ids.length < 2 || q.ids.length > 10)) throw new InputError('ids needs 2 to 10 activity ids.', 'For one activity in depth use get_activity.');
+    const crit: CompareCriteria = {
+      duration_pct: q.duration_pct ?? DEFAULT_COMPARE_CRITERIA.duration_pct,
+      pace_s_per_km: q.pace_s_per_km ?? DEFAULT_COMPARE_CRITERIA.pace_s_per_km,
+      same_route: q.same_route ?? DEFAULT_COMPARE_CRITERIA.same_route,
+      easy_only: q.easy_only ?? DEFAULT_COMPARE_CRITERIA.easy_only,
+    };
+    const wanted = q.ids ?? [q.similar_to ?? 0];
+    const notFound: number[] = [];
+    // An activity not stored yet: get_activity fetches it and syncs the activity list of its day.
+    for (const id of new Set(wanted)) {
+      if (this.#store.getActivity(id)) continue;
+      await this.garmin.getActivity(id, 'summary').catch((err: unknown) => {
+        if (errInfo(err).code !== 'NOT_FOUND') throw err;
+        notFound.push(id);
+      });
+    }
+    const today = this.garmin.today();
+    const ref = q.similar_to === undefined ? undefined : this.#store.getActivity(q.similar_to);
+    const from = q.from ? assertIsoDate(q.from, 'from') : ref?.date ? addDays(ref.date as IsoDate, -COMPARE_DEFAULT_DAYS) : today;
+    const dates = wanted.flatMap((id) => {
+      const d = this.#store.getActivity(id)?.date;
+      return d ? [d as IsoDate] : [];
+    });
+    const first = [from, ...dates].reduce((a, b) => (b < a ? b : a));
+    const [profile, ...ensured] = await Promise.all([
+      this.#profile(),
+      ...(ref ? [this.garmin.syncer.ensureActivities(from, today, this.#budget)] : []),
+      this.garmin.syncer.ensureDaily(['daily_summary'], addDays(first, -RHR_WINDOW_DAYS), today, this.#budget),
+    ]);
+    // The threshold notes of the whole history (e.g. swims without CSS) are left out: `load_source` per row says how TSS was found.
+    const { sessions, no_laps: noLaps } = this.#sessions(today);
+    const notes: string[] = [];
+    const byId = new Map(sessions.map((s) => [s.id, s]));
+    const units = this.#units();
+    const row = (s: Session, match?: string) => compareRow(s, activityWeather(this.#store.getActivityDetail(Number(s.id), 'weather')?.raw, units), match);
+
+    let rows: CompareRow[];
+    let criteria: CompareData['criteria'];
+    const refSession = ref ? byId.get(ref.id) : undefined;
+    if (q.similar_to !== undefined) {
+      if (!refSession) {
+        rows = [];
+      } else {
+        const ends = (id: number | string) => routeEnds(typeof id === 'number' ? this.#store.getActivity(id)?.raw : undefined);
+        const refEnds = ends(refSession.id);
+        const limit = Math.min(Math.max(q.limit ?? COMPARE_LIMIT.default, 1), COMPARE_LIMIT.max);
+        const similar = sessions
+          .filter((s) => s.date >= from && s.date <= today)
+          .flatMap((s) => {
+            const match = similarity(refSession, refEnds, s, ends(s.id), crit);
+            return match === undefined ? [] : [{ s, match }];
+          })
+          .toReversed()
+          .slice(0, limit);
+        rows = [row(refSession, 'reference'), ...similar.map(({ s, match }) => row(s, match))];
+        criteria = { ...crit, from, to: today };
+        if (similar.length === 0) notes.push(`No stored ${refSession.type ?? 'activity'} between ${from} and ${today} matches; widen duration_pct or pace_s_per_km, or drop same_route or easy_only.`);
+      }
+    } else {
+      rows = wanted.flatMap((id) => {
+        const s = byId.get(id);
+        return s ? [row(s)] : [];
+      });
+    }
+    const compared = rows.flatMap((r) => {
+      const s = byId.get(r.id);
+      return s ? [s] : [];
+    });
+    const noWeather = compared.filter((s) => this.#store.getActivityDetail(Number(s.id), 'weather') === undefined).length;
+    if (noWeather > 0) notes.push(`Weather is missing for ${noWeather} of them until get_activity with detail "weather" downloads it.`);
+    const withoutLaps = compared.filter((s) => noLaps.has(s.id) && decouplingEligible(s)).length;
+    if (withoutLaps > 0) notes.push(decouplingLapsNote(withoutLaps));
+    const data: CompareData = { reference: refSession ? Number(refSession.id) : undefined, criteria, activities: rows, not_found: notFound.length > 0 ? notFound : undefined };
+    return { data: compact(data), meta: readMeta([profile.ensured, ...ensured], profile.gap, [...new Set(notes)]) };
+  }
+
+  /** Account measurement system from the cached profile (weather wind units). */
+  #units(): string | undefined {
+    const settings = (this.#store.getProfile()?.raw.settings ?? {}) as { userData?: { measurementSystem?: unknown } };
+    const units = settings.userData?.measurementSystem;
+    return typeof units === 'string' ? units : undefined;
   }
 
   // ------------------------------------------------------------ get_readiness

@@ -7,7 +7,7 @@ You do not need to call tools by name; the assistant does. This page tells you w
 
 | Tool | What it gives |
 | --- | --- |
-| `get_activities` | a dense list of activities with paging; filter by date and Garmin type (`running`, `trail_running`, `cycling`, ...) |
+| `get_activities` | a dense list of activities with paging, with grade adjusted pace, cadence, normalized power, the Training Effect label and the temperature when the weather was downloaded; filter by date, Garmin type (`running`, `trail_running`, `cycling`, ...), duration in minutes, a pace range (`"4:45-5:30"`) and part of the name |
 | `get_activity` | one activity: summary (with grade adjusted pace, running dynamics, breathing rate, stamina, Training Effect label, run/walk/stand time and heart rate source), splits with the same dynamics, lap intensity and workout step per lap, heart rate zones, power zones, weather, strength sets, the stream aggregated per kilometre, 5 minutes, half or quarter (`stream_summary`, with Performance Condition), or everything including the raw stream, optionally only some metrics and thinned out (without personal data and GPS unless `GARMIN_REDACT=false`) |
 | `update_activity` | rename, change the type, description, RPE and feel |
 | `download_activity_file` | FIT, GPX, TCX, KML or CSV saved to your download folder |
@@ -20,7 +20,8 @@ You do not need to call tools by name; the assistant does. This page tells you w
 | `create_workout`, `schedule_workouts` | build a workout from a preset (run intervals, walk/run, easy zone 2, strength circuit) or from typed steps with repeats and heart rate, pace or power targets; `dry_run: true` shows the steps and estimated duration before anything is saved; put it on the calendar or take it off |
 | `get_gear`, `get_devices` | gear with distance, devices with firmware, last sync and settings |
 | `garmin_sync` | download a scope (activities, health, training, reference or all) and date range explicitly, with progress |
-| `get_load` | your own training load model from power, pace, heart rate or RPE: CTL/ATL/TSB (the form to ask about; [two load models](analytics.md#load-model)), ACWR, monotony and strain, warning flags, weekly volume per sport, the 3-zone intensity split, optionally per-activity TSS and the efficiency trend ([formulas](analytics.md)) |
+| `get_load` | your own training load model from power, pace, heart rate or RPE: CTL/ATL/TSB (the form to ask about; [two load models](analytics.md#load-model)), ACWR, monotony and strain, warning flags, weekly volume per sport, the 3-zone intensity split, optionally per-activity TSS with running dynamics, the efficiency trend and the monthly running dynamics at a reference pace ([formulas](analytics.md)) |
+| `compare_activities` | chosen sessions side by side, or the sessions similar to one activity (same type, duration and pace, optionally the same route or easy runs only): pace, GAP, heart rate, power, EF, decoupling, TSS, running dynamics and weather in one table ([how they are matched](analytics.md#comparing-sessions)) |
 | `get_readiness` | a morning GO / MODIFY / REST decision from HRV, resting heart rate, hours of sleep and load, with your own thresholds if you give them; Garmin's Training Readiness, Body Battery, stress and sleep score are shown, not counted; training information, not medical advice |
 | `get_thresholds` | the thresholds in use on a date (LTHR and LT1 per sport, HRmax, 28-day resting heart rate) and their history, plus the heart rate and power zones per sport from your Garmin profile |
 | `set_threshold` | record a field test result (LTHR, LT1, HRmax, FTP...) from a date; stored locally, never sent to Garmin |

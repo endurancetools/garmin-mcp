@@ -173,7 +173,10 @@ export const syncOutput = envelope({
   limits: obj({ requests_today: num, max_requests_per_day: num, paused_until: str, pause_reason: str }),
 });
 
-export const activitiesOutput = envelope({ activities: list(z.looseObject(activityBrief)), next_cursor: str });
+export const activitiesOutput = envelope({
+  activities: list(z.looseObject({ ...activityBrief, avg_gap_pace: str, cadence_spm: num, cadence_rpm: num, normalized_power_w: num, temp_c: num, dew_point_c: num })),
+  next_cursor: str,
+});
 
 export const activityOutput = envelope(activityDetail);
 

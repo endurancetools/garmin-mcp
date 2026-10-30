@@ -64,6 +64,15 @@ describe('Store', () => {
     expect(store.queryActivities({ sort: 'asc', limit: 2 }).map((a) => a.id)).toEqual([1, 2]);
     expect(store.queryActivities({ from: '2026-10-02', to: '2026-10-04' }).map((a) => a.id)).toEqual([2]);
     expect(store.queryActivities({ type: 'running' }).map((a) => a.id)).toEqual([3, 1]);
+    // activity() is 10 km in 3000 s (5:00 /km); id 2 is renamed and shortened below.
+    store.upsertActivities([activity(2, '2026-10-03', { activityType: { typeKey: 'cycling' }, activityName: 'Ślęża 100% loop', duration: 1500 })], T);
+    expect(store.queryActivities({ minDurationS: 1800 }).map((a) => a.id)).toEqual([3, 1]);
+    expect(store.queryActivities({ maxDurationS: 1500 }).map((a) => a.id)).toEqual([2]);
+    expect(store.queryActivities({ minSpeedMps: 3, maxSpeedMps: 3.5 }).map((a) => a.id)).toEqual([3, 1]);
+    expect(store.queryActivities({ minSpeedMps: 6 }).map((a) => a.id)).toEqual([2]);
+    expect(store.queryActivities({ name: 'ŚLĘŻA' }).map((a) => a.id)).toEqual([2]);
+    expect(store.queryActivities({ name: '100%' }).map((a) => a.id)).toEqual([2]);
+    expect(store.queryActivities({ name: '_' }).map((a) => a.id)).toEqual([]);
     const row = store.getActivity(3);
     expect(row).toMatchObject({ date: '2026-10-05', start_time_utc: '2026-10-05T05:00:00Z', distance_m: 10_000, training_load: 100 });
     expect(row?.raw.activityId).toBe(3);

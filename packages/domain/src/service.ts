@@ -14,7 +14,7 @@ import {
 import { errInfo, isFresh, SCOPE_DAILY, TTL, type DailyKind, type DetailKind, type EnsureResult, type ReferenceKind, type Store, type SyncJobProgress, type SyncJobReport, type SyncJobRunner, type SyncScope, type Syncer } from 'garmin-mcp-store';
 import fs from 'node:fs';
 import path from 'node:path';
-import { activityBrief, periodActivitySummary } from './activities.js';
+import { activityBrief, activityListItem, periodActivitySummary } from './activities.js';
 import { activityWeather, strengthSets, zoneTimes, type ActivityWeather, type StrengthSets, type ZoneTime } from './activity-extras.js';
 import { gapPace, GPS_STREAM_METRICS, hrSource, motionTime, redactActivityRaw, respiration, runningDynamics, stamina, trainingEffectText, type RunningDynamics } from './activity-metrics.js';
 import { bodyComposition } from './body.js';
@@ -96,6 +96,36 @@ export interface WorkoutInput {
   definition?: WorkoutDefinition;
   preset?: WorkoutPreset;
   garmin_json?: Record<string, unknown>;
+}
+
+/** Filters of `get_activities`; `pace` is a range per km, "4:45-5:30". */
+export interface ActivitiesQuery {
+  from?: string;
+  to?: string;
+  type?: string;
+  name?: string;
+  min_duration_min?: number;
+  max_duration_min?: number;
+  pace?: string;
+  limit?: number;
+  cursor?: string;
+  sort?: 'asc' | 'desc';
+}
+
+const PACE = /^\s*(\d{1,2}):([0-5]\d)\s*$/;
+
+/** "4:45-5:30" (either order) → seconds per km of its fast and slow end. */
+export function parsePaceRange(text: string): { fastest_s: number; slowest_s: number } {
+  const parts = text.split('-');
+  const secs = parts.map((p) => {
+    const m = PACE.exec(p);
+    return m ? Number(m[1]) * 60 + Number(m[2]) : undefined;
+  });
+  const [a, b] = secs;
+  if (parts.length !== 2 || a === undefined || b === undefined || a === 0 || b === 0) {
+    throw new InputError(`Invalid pace range "${text}"`, 'Use minutes:seconds per km, fast-slow, e.g. "4:45-5:30".');
+  }
+  return { fastest_s: Math.min(a, b), slowest_s: Math.max(a, b) };
 }
 
 /** Optional sections `get_activity` adds to the overview, by detail level. */
@@ -399,18 +429,32 @@ export class GarminService {
 
   // ------------------------------------------------------------ activities
 
-  async getActivities(q: { from?: string; to?: string; type?: string; limit?: number; cursor?: string; sort?: 'asc' | 'desc' }) {
+  async getActivities(q: ActivitiesQuery) {
     const from = q.from ? assertIsoDate(q.from, 'from') : undefined;
     const to = q.to ? assertIsoDate(q.to, 'to') : undefined;
+    const pace = q.pace === undefined ? undefined : parsePaceRange(q.pace);
     const ensured = await this.syncer.ensureActivities(from, to, this.#budget);
     const limit = Math.min(Math.max(q.limit ?? 20, 1), 100);
     const offset = decodeCursor(q.cursor);
-    const rows = this.store.queryActivities({ from, to, type: q.type, limit: limit + 1, offset, sort: q.sort ?? 'desc' });
+    const rows = this.store.queryActivities({
+      from,
+      to,
+      type: q.type,
+      name: q.name,
+      minDurationS: q.min_duration_min === undefined ? undefined : q.min_duration_min * 60,
+      maxDurationS: q.max_duration_min === undefined ? undefined : q.max_duration_min * 60,
+      // The fast end of the pace range is the upper speed bound.
+      minSpeedMps: pace && 1000 / pace.slowest_s,
+      maxSpeedMps: pace && 1000 / pace.fastest_s,
+      limit: limit + 1,
+      offset,
+      sort: q.sort ?? 'desc',
+    });
     const page = rows.slice(0, limit);
     const meta = this.#meta([ensured], page.map((r) => r.fetched_at), this.#activityGap(from ?? addDays(to ?? this.today(), -29), to ?? this.today()));
     return {
       data: compact({
-        activities: page.map(activityBrief),
+        activities: page.map((r) => activityListItem(r, this.store.getActivityDetail(r.id, 'weather')?.raw)),
         next_cursor: rows.length > limit ? encodeCursor(offset + limit) : undefined,
       }),
       meta: q.type !== undefined && page.length === 0 && offset === 0 ? withNote(meta, this.#activityTypeNote(q.type, from, to)) : meta,

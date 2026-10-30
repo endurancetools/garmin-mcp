@@ -1,4 +1,5 @@
 export * from './csv.js';
+export * from './dynamics.js';
 export * from './efficiency.js';
 export * from './imported.js';
 export * from './intensity.js';

@@ -517,6 +517,23 @@ describe('sessionFromImported', () => {
   });
 });
 
+describe('running dynamics of a session', () => {
+  it('reads them from the activity list entry, dropping zeros, stride in metres', () => {
+    const raw = { avgGroundContactTime: 276.3, avgGroundContactBalance: 49.72, avgVerticalOscillation: 8.6, avgVerticalRatio: 8.87, avgStrideLength: 96.91, avgRespirationRate: 32.7 };
+    expect(sessionMetrics(sessionFromActivity(activity({}, raw)) ?? input(), CTX)).toMatchObject({
+      gct_ms: 276,
+      gct_balance_left_pct: 49.7,
+      vertical_oscillation_cm: 8.6,
+      vertical_ratio_pct: 8.9,
+      stride_m: 0.97,
+      avg_respiration_brpm: 32.7,
+    });
+    const none = sessionMetrics(sessionFromActivity(activity({}, { avgGroundContactTime: 0, avgStrideLength: 0 })) ?? input(), CTX);
+    expect(none.gct_ms).toBeUndefined();
+    expect(none.stride_m).toBeUndefined();
+  });
+});
+
 describe('aerobic decoupling (Pa:Hr, Pw:Hr)', () => {
   /** 6 × 10 min at a constant 200 W with HR rising from 130 to 140. */
   const steadyRide: Lap[] = [130, 132, 134, 136, 138, 140].map((hr) => ({ duration_s: 600, avg_hr: hr, avg_power_w: 200 }));

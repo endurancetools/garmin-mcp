@@ -26,6 +26,13 @@ export interface SessionInput {
   avg_power_w?: number;
   np_w?: number;
   avg_cadence?: number;
+  /** Running dynamics and breathing from the activity list: ground contact time (ms), its left share (%), vertical oscillation (cm), vertical ratio (%), stride (m), breaths/min. */
+  gct_ms?: number;
+  gct_balance_left_pct?: number;
+  vertical_oscillation_cm?: number;
+  vertical_ratio_pct?: number;
+  stride_m?: number;
+  avg_respiration_brpm?: number;
   calories?: number;
   /** Garmin training load (EPOC based). */
   g_load?: number;
@@ -71,6 +78,13 @@ export interface Session {
   avg_power_w?: number;
   np_w?: number;
   avg_cadence?: number;
+  /** Running dynamics and breathing from the activity list: ground contact time (ms), its left share (%), vertical oscillation (cm), vertical ratio (%), stride (m), breaths/min. */
+  gct_ms?: number;
+  gct_balance_left_pct?: number;
+  vertical_oscillation_cm?: number;
+  vertical_ratio_pct?: number;
+  stride_m?: number;
+  avg_respiration_brpm?: number;
   calories?: number;
   g_load?: number;
   aerobic_te?: number;
@@ -169,6 +183,7 @@ export function sessionFromActivity(a: ActivityRow, summaryRaw?: unknown, splits
     avg_power_w: opt(a.avg_power),
     np_w: num(raw?.['normPower']),
     avg_cadence: num(raw?.['averageRunningCadenceInStepsPerMinute']) ?? num(raw?.['averageBikingCadenceInRevPerMinute']),
+    ...listDynamics(raw),
     calories: opt(a.calories),
     g_load: opt(a.training_load),
     aerobic_te: opt(a.training_effect_aerobic),
@@ -179,6 +194,25 @@ export function sessionFromActivity(a: ActivityRow, summaryRaw?: unknown, splits
     zones_s: zonesFrom(raw),
     laps: lapsFrom(splitsRaw),
     source: 'db',
+  };
+}
+
+/** Positive number, else `undefined`: Garmin lists 0 for a running dynamic it did not measure. */
+const pos = (v: unknown): number | undefined => {
+  const n = num(v);
+  return n !== undefined && n > 0 ? n : undefined;
+};
+
+/** Running dynamics and breathing of an activity list entry (`avgGroundContactTime`, `avgGroundContactBalance`, `avgVerticalOscillation`, `avgVerticalRatio`, `avgStrideLength` in cm, `avgRespirationRate`). */
+function listDynamics(raw: Obj | undefined): Pick<SessionInput, 'gct_ms' | 'gct_balance_left_pct' | 'vertical_oscillation_cm' | 'vertical_ratio_pct' | 'stride_m' | 'avg_respiration_brpm'> {
+  const stride = pos(raw?.['avgStrideLength']);
+  return {
+    gct_ms: pos(raw?.['avgGroundContactTime']),
+    gct_balance_left_pct: pos(raw?.['avgGroundContactBalance']) ?? pos(raw?.['avgGroundContactBalanceLeft']),
+    vertical_oscillation_cm: pos(raw?.['avgVerticalOscillation']),
+    vertical_ratio_pct: pos(raw?.['avgVerticalRatio']),
+    stride_m: stride === undefined ? undefined : stride / 100,
+    avg_respiration_brpm: pos(raw?.['avgRespirationRate']),
   };
 }
 
@@ -519,6 +553,12 @@ export function sessionMetrics(input: SessionInput, ctx: SessionContext, onNote?
     avg_power_w: round(input.avg_power_w, 0),
     np_w: round(input.np_w, 0),
     avg_cadence: round(input.avg_cadence, 0),
+    gct_ms: round(input.gct_ms, 0),
+    gct_balance_left_pct: round(input.gct_balance_left_pct, 1),
+    vertical_oscillation_cm: round(input.vertical_oscillation_cm, 1),
+    vertical_ratio_pct: round(input.vertical_ratio_pct, 1),
+    stride_m: round(input.stride_m, 2),
+    avg_respiration_brpm: round(input.avg_respiration_brpm, 1),
     calories: round(input.calories, 0),
     g_load: round(input.g_load, 1),
     aerobic_te: round(input.aerobic_te, 1),

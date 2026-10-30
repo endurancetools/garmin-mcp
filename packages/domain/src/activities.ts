@@ -1,6 +1,8 @@
 import { eachDay, type IsoDate } from 'garmin-mcp-config';
 import type { ActivityRow } from 'garmin-mcp-store';
-import { hms, km, round, speedOrPace } from './format.js';
+import { activityWeather } from './activity-extras.js';
+import { gapPace, trainingEffectText } from './activity-metrics.js';
+import { hms, isFootSport, km, round, speedOrPace } from './format.js';
 
 export interface ActivityBrief {
   id: number;
@@ -39,6 +41,41 @@ export function activityBrief(a: ActivityRow): ActivityBrief {
     training_load: round(a.training_load, 0),
     training_effect: { aerobic: round(a.training_effect_aerobic, 1), anaerobic: round(a.training_effect_anaerobic, 1) },
     calories_kcal: round(a.calories, 0),
+  };
+}
+
+export interface ActivityListItem extends Omit<ActivityBrief, 'training_effect'> {
+  avg_gap_pace?: string;
+  cadence_spm?: number;
+  cadence_rpm?: number;
+  normalized_power_w?: number;
+  training_effect?: { aerobic?: number; anaerobic?: number; label?: string };
+  temp_c?: number;
+  dew_point_c?: number;
+}
+
+const positive = (v: unknown): number | undefined => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : undefined);
+
+/**
+ * `get_activities` row: the brief plus grade adjusted pace (foot sports), run or bike cadence,
+ * normalized power and the Training Effect label from the activity list entry, and air
+ * temperature and dew point from the activity's weather when that was downloaded
+ * (`weatherRaw`, Fahrenheit as Garmin sends it); the list's own temperature is the watch's
+ * sensor, warmed by the wrist, and is not used.
+ */
+export function activityListItem(a: ActivityRow, weatherRaw?: unknown): ActivityListItem {
+  const raw = a.raw as Record<string, unknown>;
+  const brief = activityBrief(a);
+  const weather = weatherRaw === undefined ? undefined : activityWeather(weatherRaw, undefined);
+  return {
+    ...brief,
+    avg_gap_pace: isFootSport(a.type) ? gapPace(raw) : undefined,
+    cadence_spm: round(positive(raw.averageRunningCadenceInStepsPerMinute), 0),
+    cadence_rpm: round(positive(raw.averageBikingCadenceInRevPerMinute), 0),
+    normalized_power_w: round(positive(raw.normPower), 0),
+    training_effect: { ...brief.training_effect, label: trainingEffectText(raw).label },
+    temp_c: weather?.temp_c,
+    dew_point_c: weather?.dew_point_c,
   };
 }
 

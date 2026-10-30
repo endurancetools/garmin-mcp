@@ -42,3 +42,7 @@
 {"prompt": "My cycling FTP test on 2026-10-10 gave 265 W. Please record it, I confirm.", "expect": {"tool": "set_threshold", "args_include": {"date": "2026-10-10", "param": "ftp_w", "value": 265}}, "forbid": ["update_activity"]}
 {"prompt": "Which LTHR and LT1 do you use for my bike rides?", "expect": {"tool": "get_thresholds"}, "forbid": ["get_training_status", "set_threshold"]}
 {"prompt": "Jakie mam strefy tętna?", "expect": {"tool": "get_thresholds"}, "forbid": ["get_activity", "set_threshold"]}
+{"prompt": "Porównaj aktywność 21001 z podobnymi spokojnymi biegami na tej samej trasie.", "expect": {"tool": "compare_activities", "args_include": {"similar_to": 21001, "same_route": true}}, "forbid": ["get_activities", "garmin_sync"]}
+{"prompt": "Compare activities 21001, 21002 and 21003 side by side.", "expect": {"tool": "compare_activities", "args_include": {"ids": [21001, 21002, 21003]}}, "forbid": ["get_activity", "garmin_sync"]}
+{"prompt": "List my runs of at least an hour at 5:30-6:00 per km.", "expect": {"tool": "get_activities", "args_include": {"min_duration_min": 60, "pace": "5:30-6:00"}}, "forbid": ["garmin_sync"]}
+{"prompt": "Czy mój czas kontaktu z podłożem poprawia się z miesiąca na miesiąc przy tym samym tempie?", "expect": {"tool": "get_load", "args_include": {"include_dynamics": true}}, "forbid": ["garmin_sync"]}

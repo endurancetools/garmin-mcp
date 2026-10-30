@@ -3,7 +3,7 @@ import path from 'node:path';
 import { addDays, eachDay, InputError } from 'garmin-mcp-config';
 import { describe, expect, it } from 'vitest';
 import type { z } from 'zod';
-import { loadOutput, readinessOutput, setThresholdOutput, thresholdsOutput } from './output.js';
+import { compareOutput, loadOutput, readinessOutput, setThresholdOutput, thresholdsOutput } from './output.js';
 import { activity, NOW, setup, TODAY } from './test-utils/fake.js';
 
 /** The compile-time check of `apps/mcp-server/src/tools.ts`: a service result must fit its output schema. */
@@ -39,6 +39,55 @@ function trained() {
   t.store.addThreshold({ date: '2026-01-01', param: 'lthr_run', value: 170, source: 'manual', created_at: NOW });
   return t;
 }
+
+describe('AnalyticsService.compareActivities', () => {
+  it('compares the given ids in order, with running dynamics and the downloaded weather', async () => {
+    const t = trained();
+    t.activities([activity(500, '2026-10-07', { avgGroundContactTime: 251, avgVerticalRatio: 8.1, averageRunningCadenceInStepsPerMinute: 172 })], '2026-10-07', '2026-10-07');
+    t.store.putActivityDetail(500, 'weather', { temp: 68, dewPoint: 59 }, NOW);
+    const res = await t.analytics.compareActivities({ ids: [500, 1] });
+    fits(compareOutput, res);
+    expect(compareOutput.safeParse(res).success).toBe(true);
+    expect(res.data.activities?.map((a) => a.id)).toEqual([500, 1]);
+    expect(res.data.activities?.[0]).toMatchObject({ pace: '6:00 /km', avg_hr: 150, gct_ms: 251, vertical_ratio_pct: 8.1, avg_cadence: 172, temp_c: 20, dew_point_c: 15, load_source: 'hr' });
+    expect(res.meta.note).toMatch(/Weather is missing for 1 of them/);
+    expect(t.calls).toEqual([]);
+  });
+
+  it('finds the newest similar sessions to a reference, optionally on the same route', async () => {
+    const t = trained();
+    const start = { startLatitude: 51.0191, startLongitude: 17.1479, endLatitude: 51.0149, endLongitude: 17.1474 };
+    t.activities(
+      [
+        activity(600, TODAY, { ...start, duration: 3500 }),
+        activity(601, '2026-10-06', { ...start, duration: 3600, distance: 10_100 }),
+        activity(602, '2026-10-05', { duration: 7200, distance: 20_000 }),
+      ],
+      TODAY,
+      TODAY,
+    );
+    const res = await t.analytics.compareActivities({ similar_to: 600, limit: 3 });
+    expect(res.data).toMatchObject({ reference: 600, criteria: { duration_pct: 20, pace_s_per_km: 20, from: '2025-10-08', to: TODAY } });
+    expect(res.data.activities?.map((a) => [a.id, a.match])).toEqual([
+      [600, 'reference'],
+      [130, 'duration +3%, pace +10 s/km'],
+      [129, 'duration +3%, pace +10 s/km'],
+      [601, 'duration +3%, pace +6 s/km'],
+    ]);
+    const route = await t.analytics.compareActivities({ similar_to: 600, same_route: true });
+    expect(route.data.activities?.map((a) => [a.id, a.match])).toEqual([
+      [600, 'reference'],
+      [601, 'duration +3%, pace +6 s/km, same route'],
+    ]);
+    const none = await t.analytics.compareActivities({ similar_to: 600, easy_only: true });
+    expect(none.data.activities).toHaveLength(1);
+    expect(none.meta.note).toMatch(/No stored running between 2025-10-08 and 2026-10-08 matches/);
+    await expect(t.analytics.compareActivities({})).rejects.toBeInstanceOf(InputError);
+    await expect(t.analytics.compareActivities({ ids: [1] })).rejects.toBeInstanceOf(InputError);
+    await expect(t.analytics.compareActivities({ ids: [1, 2], similar_to: 3 })).rejects.toBeInstanceOf(InputError);
+    expect(t.calls).toEqual([]);
+  });
+});
 
 describe('AnalyticsService.getLoad', () => {
   it('answers the own load model in the tool envelope, from the cache', async () => {
@@ -78,6 +127,20 @@ describe('AnalyticsService.getLoad', () => {
     expect(res.data.latest?.load_ratio_usual).toBeUndefined();
     expect(res.meta.note).not.toMatch(/drifted/);
     expect(calls).toEqual([]);
+  });
+
+  it('include_dynamics adds the monthly running dynamics with values at the reference pace', async () => {
+    const t = setup();
+    t.store.markReferenceFetched('profile', NOW);
+    // GCT falls 40 ms per m/s within each month, October runs faster and 10 ms better.
+    const runs = [2.6, 2.8, 3.0, 3.2, 3.0, 3.2, 3.4, 3.6].map((v, i) =>
+      activity(700 + i, i < 4 ? `2026-09-0${i + 1}` : `2026-10-0${i - 3}`, { distance: v * 3000, duration: 3000, avgGradeAdjustedSpeed: v, avgGroundContactTime: 400 - 40 * v - (i < 4 ? 0 : 10) }),
+    );
+    t.activities(runs, '2026-09-01', TODAY);
+    const res = await t.analytics.getLoad({ from: '2026-09-01', include_dynamics: true });
+    expect(loadOutput.safeParse(res).success).toBe(true);
+    expect(res.data.dynamics).toMatchObject({ ref_pace: '5:23 /km', runs: 8, rows: [{ period: '2026-09', gct_ms_at_ref: 276 }, { period: '2026-10', gct_ms_at_ref: 266 }] });
+    expect((await t.analytics.getLoad({})).data.dynamics).toBeUndefined();
   });
 
   it('sums Garmin training load with source garmin_load and applies own flag thresholds', async () => {

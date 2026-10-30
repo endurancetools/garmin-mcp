@@ -3,6 +3,7 @@ import {
   AnalyticsService,
   DEFAULT_LOAD_FLAGS,
   DEFAULT_READINESS_RULES,
+  compareOutput,
   loadOutput,
   readinessOutput,
   SET_THRESHOLD_SOURCES,
@@ -135,13 +136,18 @@ export const TOOLS: ToolDef[] = [
     name: 'get_activities',
     title: 'List activities',
     description:
-      'List workouts/activities (runs, rides, swims, strength...) as dense summaries: id, date, type, name, duration, distance, pace or speed, HR, training load. ' +
+      'List workouts/activities (runs, rides, swims, strength...) as dense summaries: id, date, type, name, duration, distance, pace or speed, GAP, HR, power, NP, cadence, ' +
+      'training load and Training Effect, temperature (if weather downloaded). ' +
       'Use for "what did I do last week", finding an activity id, or comparing sessions. For one activity in depth use get_activity; ' +
       'for weekly/monthly totals use get_period_summary. Example: {"from":"2026-10-01","type":"running","limit":10}.',
     input: {
       from: date.optional(),
       to: date.optional(),
       type: z.string().optional().describe('Garmin type key, e.g. running, trail_running, cycling, lap_swimming, strength_training; partial match. All keys: resource garmin://activity-types'),
+      name: z.string().optional().describe('Part of the activity name, any case, e.g. a route'),
+      min_duration_min: z.number().positive().optional(),
+      max_duration_min: z.number().positive().optional(),
+      pace: z.string().optional().describe('Average pace range per km, e.g. "4:45-5:30"'),
       limit: z.number().int().min(1).max(100).default(20),
       cursor: z.string().optional().describe('next_cursor from the previous page'),
       sort: z.enum(['desc', 'asc']).default('desc'),
@@ -384,8 +390,9 @@ export const TOOLS: ToolDef[] = [
       "Own transparent load model (TSS per activity from power, else pace, else heart rate, else session RPE, with date-dependent thresholds), not Garmin's EPOC load; for Garmin's status and CTL/ATL/TSB from Garmin's load (`garmin_load_model`) use get_training_status. " +
       'Returns CTL/ATL/TSB, ACWR, monotony and strain on `to` (`latest`), warning `flags`, ISO weeks per sport (sessions, hours, km, TSS, hrTSS, Garmin load, hours in Z1-2/Z3/Z4-5), ' +
       'the 3-zone intensity split against LT1/LTHR of the last 28 days (Z1/Z2/Z3 minutes and %; answers time below LT1, % in Z1, polarisation) and the thresholds used. ' +
-      'include_series adds the daily curve, include_activities TSS/IF/load_source/EF (runs with power also ef_power) per activity, include_efficiency the monthly EF trend, ' +
+      'include_series adds the daily curve, include_activities TSS/IF/load_source/EF (runs with power also ef_power), cadence and running dynamics per activity, include_efficiency the monthly EF trend, ' +
       'both with aerobic decoupling (% EF drop from first to second half, `decoupling_basis` pa_hr or pw_hr; runs with power also decoupling_pw_pct) of sessions of 60+ min below LTHR with downloaded laps, ' +
+      'include_dynamics monthly cadence, GCT, VO, VR, stride of road runs, also at a reference pace (`_at_ref`), ' +
       'include_by_sport CTL/ATL/TSB/ACWR per sport group (`by_sport`, plus run_ctl… columns in the series) next to the total, which stays the default. ' +
       'Example: {"from":"2026-09-01","to":"2026-09-30","include_activities":true}.',
     input: {
@@ -395,12 +402,34 @@ export const TOOLS: ToolDef[] = [
       include_series: z.boolean().default(false),
       include_activities: z.boolean().default(false),
       include_efficiency: z.boolean().default(false),
+      include_dynamics: z.boolean().default(false),
       include_by_sport: z.boolean().default(false),
       flags: z.looseObject({}).optional().describe(`Own flag thresholds, any of (default): ${defaults(DEFAULT_LOAD_FLAGS)}`),
     },
     output: loadOutput,
     annotations: READ,
     run: (s, a, ctx) => analytics(s).getLoad(a, ctx),
+  }),
+  tool({
+    name: 'compare_activities',
+    title: 'Compare activities',
+    description:
+      'Sessions side by side: pace, GAP, HR, power, EF, decoupling, IF, TSS, % Z4-5, cadence and running dynamics, temperature, dew point. `ids` compares those activities; ' +
+      '`similar_to` adds stored sessions like it (same type, duration and pace/GAP within tolerance; same_route: start, end and distance; easy_only: <5 % Z4-5), newest first with `match`. ' +
+      'E.g. today vs usual easy runs, progress on a route: {"similar_to":24897101232,"same_route":true}.',
+    input: {
+      ids: z.array(id).min(2).max(10).optional(),
+      similar_to: id.optional(),
+      limit: z.number().int().min(1).max(20).default(5).describe('similar_to: most similar sessions returned'),
+      from: date.optional().describe('similar_to: earliest date searched (default: 365 days before it)'),
+      duration_pct: z.number().positive().max(100).default(20),
+      pace_s_per_km: z.number().positive().default(20),
+      same_route: z.boolean().default(false),
+      easy_only: z.boolean().default(false),
+    },
+    output: compareOutput,
+    annotations: READ,
+    run: (s, a, ctx) => analytics(s).compareActivities(a, ctx),
   }),
   tool({
     name: 'get_readiness',

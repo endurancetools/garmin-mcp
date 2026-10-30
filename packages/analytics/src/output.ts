@@ -41,6 +41,12 @@ const session = z.looseObject({
   avg_power_w: num,
   np_w: num,
   avg_cadence: num,
+  gct_ms: num,
+  gct_balance_left_pct: num,
+  vertical_oscillation_cm: num,
+  vertical_ratio_pct: num,
+  stride_m: num,
+  avg_respiration_brpm: num,
   calories: num,
   g_load: num,
   aerobic_te: num,
@@ -119,7 +125,32 @@ export const loadOutput = envelope({
   series: list(z.looseObject(loadDay)),
   activities: list(session),
   efficiency: list(z.looseObject({ period: str, sport: str, n: num, ef_avg: num, ef_max: num, ef_gap_avg: num, ef_power_avg: num, decoupling_mean_pct: num, decoupling_n: num })),
+  dynamics: obj({ ref_pace: str, per_kmh: z.record(z.string(), z.number()).optional(), runs: num, rows: list(z.looseObject({ period: str, n: num, avg_pace: str })) }),
   note: str,
+});
+
+export const compareOutput = envelope({
+  reference: num,
+  criteria: obj({ duration_pct: num, pace_s_per_km: num, same_route: bool, easy_only: bool, from: str, to: str }),
+  activities: list(
+    z.looseObject({
+      id: z.union([z.number(), z.string()]),
+      date: str,
+      type: str,
+      name: str,
+      match: str,
+      duration: str,
+      distance_km: num,
+      pace: str,
+      gap_pace: str,
+      avg_speed_kmh: num,
+      avg_hr: num,
+      ef: num,
+      decoupling_pct: num,
+      tss: num,
+    }),
+  ),
+  not_found: list(z.number()),
 });
 
 export const readinessOutput = envelope({

@@ -220,6 +220,14 @@ export interface ActivityQuery {
   to?: IsoDate;
   type?: string;
   gearUuid?: string;
+  /** Duration bounds in seconds, both inclusive. */
+  minDurationS?: number;
+  maxDurationS?: number;
+  /** Average speed bounds (distance / duration) in m/s, both inclusive; activities without distance never match. */
+  minSpeedMps?: number;
+  maxSpeedMps?: number;
+  /** Substring of the activity name, case-insensitive. */
+  name?: string;
   limit?: number;
   offset?: number;
   sort?: 'asc' | 'desc';
@@ -345,6 +353,29 @@ export class Store {
     if (q.type) {
       where.push('(type = ? OR type LIKE ?)');
       params.push(q.type, `%${q.type}%`);
+    }
+    if (q.minDurationS !== undefined) {
+      where.push('duration_s >= ?');
+      params.push(q.minDurationS);
+    }
+    if (q.maxDurationS !== undefined) {
+      where.push('duration_s <= ?');
+      params.push(q.maxDurationS);
+    }
+    if (q.minSpeedMps !== undefined || q.maxSpeedMps !== undefined) {
+      where.push('distance_m > 0 AND duration_s > 0');
+      if (q.minSpeedMps !== undefined) {
+        where.push('distance_m >= ? * duration_s');
+        params.push(q.minSpeedMps);
+      }
+      if (q.maxSpeedMps !== undefined) {
+        where.push('distance_m <= ? * duration_s');
+        params.push(q.maxSpeedMps);
+      }
+    }
+    if (q.name) {
+      where.push("unicode_lower(name) LIKE ? ESCAPE '\\'");
+      params.push(`%${q.name.toLowerCase().replace(/[\\%_]/g, (c) => `\\${c}`)}%`);
     }
     const sql = `SELECT * FROM activities ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
       ORDER BY start_time_local ${q.sort === 'asc' ? 'ASC' : 'DESC'}, id ${q.sort === 'asc' ? 'ASC' : 'DESC'}
