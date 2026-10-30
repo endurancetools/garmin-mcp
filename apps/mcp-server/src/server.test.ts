@@ -121,11 +121,11 @@ describe('MCP server', () => {
     const all = (await (await connect(runtime({ enableDestructive: true }))).listTools()).tools;
     const create = tools.find((t) => t.name === 'create_workout')?.inputSchema;
     const overwrite = all.find((t) => t.name === 'create_workout')?.inputSchema;
-    expect(context(tools)).toBeLessThanOrEqual(35_478);
+    expect(context(tools)).toBeLessThanOrEqual(35_540);
     expect(size(create)).toBeLessThanOrEqual(11_500);
-    expect(context(all)).toBeLessThanOrEqual(37_060);
-    expect(size(tools)).toBeLessThanOrEqual(80_656);
-    expect(size(all)).toBeLessThanOrEqual(84_379);
+    expect(context(all)).toBeLessThanOrEqual(37_122);
+    expect(size(tools)).toBeLessThanOrEqual(80_932);
+    expect(size(all)).toBeLessThanOrEqual(84_655);
     // Without destructive tools create_workout is a strict object (a stray workout_id fails loudly).
     const { workout_id: _overwrite, ...properties } = overwrite?.properties ?? {};
     expect(create).toEqual({ ...overwrite, properties, additionalProperties: false });

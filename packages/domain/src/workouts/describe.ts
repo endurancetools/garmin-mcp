@@ -282,6 +282,36 @@ export function estimateWorkoutDuration(garminJson: unknown): DurationEstimate {
   return { seconds: Math.round(walk(steps, (i) => String(i + 1))), skipped };
 }
 
+/**
+ * The lines of {@link describeWorkout} by the step index a recorded lap carries
+ * (`wktStepIndex`): the FIT numbering, depth first from 0, where a repeat comes after the
+ * steps it repeats. For "1. 5 km, 2. lap button, 3. Repeat 12x: 3.1 100 m, 3.2 recovery,
+ * 4. 2 km" the laps say 0, 1, 2, 3, ... and 5; 4 is the repeat. Checked against recordings
+ * of single-sport workouts; across multisport segments the numbering is assumed to run on.
+ */
+export function workoutStepsByIndex(garminJson: unknown): Map<number, string> {
+  const parsed = looseWorkoutSchema.safeParse(garminJson);
+  if (!parsed.success) throw new TypeError('Not a Garmin workout object');
+  const w = parsed.data;
+  const segments = w.workoutSegments ?? [];
+  const sport = w.sportType?.sportTypeKey ?? segments[0]?.sportType?.sportTypeKey ?? undefined;
+  const out = new Map<number, string>();
+  const walk = (step: LooseStep, label: string, segSport: string | undefined) => {
+    if (isRepeat(step)) (step.workoutSteps ?? []).forEach((child, i) => walk(child, `${label}.${i + 1}`, segSport));
+    const lines: string[] = [];
+    describeStep({ ...step, workoutSteps: [] }, label, '', segSport, lines);
+    out.set(out.size, (lines[0] ?? label).replace(/:$/, ''));
+  };
+  let count = 0;
+  for (const seg of segments) {
+    for (const step of seg.workoutSteps ?? []) {
+      count += 1;
+      walk(step, String(count), seg.sportType?.sportTypeKey ?? sport);
+    }
+  }
+  return out;
+}
+
 export function describeWorkout(garminJson: unknown): ReadableWorkout {
   const parsed = looseWorkoutSchema.safeParse(garminJson);
   if (!parsed.success) throw new TypeError('Not a Garmin workout object');

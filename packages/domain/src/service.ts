@@ -28,7 +28,7 @@ import { sleepNight, sleepRange } from './sleep.js';
 import { filterStream, streamSummary, type StreamBucket, type StreamSummary } from './stream.js';
 import { trend } from './stats.js';
 import { trainingOverview } from './training.js';
-import { compileWorkout, describeWorkout, estimateWorkoutDuration, isGarminWorkoutJson, presetDefinition, SPORT_KEYS, type WorkoutDefinition, type WorkoutPreset } from './workouts/index.js';
+import { compileWorkout, describeWorkout, estimateWorkoutDuration, isGarminWorkoutJson, presetDefinition, SPORT_KEYS, workoutStepsByIndex, type WorkoutDefinition, type WorkoutPreset } from './workouts/index.js';
 import { unzip } from './zip.js';
 import { z } from 'zod';
 
@@ -134,6 +134,8 @@ interface ActivitySections {
     lap?: number | null;
     intensity?: string;
     wkt_step_index?: number;
+    wkt_step?: string;
+    compliance_pct?: number;
     distance_km?: number;
     duration?: string;
     moving_time?: string;
@@ -551,6 +553,7 @@ export class GarminService {
       motion: motionTime(summary.raw.splitSummaries),
       ...hrSource(summary.raw.metadataDTO, (s.averageHR ?? row?.avg_hr ?? 0) > 0),
       workout_id: summary.raw.metadataDTO?.associatedWorkoutId ?? undefined,
+      workout_compliance_pct: round(s.directWorkoutComplianceScore, 0),
       rpe: typeof s.directWorkoutRpe === 'number' ? s.directWorkoutRpe / 10 : undefined,
       feel: typeof s.directWorkoutFeel === 'number' ? s.directWorkoutFeel : undefined,
       gear_uuid: row?.gear_uuid ?? undefined,
@@ -558,16 +561,22 @@ export class GarminService {
     const sources: EnsureResult[] = [{ source: summary.live ? 'live' : 'cache' }];
     const times = [summary.fetched_at];
     let extra: ActivitySections = {};
+    const notes: string[] = [];
 
     if (detail === 'splits' || detail === 'full') {
       const splits = await this.#detail(id, 'splits', () => this.client.getActivitySplits(id));
       sources.push({ source: splits.live ? 'live' : 'cache' });
       times.push(splits.fetched_at);
-      extra.splits = (splits.raw?.lapDTOs ?? []).map((l) =>
+      const laps = splits.raw?.lapDTOs ?? [];
+      const workoutId = base.workout_id;
+      const steps = workoutId !== undefined && laps.some((l) => l.wktStepIndex != null) ? await this.#workoutSteps(workoutId, s.startTimeGMT ?? undefined, notes) : undefined;
+      extra.splits = laps.map((l) =>
         compact({
           lap: l.lapIndex,
           intensity: l.intensityType?.toLowerCase(),
           wkt_step_index: l.wktStepIndex ?? undefined,
+          wkt_step: l.wktStepIndex == null ? undefined : steps?.get(l.wktStepIndex),
+          compliance_pct: round(l.directWorkoutComplianceScore, 0),
           distance_km: km(l.distance),
           duration: hms(l.duration),
           moving_time: hms(l.movingDuration),
@@ -613,7 +622,6 @@ export class GarminService {
       extra.exercise_sets = strengthSets(sets.raw);
       if (!extra.exercise_sets && detail === 'exercise_sets') missing.push('exercise sets (not a strength activity or no sets recorded)');
     }
-    const notes: string[] = [];
     if (detail === 'full' || detail === 'stream_summary') {
       const details = await this.#detail(id, 'details', () => this.client.getActivityDetails(id));
       sources.push({ source: details.live ? 'live' : 'cache' });
@@ -643,6 +651,30 @@ export class GarminService {
     }
     if (missing.length > 0) notes.unshift(`Garmin has no ${missing.join(', ')} for this activity.`);
     return { data: compact({ ...base, ...extra }), meta: this.#meta(sources, times, notes.length > 0 ? { note: notes.join(' ') } : {}) };
+  }
+
+  /**
+   * Steps of the workout an activity followed, by the lap step index: the stored copy, else
+   * fetched and stored. Without the steps, or when the workout was changed after the activity,
+   * `notes` says so.
+   */
+  async #workoutSteps(workoutId: number, startGmt: string | undefined, notes: string[]): Promise<Map<number, string> | undefined> {
+    let raw = this.store.getWorkout(workoutId)?.raw as { workoutSegments?: unknown; updatedDate?: unknown } | undefined;
+    if (!Array.isArray(raw?.workoutSegments)) {
+      try {
+        const fetched = await this.client.getWorkout(workoutId);
+        this.store.upsertWorkout(fetched, this.#now());
+        raw = fetched;
+      } catch (err) {
+        const gone = errInfo(err).code === 'NOT_FOUND';
+        notes.push(`${gone ? `Workout ${workoutId} no longer exists in Garmin Connect` : `The steps of workout ${workoutId} could not be read (${errInfo(err).message})`}; laps have wkt_step_index only.`);
+        return undefined;
+      }
+    }
+    if (typeof raw.updatedDate === 'string' && startGmt !== undefined && raw.updatedDate > startGmt) {
+      notes.push(`Workout ${workoutId} was changed after this activity, so wkt_step shows its current steps, which may differ from the ones run.`);
+    }
+    return workoutStepsByIndex(raw);
   }
 
   /** Account measurement system from the cached profile, without fetching it. */

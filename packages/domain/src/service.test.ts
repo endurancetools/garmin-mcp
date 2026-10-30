@@ -291,6 +291,7 @@ describe('GarminService', () => {
         lap: 1,
         intensity: 'active',
         wkt_step_index: 1,
+        wkt_step: '2. Other 2 km - anon-description',
         distance_km: 1,
         duration: '5:00',
         moving_time: '4:58',
@@ -309,6 +310,45 @@ describe('GarminService', () => {
     ]);
     expect(count('getActivity')).toBe(0);
     expect(count('getActivitySplits')).toBe(0);
+  });
+
+  it('names the workout step of each lap, a repeat numbered after its steps, with its compliance', async () => {
+    const { service, store, count } = setup({ activities: [summary(1, '2026-10-07')] });
+    const workout = JSON.parse(fs.readFileSync(path.resolve(import.meta.dirname, '../fixtures/workouts/sample-garmin-get-workout.json'), 'utf8')) as { workoutId: number };
+    store.upsertWorkout(workout, NOW);
+    const run = (startTimeGMT: string, workoutId = 1234567890) =>
+      store.putActivityDetail(1, 'summary', { activityId: 1, summaryDTO: { startTimeGMT, directWorkoutComplianceScore: 91.4 }, metadataDTO: { associatedWorkoutId: workoutId } }, NOW);
+    run('2026-10-07T16:00:00.0');
+    const lap = (lapIndex: number, intensityType: string, wktStepIndex: number | null, directWorkoutComplianceScore?: number) => ({ lapIndex, intensityType, wktStepIndex, directWorkoutComplianceScore, distance: 1000, duration: 300 });
+    store.putActivityDetail(
+      1,
+      'splits',
+      { lapDTOs: [lap(1, 'WARMUP', 0, 98), lap(2, 'INTERVAL', 1, 88.6), lap(3, 'RECOVERY', 2), lap(4, 'INTERVAL', 1, 93), lap(5, 'COOLDOWN', 4), lap(6, 'COOLDOWN', null)] },
+      NOW,
+    );
+    const res = await service.getActivity(1, 'splits');
+    expect(res.data).toMatchObject({ workout_id: 1234567890, workout_compliance_pct: 91 });
+    expect(res.data.splits?.map((l) => [l.lap, l.wkt_step_index, l.wkt_step, l.compliance_pct])).toEqual([
+      [1, 0, '1. Warmup 15:00 @ HR Z2', 98],
+      [2, 1, '2.1. Interval 8:00 @ pace 4:40-4:50 /km - Comfortably hard', 89],
+      [3, 2, '2.2. Recovery 400 m', undefined],
+      [4, 1, '2.1. Interval 8:00 @ pace 4:40-4:50 /km - Comfortably hard', 93],
+      [5, 4, '3. Cooldown until lap button @ HR 120-140 bpm', undefined],
+      [6, undefined, undefined, undefined],
+    ]);
+    expect(res.meta.note).toBeUndefined();
+    expect(count('getWorkout')).toBe(0);
+
+    // Changed after the run: still named, with a note.
+    run('2026-09-30T06:00:00.0');
+    expect((await service.getActivity(1, 'splits')).meta.note).toContain('changed after this activity');
+    // A workout that cannot be read leaves the bare index.
+    run('2026-10-07T16:00:00.0', 666);
+    const gone = await service.getActivity(1, 'splits');
+    expect(gone.data.splits?.[0]).toMatchObject({ wkt_step_index: 0 });
+    expect(gone.data.splits?.[0]?.wkt_step).toBeUndefined();
+    expect(gone.meta.note).toContain('wkt_step_index only');
+    expect(count('getWorkout')).toBe(1);
   });
 
   it('redacts personal data and GPS from the raw output unless redaction is off', async () => {

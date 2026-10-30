@@ -148,6 +148,7 @@ export const activitySchema = z.looseObject({
       activityTrainingLoad: num,
       directWorkoutRpe: num,
       directWorkoutFeel: num,
+      directWorkoutComplianceScore: num,
     })
     .nullish(),
   metadataDTO: z.looseObject({ deviceMetaDataDTO: z.looseObject({ deviceId: z.unknown() }).nullish(), associatedWorkoutId: int }).nullish(),
@@ -174,6 +175,7 @@ export const activitySplitsSchema = z.looseObject({
         averageRunCadence: num,
         intensityType: str,
         wktStepIndex: int,
+        directWorkoutComplianceScore: num,
       }),
     )
     .nullish(),

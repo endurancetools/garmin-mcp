@@ -161,7 +161,7 @@ export const TOOLS: ToolDef[] = [
     title: 'Get one activity',
     description:
       'Details of one activity by id. detail="summary" (default) for the overview incl. description, RPE, feel, GAP, running dynamics (cadence, GCT, balance, VO, VR, stride), breathing rate, stamina, ' +
-      'Training Effect label, run/walk/stand time, HR source (strap or watch) and workout_id (for get_workout); "splits" adds laps with the same dynamics, intensity (warmup, active, rest...) and workout step index; ' +
+      'Training Effect label, run/walk/stand time, HR source (strap or watch) and workout_id (for get_workout); "splits" adds laps with the same dynamics, intensity (warmup, active, rest...) and, for a workout, the step as get_workout numbers it (wkt_step) and its compliance; ' +
       '"hr_zones" adds time in HR zones; ' +
       '"power_zones" adds time in power zones (power meter); "weather" adds temperature, wind and conditions during the activity; "exercise_sets" adds strength sets ' +
       '(exercise, reps, weight, rest); "stream_summary" aggregates the stream per `bucket` (pace, GAP, HR, power, dynamics, breathing, Performance Condition, elevation, stamina; ' +

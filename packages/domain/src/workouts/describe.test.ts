@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { compileWorkout } from './compile.js';
-import { describeWorkout, estimateWorkoutDuration, formatDuration } from './describe.js';
+import { describeWorkout, estimateWorkoutDuration, formatDuration, workoutStepsByIndex } from './describe.js';
 import { presetDefinition } from './presets.js';
 
 const FIXTURES = path.resolve(import.meta.dirname, '../../fixtures/workouts');
@@ -194,6 +194,17 @@ describe('describeWorkout', () => {
     expect(describeWorkout(json).estimated_duration_s).toBe(1500);
     expect(describeWorkout({ ...json, estimatedDurationInSecs: 1800 }).estimated_duration_s).toBe(1800);
     expect(() => estimateWorkoutDuration('nope')).toThrow(TypeError);
+  });
+
+  it('numbers the steps as recorded laps do, a repeat after its steps', () => {
+    expect([...workoutStepsByIndex(fixture('sample-garmin-get-workout.json'))]).toEqual([
+      [0, '1. Warmup 15:00 @ HR Z2'],
+      [1, '2.1. Interval 8:00 @ pace 4:40-4:50 /km - Comfortably hard'],
+      [2, '2.2. Recovery 400 m'],
+      [3, '2. Repeat 3x'],
+      [4, '3. Cooldown until lap button @ HR 120-140 bpm'],
+    ]);
+    expect(() => workoutStepsByIndex('nope')).toThrow(TypeError);
   });
 
   it('formats durations', () => {
