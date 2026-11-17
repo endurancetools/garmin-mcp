@@ -4,6 +4,7 @@ import path from 'node:path';
 import { GarminError } from 'garmin-mcp-config';
 import { clearSignInPause, hrvColumns, sleepColumns, TTL } from 'garmin-mcp-store';
 import { describe, expect, it, vi } from 'vitest';
+import { fitWithPower } from './test-utils/fit.js';
 import { makeZip } from './test-utils/zip.js';
 import { fixture, NOW, setup, summary } from './test-utils/fake.js';
 import * as output from './output.js';
@@ -547,6 +548,67 @@ describe('GarminService', () => {
     const { service: bare } = setup({ activities: [summary(2, '2026-10-07')] });
     const none = await bare.getActivity(2, 'stream_summary', undefined, { bucket: 'climbs' });
     expect(none.meta.note).toBe('Garmin has no a usable stream with distance and elevation for this activity.');
+  });
+
+  it('builds the power curve from the FIT file once, with W/kg, and downloads nothing without power', async () => {
+    const start = Date.parse('2026-10-07T05:00:00Z') / 1000;
+    // 10 min at 200 W, 5 min at 320 W with 1 s at 700 W, 10 min at 180 W.
+    const watts = [...Array<number>(600).fill(200), ...Array<number>(150).fill(320), 700, ...Array<number>(149).fill(320), ...Array<number>(600).fill(180)];
+    const { service, store, count } = setup({
+      activities: [summary(1, '2026-10-07', { activityType: { typeId: 2, typeKey: 'road_biking' }, avgPower: 220 }), summary(2, '2026-10-07')],
+      zip: makeZip('1_ACTIVITY.fit', fitWithPower(start, watts)),
+    });
+    store.setProfile({ social: {}, settings: { userData: { weight: 80_000 } }, heartRateZones: [], powerZones: [] }, NOW);
+
+    const first = await service.getActivity(1, 'power_curve');
+    expect(first.meta.source).toBe('live');
+    const best = first.data.power_curve?.best ?? [];
+    expect(best.map((b) => b.duration)).toEqual(['1s', '5s', '15s', '30s', '1min', '2min', '5min', '10min', '20min']);
+    expect(best[0]).toEqual({ duration: '1s', power_w: 700, w_per_kg: 8.75, at: '12:30' });
+    expect(best.find((b) => b.duration === '5min')).toEqual({ duration: '5min', power_w: 321, w_per_kg: 4.02, at: '10:00' });
+    expect(first.meta.note).toBe('W/kg with 80 kg (profile).');
+    expect(() => output.activityOutput.parse(first)).not.toThrow();
+
+    // Kept in the cache without the file; `full` does not download it.
+    const again = await service.getActivity(1, 'power_curve');
+    expect(again.meta.source).toBe('cache');
+    expect(again.data.power_curve).toEqual(first.data.power_curve);
+    expect(store.getActivityDetail(1, 'power_curve')?.raw).toMatchObject({ gear_changes: [] });
+    await service.getActivity(1, 'full');
+    expect(count('downloadActivity')).toBe(1);
+
+    // No power in the activity list: null with a note, no download.
+    const none = await service.getActivity(2, 'power_curve');
+    expect(none.data.power_curve).toBeNull();
+    expect(none.meta.note).toBe('This activity has no power data, so it has no power curve; no file was downloaded.');
+    expect(() => output.activityOutput.parse(none)).not.toThrow();
+    expect(count('downloadActivity')).toBe(1);
+  });
+
+  it('keeps a FIT file without power as null, waits out a sync pause and does not keep an unreadable file', async () => {
+    const start = Date.parse('2026-10-07T05:00:00Z') / 1000;
+    const { service, store, count } = setup({
+      activities: [summary(3, '2026-10-07', { avgPower: 200 })],
+      zip: makeZip('3_ACTIVITY.fit', fitWithPower(start, Array<null>(120).fill(null))),
+    });
+    store.setMeta('sync:paused_until', String(NOW + 60_000));
+    const paused = await service.getActivity(3, 'power_curve');
+    expect(paused.data.power_curve).toBeUndefined();
+    expect(paused.meta.note).toMatch(/^Syncing with Garmin is paused; the FIT file for the power curve downloads after .+ when asked again\.$/);
+    expect(count('downloadActivity')).toBe(0);
+
+    store.setMeta('sync:paused_until', '0');
+    const empty = await service.getActivity(3, 'power_curve');
+    expect(empty.data.power_curve).toBeNull();
+    expect(empty.meta.note).toBe('The FIT file of this activity has no power data, so it has no power curve.');
+    await service.getActivity(3, 'power_curve');
+    expect(count('downloadActivity')).toBe(1);
+
+    const { service: broken, store: brokenStore } = setup({ activities: [summary(4, '2026-10-07', { avgPower: 200 })] });
+    const bad = await broken.getActivity(4, 'power_curve');
+    expect(bad.data.power_curve).toBeUndefined();
+    expect(bad.meta.note).toMatch(/^The FIT file of this activity could not be read \(.+\), so there is no power curve\.$/);
+    expect(brokenStore.getActivityDetail(4, 'power_curve')).toBeUndefined();
   });
 
   it('converts weather wind from mph for statute_us accounts', async () => {

@@ -166,11 +166,12 @@ export const TOOLS: ToolDef[] = [
       '"hr_zones" adds time in HR zones; ' +
       '"power_zones" adds time in power zones (power meter); "weather" adds temperature, wind and conditions during the activity; "exercise_sets" adds strength sets ' +
       '(exercise, reps, weight, rest); "stream_summary" aggregates the stream per `bucket` (pace, GAP, HR, power, dynamics, breathing, Performance Condition, elevation, stamina; ' +
-      'compares halves or kilometres without raw samples); "full" adds all sections plus the raw stream (HR, pace, power...), 50 KB per page ' +
+      'compares halves or kilometres without raw samples); "power_curve": best power for 1 s to 60 min (W, W/kg) from the FIT file, also running power; ' +
+      '"full" adds all sections except power_curve plus the raw stream (HR, pace, power...), 50 KB per page ' +
       '(narrow it with `metrics` and `downsample_s`) - only when the user needs raw samples.',
     input: {
       id: id.describe('Activity id from get_activities'),
-      detail: z.enum(['summary', 'splits', 'hr_zones', 'power_zones', 'weather', 'exercise_sets', 'stream_summary', 'full']).default('summary'),
+      detail: z.enum(['summary', 'splits', 'hr_zones', 'power_zones', 'weather', 'exercise_sets', 'stream_summary', 'power_curve', 'full']).default('summary'),
       bucket: z.enum(['km', '5min', 'halves', 'quarters', 'climbs']).default('km').describe('For detail="stream_summary"; "climbs": each climb with grade, VAM, W/kg'),
       metrics: z.array(z.string()).optional().describe('For detail="full": stream keys to keep, e.g. ["directHeartRate","directPower"]'),
       downsample_s: z.number().int().positive().optional().describe('For detail="full": at most one sample per this many seconds'),

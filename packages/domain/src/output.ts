@@ -143,6 +143,10 @@ const activityDetail = {
     ),
     performance_condition: obj({ first: num, first_at: str, end: num, min: num, max: num }),
   }),
+  power_curve: z
+    .looseObject({ best: list(z.looseObject({ duration: str, power_w: num, w_per_kg: num, at: str })) })
+    .nullable()
+    .optional(),
   stream: obj({ metrics: list(z.string()), total_samples: num, offset: num, samples: list(z.unknown()) }),
   next_cursor: str,
 };

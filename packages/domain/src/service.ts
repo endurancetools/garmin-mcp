@@ -23,10 +23,12 @@ import { calendarEvent } from './calendar.js';
 import { CLIMB_RULES } from './climbs.js';
 import { deviceSettings } from './devices.js';
 import { energyBalance } from './energy.js';
+import { readFitFile, type FitGearChange } from './fit.js';
 import { compact, hms, isFootSport, iso, km, round, speedOrPace } from './format.js';
 import { healthTable, tablesFor, type HealthGranularity, type HealthMetric } from './health.js';
 import { hourlyTable, intradayKinds, isHourlyMetric } from './intraday.js';
 import { decodeCursor, encodeCursor, pageBySize } from './paging.js';
+import { bestEfforts, durationLabel, type BestEffort } from './power-curve.js';
 import { sleepNight, sleepRange, sleepTimeline } from './sleep.js';
 import { filterStream, streamSummary, type StreamBucket, type StreamSummary } from './stream.js';
 import { trend } from './stats.js';
@@ -189,12 +191,33 @@ interface ActivitySections {
   exercise_sets?: StrengthSets;
   raw_summary?: Record<string, unknown>;
   stream_summary?: StreamSummary;
+  /** `null`: the activity has no power, so it has no curve. */
+  power_curve?: { best: { duration: string; power_w: number; w_per_kg?: number; at?: string }[] } | null;
   stream?: { metrics: string[]; total_samples: number; offset: number; samples: Record<string, unknown>[] };
   next_cursor?: string;
 }
 
-/** `get_activity` levels: the overview, one extra section, the stream aggregated per bucket, or everything incl. the raw stream. */
-export type ActivityDetailLevel = 'summary' | 'splits' | 'hr_zones' | 'power_zones' | 'weather' | 'exercise_sets' | 'stream_summary' | 'full';
+/**
+ * `get_activity` levels: the overview, one extra section, the stream aggregated per bucket, the
+ * power curve from the FIT file (never part of `full`), or everything incl. the raw stream.
+ */
+export type ActivityDetailLevel = 'summary' | 'splits' | 'hr_zones' | 'power_zones' | 'weather' | 'exercise_sets' | 'stream_summary' | 'power_curve' | 'full';
+
+/**
+ * What `activity_details` keeps of an activity's FIT file (kind `power_curve`); the file itself
+ * is not kept. `best` is empty when the file has no power; the gear shifts are kept for the
+ * shifting summary. `null`: Garmin has no FIT file for the activity.
+ */
+interface StoredFit {
+  best: BestEffort[];
+  gear_changes: FitGearChange[];
+}
+
+/** The .fit entry of a downloaded zip, else the bytes as they came. */
+function fitEntry(data: Uint8Array): Uint8Array {
+  const isZip = data[0] === 0x50 && data[1] === 0x4b;
+  return (isZip ? unzip(data).find((e) => e.name.toLowerCase().endsWith('.fit'))?.data : undefined) ?? data;
+}
 
 /** Options of the stream levels: `bucket` for `stream_summary`, `metrics` and `downsample_s` for `full` (keep them the same on every page). */
 export interface ActivityStreamOptions {
@@ -693,11 +716,76 @@ export class GarminService {
         };
       }
     }
+    if (detail === 'power_curve') {
+      // The list and the summary say whether there is power at all; without it no file is downloaded.
+      const hasPower = (row?.avg_power ?? 0) > 0 || (s.averagePower ?? 0) > 0 || (s.maxPower ?? 0) > 0;
+      const cached = this.store.getActivityDetail(id, 'power_curve') as { raw: StoredFit | null; fetched_at: number } | undefined;
+      const fit = cached ?? (hasPower ? await this.#fitCurve(id) : undefined);
+      if (fit === undefined) {
+        extra.power_curve = null;
+        notes.push('This activity has no power data, so it has no power curve; no file was downloaded.');
+      } else if ('blocked' in fit) {
+        const why = fit.blocked.reason === 'budget' ? 'The daily Garmin request limit is used up' : 'Syncing with Garmin is paused';
+        notes.push(`${why}; the FIT file for the power curve downloads after ${iso(fit.blocked.resume_at)} when asked again.`);
+      } else if ('unreadable' in fit) {
+        notes.push(`The FIT file of this activity could not be read (${fit.unreadable}), so there is no power curve.`);
+      } else {
+        sources.push({ source: cached ? 'cache' : 'live' });
+        times.push(fit.fetched_at);
+        if (fit.raw === null || fit.raw.best.length === 0) {
+          extra.power_curve = null;
+          notes.push(fit.raw === null ? 'Garmin has no FIT file for this activity, so it has no power curve.' : 'The FIT file of this activity has no power data, so it has no power curve.');
+        } else {
+          const date = (row?.start_time_local ?? s.startTimeLocal ?? undefined)?.slice(0, 10);
+          const weight = date === undefined ? undefined : this.#weightOn(date);
+          extra.power_curve = {
+            best: fit.raw.best.map((b) =>
+              compact({ duration: durationLabel(b.duration_s), power_w: Math.round(b.power_w), w_per_kg: weight ? round(b.power_w / weight.kg, 2) : undefined, at: hms(b.start_s) }),
+            ),
+          };
+          notes.push(weight ? `W/kg with ${weight.kg} kg (${weight.source}).` : 'No body weight in the cache, so no W/kg.');
+        }
+      }
+    }
     if (missing.length > 0) notes.unshift(`Garmin has no ${missing.join(', ')} for this activity.`);
     const data = compact({ ...base, ...extra });
     // No climbs is an answer: the empty list stays.
     if (data.stream_summary && extra.stream_summary?.buckets.length === 0) data.stream_summary.buckets = [];
+    // So is no power: the curve is null rather than missing.
+    if (extra.power_curve === null) data.power_curve = null;
     return { data, meta: this.#meta(sources, times, notes.length > 0 ? { note: notes.join(' ') } : {}) };
+  }
+
+  /**
+   * The power curve of an activity from its FIT file: downloaded once (one request within the
+   * daily limit), reduced to the best efforts and the gear shifts, which are stored; the file is
+   * not. A file Garmin does not have is stored as `null`; one that cannot be read is not stored.
+   */
+  async #fitCurve(id: number): Promise<{ raw: StoredFit | null; fetched_at: number } | { blocked: { reason: 'budget' | 'paused'; resume_at: number } } | { unreadable: string }> {
+    let bytes: Uint8Array | undefined;
+    try {
+      const res = await this.syncer.lazyRequest(`fit:${id}`, () => this.client.downloadActivity(id, 'fit'));
+      if ('blocked' in res) return res;
+      bytes = fitEntry(res.value.data);
+    } catch (err) {
+      if (errInfo(err).code !== 'NOT_FOUND') throw err;
+      // A 404 for an activity that still exists means it has no file (a manual entry).
+      await this.#forgetIfGone(id, err, false).catch((probe: unknown) => {
+        if (probe !== err) throw probe;
+      });
+    }
+    let raw: StoredFit | null = null;
+    if (bytes) {
+      try {
+        const fit = await readFitFile(bytes);
+        raw = { best: bestEfforts(fit.records) ?? [], gear_changes: fit.gear_changes };
+      } catch (err) {
+        return { unreadable: errInfo(err).message };
+      }
+    }
+    const at = this.#now();
+    this.store.putActivityDetail(id, 'power_curve', raw, at);
+    return { raw, fetched_at: at };
   }
 
   /**

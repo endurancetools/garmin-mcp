@@ -275,4 +275,18 @@ export const MIGRATIONS: readonly string[] = [
     PRIMARY KEY (date, kind)
   );
   `,
+  /* 9 */ `
+  -- The power curve of an activity (best average power per duration), computed from its
+  -- FIT file on the first question that needs it; the file itself is not kept.
+  CREATE TABLE activity_details_v9 (
+    activity_id INTEGER NOT NULL,
+    kind TEXT NOT NULL CHECK (kind IN ('summary', 'splits', 'hr_zones', 'details', 'weather', 'power_zones', 'exercise_sets', 'power_curve')),
+    raw TEXT NOT NULL,
+    fetched_at INTEGER NOT NULL,
+    PRIMARY KEY (activity_id, kind)
+  );
+  INSERT INTO activity_details_v9 (activity_id, kind, raw, fetched_at) SELECT activity_id, kind, raw, fetched_at FROM activity_details;
+  DROP TABLE activity_details;
+  ALTER TABLE activity_details_v9 RENAME TO activity_details;
+  `,
 ];

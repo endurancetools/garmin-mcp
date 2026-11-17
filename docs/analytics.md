@@ -203,6 +203,16 @@ How it is found:
 
 Elevation of the activity stream is what Garmin stored for the activity (corrected or not, as Garmin Connect shows it), so gains can differ by a few metres from the activity's total ascent.
 
+## Power curve
+
+`get_activity` with `detail: "power_curve"` gives the best average power of one activity for 1, 5, 15 and 30 seconds and 1, 2, 5, 10, 20, 30 and 60 minutes (`POWER_CURVE_DURATIONS_S` in `packages/domain/src/power-curve.ts`), each with `at`, the time from the start of the activity where that best effort began. Running power is read the same way as cycling power.
+
+- The source is the activity's FIT file, read one record per second; the stream behind `stream_summary` is thinned out by Garmin and would miss short peaks. The file is downloaded once, the curve and the gear shifts are kept in the local database and the file is dropped.
+- The curve runs over elapsed time: a second without power (timer stopped, a sensor dropout) counts as 0 W, like coasting. Leaving such seconds out would join the efforts before and after a stop into one window that was never ridden.
+- A duration longer than the activity is left out.
+- **W/kg** uses the same body weight as climbs: the latest weigh-in up to 30 days before the activity, else the weight in the Garmin profile; the note names the source.
+- An activity whose list entry and summary show no power answers `power_curve: null` without downloading the file; so does a file without power records.
+
 ## Morning readiness
 
 The decision is training information, not medical advice: it compares this morning with your own recent baselines and cannot tell whether you are ill or injured. If you feel unwell, talk to a doctor, whatever the decision says.

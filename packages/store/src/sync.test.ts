@@ -276,6 +276,28 @@ const INTRADAY_METHODS = ['getHeartRate', 'getStress', 'getRespiration', 'getSpo
 const intradayCalls = (calls: Record<string, number>) => Object.fromEntries(Object.entries(calls).filter(([m]) => INTRADAY_METHODS.includes(m)));
 const MIN = 60_000;
 
+describe('Syncer.lazyRequest', () => {
+  it('counts the request, refuses it at the daily cap or in a pause, and pauses after a fatal error', async () => {
+    const { syncer, store } = setup({ maxRequestsPerDay: 2 });
+    let sent = 0;
+    const fetch = async () => ++sent;
+    expect(await syncer.lazyRequest('fit:1', fetch)).toEqual({ value: 1 });
+    expect(store.getMeta(requestCounterKey('2026-10-08'))).toBe('1');
+    const limited = Object.assign(new Error('429'), { code: 'RATE_LIMITED' });
+    await expect(
+      syncer.lazyRequest('fit:2', async () => {
+        throw limited;
+      }),
+    ).rejects.toThrow('429');
+    expect(store.getMeta(requestCounterKey('2026-10-08'))).toBe('2');
+    const until = NOW + 6 * 60 * MIN;
+    expect(await syncer.lazyRequest('fit:3', fetch)).toEqual({ blocked: { reason: 'paused', resume_at: until } });
+    store.setMeta('sync:paused_until', '0');
+    expect(await syncer.lazyRequest('fit:3', fetch)).toEqual({ blocked: { reason: 'budget', resume_at: Date.parse('2026-10-09T00:00:00Z') } });
+    expect(sent).toBe(1);
+  });
+});
+
 describe('Syncer.ensureIntraday', () => {
   it('fetches nothing unless asked to (default: fetchOnDemand) and reports what is missing', async () => {
     const { syncer, calls } = setup();

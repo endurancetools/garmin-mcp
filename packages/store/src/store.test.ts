@@ -11,8 +11,8 @@ const T = 1_791_400_000_000;
 describe('Store', () => {
   it('migrates a fresh database', () => {
     const store = Store.open(':memory:');
-    expect(schemaVersion(store.db)).toBe(8);
-    expect(store.getMeta('schema_version')).toBe('8');
+    expect(schemaVersion(store.db)).toBe(9);
+    expect(store.getMeta('schema_version')).toBe('9');
   });
 
   it('keeps cached activity details when migration 3 widens the detail kinds', () => {
@@ -173,12 +173,28 @@ describe('Store', () => {
     db.prepare(`INSERT INTO daily_summary (date, steps, raw, fetched_at) VALUES ('2026-10-07', 9000, '{}', ?)`).run(T);
     db.prepare(`INSERT INTO meta (key, value) VALUES ('sync:requests:2026-10-08', '12')`).run();
     migrate(db);
-    expect(schemaVersion(db)).toBe(8);
+    expect(schemaVersion(db)).toBe(MIGRATIONS.length);
     const store = new Store(db);
     expect(store.getDaily('daily_summary', '2026-10-07', '2026-10-07')[0]?.steps).toBe(9000);
     expect(store.getMeta('sync:requests:2026-10-08')).toBe('12');
     expect(store.getIntraday('2026-10-07')).toEqual([]);
     expect(store.tableStats().find((t) => t.table === 'intraday')).toEqual({ table: 'intraday', rows: 0, from: null, to: null });
+  });
+
+  it('keeps cached activity details when migration 9 adds the power curve kind', () => {
+    const db = new Database(':memory:');
+    for (const sql of MIGRATIONS.slice(0, 8)) db.exec(sql);
+    db.pragma('user_version = 8');
+    db.prepare(`INSERT INTO activity_details (activity_id, kind, raw, fetched_at) VALUES (1, 'power_zones', 'null', ?)`).run(T);
+    expect(() => db.prepare(`INSERT INTO activity_details (activity_id, kind, raw, fetched_at) VALUES (1, 'power_curve', '{}', ?)`).run(T)).toThrow(/CHECK constraint/);
+    migrate(db);
+    expect(schemaVersion(db)).toBe(MIGRATIONS.length);
+    const store = new Store(db);
+    expect(store.getActivityDetail(1, 'power_zones')).toEqual({ raw: null, fetched_at: T });
+    store.putActivityDetail(1, 'power_curve', { best: [] }, T);
+    expect(store.getActivityDetail(1, 'power_curve')).toEqual({ raw: { best: [] }, fetched_at: T });
+    store.deleteActivity(1);
+    expect(store.getActivityDetail(1, 'power_curve')).toBeUndefined();
   });
 
   it('keeps one intraday series per day and kind', () => {

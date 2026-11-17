@@ -386,6 +386,26 @@ export class Syncer {
     return { source: missing.length > 0 ? 'partial' : 'live', missing };
   }
 
+  /**
+   * One request outside the sync jobs that the question asked for (the FIT file of a power
+   * curve), under the same rules as the intraday series: counted before it is sent, not sent
+   * while syncing is paused or when it would pass the daily cap. A fatal error pauses syncing.
+   */
+  async lazyRequest<T>(key: string, fetch: () => Promise<T>): Promise<{ value: T } | { blocked: NonNullable<IntradayResult['blocked']> }> {
+    const blocked = this.#lazyFetchBlocked(1);
+    if (blocked) return { blocked };
+    return this.#dedupe(`lazy:${key}`, async () => {
+      this.#spend(1);
+      try {
+        return { value: await fetch() };
+      } catch (err) {
+        const info = errInfo(err);
+        if (FATAL_CODES.has(info.code)) pauseSyncing(this.#store, `${info.code}: ${info.message}`, info.code, this.#now());
+        throw err;
+      }
+    });
+  }
+
   /** Intraday kinds of `date` that a fetch would download now: never stored, or today's older than 15 min. */
   staleIntraday(date: IsoDate, kinds: readonly IntradayKind[]): IntradayKind[] {
     const fetched = this.#store.intradayFetchedAt(date);

@@ -13,7 +13,7 @@ Coverage:
 
 All reads come from the local SQLite cache. Data that garmin-mcp does not sync is not available, even if the client has a method for it.
 
-Totals for the 111 reads: 65 full, 12 partial, 34 missing.
+Totals for the 111 reads: 66 full, 13 partial, 32 missing.
 
 ## Reads
 
@@ -37,9 +37,9 @@ Totals for the 111 reads: 65 full, 12 partial, 34 missing.
 | Activity types | `garmin://activity-types` | full | type keys with parent type, from the reference sync; the same keys `get_activities` `type` and `update_activity` `type` take |
 | Training effect of an activity | `get_activity` → `training_effect`, `training_load` | full | |
 | Activity file (FIT, GPX, TCX, KML, CSV) | `download_activity_file` `id`, `format`, `output_dir` | full | FIT is unzipped |
-| FIT file messages | — | missing | FIT parsing. |
+| FIT file messages | `get_activity` `detail: "power_curve"` | partial | the 1 Hz power records, for the power curve; gear shifts and other messages are not served |
 | FIT data (Di2, power) | — | missing | FIT parsing. |
-| Power-duration curve | — | missing | |
+| Power-duration curve | `get_activity` `detail: "power_curve"` | full | best power for 1, 5, 15, 30 s and 1, 2, 5, 10, 20, 30, 60 min, W and W/kg, also running power; from the FIT file, downloaded once and kept as the curve |
 
 ### Daily health
 
