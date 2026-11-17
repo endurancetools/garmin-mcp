@@ -25,7 +25,7 @@ import { bodyComposition } from './body.js';
 import { calendarEvent } from './calendar.js';
 import { CLIMB_RULES } from './climbs.js';
 import { courseBriefFromDetail, courseDetail, courseList, eventCourseRef, type CourseBrief } from './courses.js';
-import { deviceSettings } from './devices.js';
+import { deviceSettings, deviceSolar } from './devices.js';
 import { energyBalance } from './energy.js';
 import { checkExerciseSets, exerciseSetsBody, exerciseSetsInput, rawExerciseSets, type ExerciseSetInput } from './exercise-sets.js';
 import { readFitFile, weightScaleFile, type FitGearChange } from './fit.js';
@@ -1924,6 +1924,7 @@ export class GarminService {
             primary: d.raw.primaryActivityTrackerIndicator === true ? true : undefined,
             last_sync_utc: d.last_sync_utc,
             settings: deviceSettings(d.settings),
+            solar: deviceSolar(d.solar),
           }),
         ),
       },

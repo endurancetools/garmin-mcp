@@ -1,6 +1,6 @@
-import type { DeviceSettings, GarminClient, WeightEntry } from 'garmin-mcp-client';
+import type { Device, DeviceSettings, GarminClient, WeightEntry } from 'garmin-mcp-client';
 import { addDays, dateIn, eachDay, endOfMonth, silentLogger, type IsoDate, type Logger } from 'garmin-mcp-config';
-import { hrvColumns, dailySummaryColumns, sleepColumns, trainingColumns } from './extract.js';
+import { hrvColumns, dailySummaryColumns, isSolarDevice, sleepColumns, solarDays, trainingColumns, type SolarDaySummary } from './extract.js';
 import { isDayFresh, isFresh, isIntradayFresh, TTL } from './freshness.js';
 import { addRange, gaps, parseRangeSet, type RangeSet } from './ranges.js';
 import type { DailyKind, IntradayKind, ReferenceKind, Store, TrainingMetricsData } from './store.js';
@@ -212,7 +212,8 @@ export class Syncer {
     const cost: Record<ReferenceKind, number> = { profile: 4, gear: 1, devices: 2, workouts: 4, activity_types: 1 };
     const perItem: Partial<Record<ReferenceKind, () => number>> = {
       gear: () => 2 * this.#store.getGear().length,
-      devices: () => this.#store.getDevices().length,
+      // Settings of every device, solar days of the solar ones.
+      devices: () => this.#store.getDevices().reduce((n, d) => n + (isSolarDevice(d.raw) ? 2 : 1), 0),
     };
     for (const kind of ['profile', 'gear', 'devices', 'workouts', 'activity_types'] as const) {
       if (res.fatal) break;
@@ -764,6 +765,29 @@ export class Syncer {
     return out;
   }
 
+  /**
+   * Solar days of the last 7 days, one request per solar device. A failure that
+   * does not stop all requests leaves the device without solar days until the next refresh.
+   */
+  async #deviceSolar(devices: readonly Device[]): Promise<Map<number, SolarDaySummary[] | null>> {
+    const solar = devices.filter(isSolarDevice).map((d) => d.deviceId);
+    const today = this.today();
+    const out = new Map<number, SolarDaySummary[] | null>();
+    const settled = await Promise.allSettled(solar.map((id) => this.#client.getDeviceSolar(id, addDays(today, -6), today)));
+    for (const [i, r] of settled.entries()) {
+      const id = solar[i] as number;
+      if (r.status === 'fulfilled') {
+        out.set(id, solarDays(r.value));
+        continue;
+      }
+      const info = errInfo(r.reason);
+      if (FATAL_CODES.has(info.code)) throw r.reason;
+      out.set(id, null);
+      if (info.code !== 'NOT_FOUND') this.#log.warn({ item: `device_solar:${id}`, err: info }, 'sync item failed');
+    }
+    return out;
+  }
+
   async #refreshReference(kind: ReferenceKind, force: boolean): Promise<boolean> {
     const now = this.#now();
     if (!force && isFresh(this.#store.referenceFetchedAt(kind), TTL.reference, now)) return false;
@@ -796,7 +820,8 @@ export class Syncer {
       }
       case 'devices': {
         const [devices, lastUsed] = await Promise.all([c.listDevices(), c.getLastUsedDevice().catch(() => null)]);
-        this.#store.replaceDevices(devices, lastUsed, now, await this.#deviceSettings(devices.map((d) => d.deviceId)));
+        const [settings, solar] = await Promise.all([this.#deviceSettings(devices.map((d) => d.deviceId)), this.#deviceSolar(devices)]);
+        this.#store.replaceDevices(devices, lastUsed, now, settings, solar);
         break;
       }
       case 'workouts': {

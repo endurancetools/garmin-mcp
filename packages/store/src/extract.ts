@@ -7,6 +7,7 @@ import type {
   ActivitySummary,
   DailySummary,
   Device,
+  DeviceSolar,
   Gear,
   GearStats,
   Hrv,
@@ -196,4 +197,42 @@ export function deviceColumns(d: Device, lastSyncUtc: string | null) {
     model: s(d.productDisplayName),
     last_sync_utc: lastSyncUtc,
   };
+}
+
+/** A device that charges from the sun; only these have solar days (`getDeviceSolar`). */
+export function isSolarDevice(d: Device): boolean {
+  return d.solarChargeCapable === true || d.solarPanelUtilizationCapable === true;
+}
+
+/**
+ * One solar day as stored: Garmin's daily gain plus what the minute readings add up
+ * to. The readings themselves (about 1440 a day) are not kept.
+ */
+export interface SolarDaySummary {
+  date: string;
+  /** `totalActivityTimeGainedMs` of the day. */
+  time_gained_ms: Num;
+  /** Readings (one a minute) with `solarUtilization` above 0; null without readings. */
+  solar_minutes: Num;
+  /** Highest `solarUtilization` of the day, in Garmin's unit (not documented). */
+  peak_solar_utilization: Num;
+}
+
+/** Daily sums of a `getDeviceSolar` response, oldest day first; days without a date are dropped. */
+export function solarDays(raw: DeviceSolar | null | undefined): SolarDaySummary[] {
+  const days = raw?.deviceSolarInput?.solarDailyDataDTOs ?? [];
+  const out: SolarDaySummary[] = [];
+  for (const day of days) {
+    const date = s(day.localConnectDate)?.slice(0, 10);
+    if (!date) continue;
+    const values = (day.solarInputReadings ?? []).map((r) => n(r.solarUtilization)).filter((v) => v !== null);
+    const readings = day.solarInputReadings?.length ? values : null;
+    out.push({
+      date,
+      time_gained_ms: n(day.totalActivityTimeGainedMs),
+      solar_minutes: readings ? readings.filter((v) => v > 0).length : null,
+      peak_solar_utilization: readings && readings.length > 0 ? Math.max(...readings) : null,
+    });
+  }
+  return out.toSorted((a, b) => a.date.localeCompare(b.date));
 }

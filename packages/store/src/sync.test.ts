@@ -189,6 +189,35 @@ describe('Syncer', () => {
     expect(res.errors.map((e) => e.item)).toEqual(['devices']);
   });
 
+  it('fetches solar days of a solar device with the device list, one request, and drops them on a failure', async () => {
+    let fail: string | undefined;
+    const ranges: unknown[] = [];
+    const { syncer, store, calls } = setup({
+      solarDevice: true,
+      failWith: (m, arg) => {
+        if (m === 'getDeviceSolar') ranges.push(arg);
+        return fail && m === 'getDeviceSolar' ? Object.assign(new Error('x'), { code: fail }) : undefined;
+      },
+    });
+    const res = await syncer.syncReference();
+    expect(ranges).toEqual([{ id: 7, from: '2026-10-02', to: '2026-10-08' }]);
+    expect(calls.getDeviceSolar).toBe(1);
+    expect(res.requests).toBe(4 + (1 + 2) + (2 + 2) + 4 + 1);
+    const solar = () => store.getDevices()[0]?.solar;
+    expect(solar()).toEqual([
+      { date: '2026-11-14', time_gained_ms: 0, solar_minutes: 5, peak_solar_utilization: 1.059999942779541 },
+      { date: '2026-11-15', time_gained_ms: 3, solar_minutes: 8, peak_solar_utilization: 50.290000915527344 },
+    ]);
+    fail = 'SERVER_ERROR';
+    expect((await syncer.syncReference(true)).errors).toEqual([]);
+    expect(solar()).toBeNull();
+    expect(store.getDevices()[0]?.settings).toMatchObject({ deviceId: 7 });
+    fail = 'AUTH_EXPIRED';
+    const fatal = await syncer.syncReference(true);
+    expect(fatal.fatal).toMatchObject({ code: 'AUTH_EXPIRED' });
+    expect(fatal.errors.map((e) => e.item)).toEqual(['devices']);
+  });
+
   it('syncs reference data and links gear to stored activities', async () => {
     const { syncer, store, calls } = setup({ activities: [activity(2, '2026-10-07')] });
     await syncer.syncActivities('2026-10-01', '2026-10-08');
@@ -198,6 +227,9 @@ describe('Syncer', () => {
     expect(store.getActivity(2)?.gear_uuid).toBe('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
     expect(store.getDevices()[0]).toMatchObject({ name: 'FR965', last_sync_utc: '2026-10-08T06:00:00Z', settings: { deviceId: 7, measurementUnits: 'metric' } });
     expect(calls.getDeviceSettings).toBe(1);
+    // FR965 does not charge from the sun: no solar request.
+    expect(calls.getDeviceSolar).toBeUndefined();
+    expect(store.getDevices()[0]?.solar).toBeNull();
     expect(res.requests).toBe(4 + (1 + 2) + (2 + 1) + 4 + 1);
     expect(store.getActivityTypes().map((t) => t.typeKey)).toEqual(['running', 'trail_running']);
     expect(store.referenceFetchedAt('activity_types')).toBe(NOW);

@@ -1,18 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import Database from 'better-sqlite3';
 import { migrate, schemaVersion } from './db.js';
-import { dailySummaryColumns } from './extract.js';
+import type { DeviceSolar } from 'garmin-mcp-client';
+import { dailySummaryColumns, solarDays } from './extract.js';
 import { MIGRATIONS } from './migrations.js';
 import { Store } from './store.js';
-import { activity } from './test-utils/fake-client.js';
+import { activity, fixture } from './test-utils/fake-client.js';
 
 const T = 1_791_400_000_000;
 
 describe('Store', () => {
   it('migrates a fresh database', () => {
     const store = Store.open(':memory:');
-    expect(schemaVersion(store.db)).toBe(12);
-    expect(store.getMeta('schema_version')).toBe('12');
+    expect(schemaVersion(store.db)).toBe(13);
+    expect(store.getMeta('schema_version')).toBe('13');
   });
 
   it('keeps cached activity details when migration 3 widens the detail kinds', () => {
@@ -38,7 +39,7 @@ describe('Store', () => {
     db.prepare(`INSERT INTO meta (key, value) VALUES ('ref:devices:fetched_at', ?), ('ref:gear:fetched_at', ?)`).run(String(T), String(T));
     migrate(db);
     const store = new Store(db);
-    expect(store.getDevices()).toEqual([{ id: 7, name: 'FR965', model: null, last_sync_utc: null, raw: { deviceId: 7 }, settings: null, fetched_at: T }]);
+    expect(store.getDevices()).toEqual([{ id: 7, name: 'FR965', model: null, last_sync_utc: null, raw: { deviceId: 7 }, settings: null, solar: null, fetched_at: T }]);
     expect(store.referenceFetchedAt('devices')).toBeUndefined();
     expect(store.referenceFetchedAt('gear')).toBe(T);
   });
@@ -48,6 +49,43 @@ describe('Store', () => {
     const settings = { deviceId: 7, timeFormat: 'time_twenty_four_hr' };
     store.replaceDevices([{ deviceId: 7 }, { deviceId: 8 }], null, T, new Map([[7, settings], [8, null]]));
     expect(Object.fromEntries(store.getDevices().map((d) => [d.id, d.settings]))).toEqual({ 7: settings, 8: null });
+  });
+
+  it('adds solar days in migration 13 and marks stored devices for a refetch', () => {
+    const db = new Database(':memory:');
+    for (const sql of MIGRATIONS.slice(0, 12)) db.exec(sql);
+    db.pragma('user_version = 12');
+    db.prepare(`INSERT INTO devices (id, name, raw, settings, fetched_at) VALUES (7, 'fenix', '{"deviceId":7}', '{"deviceId":7}', ?)`).run(T);
+    db.prepare(`INSERT INTO meta (key, value) VALUES ('ref:devices:fetched_at', ?), ('ref:gear:fetched_at', ?)`).run(String(T), String(T));
+    migrate(db);
+    expect(schemaVersion(db)).toBe(MIGRATIONS.length);
+    const store = new Store(db);
+    expect(store.getDevices()[0]).toMatchObject({ id: 7, settings: { deviceId: 7 }, solar: null });
+    expect(store.referenceFetchedAt('devices')).toBeUndefined();
+    expect(store.referenceFetchedAt('gear')).toBe(T);
+  });
+
+  it('stores solar days next to the device list', () => {
+    const store = Store.open(':memory:');
+    const days = [{ date: '2026-11-15', time_gained_ms: 3, solar_minutes: 163, peak_solar_utilization: 50.29 }];
+    store.replaceDevices([{ deviceId: 7, solarChargeCapable: true }, { deviceId: 8 }], null, T, new Map(), new Map([[7, days]]));
+    expect(Object.fromEntries(store.getDevices().map((d) => [d.id, d.solar]))).toEqual({ 7: days, 8: null });
+  });
+
+  it('sums solar days from the minute readings and keeps no readings', () => {
+    expect(solarDays(fixture('device-solar') as DeviceSolar)).toEqual([
+      { date: '2026-11-14', time_gained_ms: 0, solar_minutes: 5, peak_solar_utilization: 1.059999942779541 },
+      { date: '2026-11-15', time_gained_ms: 3, solar_minutes: 8, peak_solar_utilization: 50.290000915527344 },
+    ]);
+    const day = (extra: object) => ({ deviceSolarInput: { solarDailyDataDTOs: [{ localConnectDate: '2026-11-16', ...extra }] } });
+    expect(solarDays(day({ totalActivityTimeGainedMs: 0, solarInputReadings: [] }))).toEqual([
+      { date: '2026-11-16', time_gained_ms: 0, solar_minutes: null, peak_solar_utilization: null },
+    ]);
+    expect(solarDays(day({ solarInputReadings: [{ solarUtilization: null }, { solarUtilization: 0 }] }))).toEqual([
+      { date: '2026-11-16', time_gained_ms: null, solar_minutes: 0, peak_solar_utilization: 0 },
+    ]);
+    expect(solarDays({ deviceSolarInput: { solarDailyDataDTOs: [{ totalActivityTimeGainedMs: 1 }] } })).toEqual([]);
+    expect(solarDays(null)).toEqual([]);
   });
 
   it('upserts and queries activities with filters, sort and paging', () => {
@@ -203,13 +241,15 @@ describe('Store', () => {
     for (const sql of MIGRATIONS.slice(0, 5)) db.exec(sql);
     db.pragma('user_version = 5');
     db.prepare(`INSERT INTO devices (id, name, raw, settings, fetched_at) VALUES (7, 'FR965', '{"deviceId":7}', '{"deviceId":7}', ?)`).run(T);
-    db.prepare(`INSERT INTO meta (key, value) VALUES ('ref:devices:fetched_at', ?)`).run(String(T));
+    db.prepare(`INSERT INTO meta (key, value) VALUES ('ref:devices:fetched_at', ?), ('ref:gear:fetched_at', ?)`).run(String(T), String(T));
     migrate(db);
     expect(schemaVersion(db)).toBe(MIGRATIONS.length);
     const store = new Store(db);
     expect(store.getMeta('schema_version')).toBe(String(MIGRATIONS.length));
     expect(store.getDevices()[0]?.settings).toEqual({ deviceId: 7 });
-    expect(store.referenceFetchedAt('devices')).toBe(T);
+    // Migration 13 (solar days) asks for a fresh device list; nothing else is refetched.
+    expect(store.referenceFetchedAt('devices')).toBeUndefined();
+    expect(store.referenceFetchedAt('gear')).toBe(T);
     expect(store.listThresholds()).toEqual([]);
     expect(store.countImportedActivities()).toBe(0);
     const indexes = db.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name IN ('thresholds', 'imported_activities') ORDER BY name").all();

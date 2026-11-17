@@ -324,4 +324,11 @@ export const MIGRATIONS: readonly string[] = [
   DROP TABLE intraday;
   ALTER TABLE intraday_v12 RENAME TO intraday;
   `,
+  /* 13 */ `
+  -- Daily solar sums of solar-charging devices (web-gateway/solar), fetched with the
+  -- device list; the minute readings are not kept. Devices stored before have none,
+  -- so the next reference sync fetches the list again.
+  ALTER TABLE devices ADD COLUMN solar TEXT;
+  DELETE FROM meta WHERE key = 'ref:devices:fetched_at';
+  `,
 ];

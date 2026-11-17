@@ -57,6 +57,8 @@ export function setup(
     /** Earned badges and badge challenges in progress (an Error is thrown); the recorded ones (5 badges, 3 challenges) by default. */
     badges?: unknown;
     challenges?: unknown;
+    /** Solar days of a solar device (an Error is thrown); the trimmed E8-8a recording by default. */
+    solar?: unknown;
   } = {},
 ) {
   const now = opts.now ?? NOW;
@@ -273,6 +275,7 @@ export function setup(
     listDevices: () => rec('listDevices', [], () => fixture('devices')),
     getLastUsedDevice: () => rec('getLastUsedDevice', [], () => fixture('device-last-used')),
     getDeviceSettings: (id: number) => rec('getDeviceSettings', [id], () => fixture('device-settings')),
+    getDeviceSolar: (id: number, from: string, to: string) => rec('getDeviceSolar', [id, from, to], () => answer(opts.solar, 'device-solar')),
     getActivityTypes: () => rec('getActivityTypes', [], () => fixture('activity-types')),
     getWeighIns: () => rec('getWeighIns', [], () => ({ dailyWeightSummaries: [] })),
     listWorkouts: () => rec('listWorkouts', [], () => [{ workoutId: 700001, workoutName: 'Z2 Run', sportType: { sportTypeKey: 'running' } }]),

@@ -580,6 +580,9 @@ export const deviceSchema = z.looseObject({
   /** True for every paired device; the main watch is the one with `primaryActivityTrackerIndicator`. */
   primary: bool,
   primaryActivityTrackerIndicator: bool,
+  /** Either one true: the device charges from the sun and has solar days (`getDeviceSolar`). */
+  solarChargeCapable: bool,
+  solarPanelUtilizationCapable: bool,
 });
 export type Device = z.infer<typeof deviceSchema>;
 export const deviceListSchema = z.array(deviceSchema);
@@ -628,8 +631,8 @@ export type DeviceSettings = z.infer<typeof deviceSettingsSchema>;
  * Fields below are the ones the recordings show; schemas stay loose and
  * nullish, so a response of another shape is logged and passed through, never
  * rejected. Recorded empty, so with item shapes still unknown: goals, daily
- * events, blood pressure measurements, meals, menstrual day (`null`) and solar
- * days; their items are left untyped.
+ * events, blood pressure measurements, meals and menstrual day (`null`); their
+ * items are left untyped. Solar days follow a later recording of a solar watch (E8-8a).
  */
 
 const typedSplitFields = {
@@ -751,12 +754,39 @@ export const courseSchema = z.looseObject({
 });
 export type Course = z.infer<typeof courseSchema>;
 
+/**
+ * One minute of solar input (E8-8a recording: 1434-1440 per day). The unit of
+ * `solarUtilization` is not documented; the recording has 0 to 50.3.
+ */
+export const solarReadingSchema = z.looseObject({
+  readingTimestampLocal: str,
+  readingTimestampGmt: str,
+  solarUtilization: num,
+  activityTimeGainMs: num,
+  charging: bool,
+  interpolated: bool,
+  notChargingTooHot: bool,
+  notChargingTooCold: bool,
+  notChargingBatteryFull: bool,
+  notChargingExternalPower: bool,
+  notChargingUserDisabled: bool,
+  notChargingOther: bool,
+});
+export const solarDaySchema = z.looseObject({
+  localConnectDate: str,
+  userProfilePk: int,
+  deviceId: int,
+  totalActivityTimeGainedMs: num,
+  solarInputReadings: z.array(solarReadingSchema).nullish(),
+});
+export type SolarDay = z.infer<typeof solarDaySchema>;
 /** Solar days of the device, plus the activities and sleeps of the range. */
 export const deviceSolarSchema = z.looseObject({
-  deviceSolarInput: z.looseObject({ solarDailyDataDTOs: z.array(z.looseObject({})).nullish() }).nullish(),
+  deviceSolarInput: z.looseObject({ solarDailyDataDTOs: z.array(solarDaySchema).nullish() }).nullish(),
   listOfAllActivities: z.looseObject({ activityList: z.array(z.looseObject({})).nullish() }).nullish(),
   DailySleeps: z.array(z.looseObject({})).nullish(),
 });
+export type DeviceSolar = z.infer<typeof deviceSolarSchema>;
 export const nutritionDaySchema = z.looseObject({
   mealDate: str,
   dailyNutritionGoals: z.looseObject({ calories: num, adjustedCalories: num }).nullish(),

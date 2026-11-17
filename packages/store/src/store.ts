@@ -26,6 +26,7 @@ import {
   trainingColumns,
   workoutColumns,
   type ActivityColumns,
+  type SolarDaySummary,
 } from './extract.js';
 
 export type DailyKind = 'daily_summary' | 'sleep' | 'hrv' | 'training_status';
@@ -155,6 +156,8 @@ export interface DeviceRow {
   raw: Device;
   /** `getDeviceSettings`; null when Garmin had none or they were never fetched. */
   settings: DeviceSettings | null;
+  /** Daily sums of `getDeviceSolar` for the last 7 days; null for a device without solar or when the request failed. */
+  solar: SolarDaySummary[] | null;
   fetched_at: number;
 }
 
@@ -808,30 +811,45 @@ export class Store {
     );
   }
 
-  /** Replaces the device list; `settings` maps device id to its settings (missing id: none). */
+  /**
+   * Replaces the device list; `settings` and `solar` map device id to its settings
+   * and solar days (missing id: none).
+   */
   replaceDevices(
     devices: readonly Device[],
     lastUsed: DeviceLastUsed | null,
     fetchedAt: number,
     settings: ReadonlyMap<number, DeviceSettings | null> = new Map(),
+    solar: ReadonlyMap<number, SolarDaySummary[] | null> = new Map(),
   ): void {
     const stmt = this.db.prepare(
-      'INSERT INTO devices (id, name, model, last_sync_utc, raw, settings, fetched_at) VALUES (@id, @name, @model, @last_sync_utc, @raw, @settings, @fetched_at)',
+      'INSERT INTO devices (id, name, model, last_sync_utc, raw, settings, solar, fetched_at) VALUES (@id, @name, @model, @last_sync_utc, @raw, @settings, @solar, @fetched_at)',
     );
     this.db.transaction(() => {
       this.db.prepare('DELETE FROM devices').run();
       for (const d of devices) {
         const lastSync = lastUsed && lastUsed.userDeviceId === d.deviceId ? normalizeUtc(lastUsed.lastUsedDeviceUploadTime) : null;
         const s = settings.get(d.deviceId) ?? null;
-        stmt.run({ ...deviceColumns(d, lastSync), raw: JSON.stringify(d), settings: s === null ? null : JSON.stringify(s), fetched_at: fetchedAt });
+        const days = solar.get(d.deviceId) ?? null;
+        stmt.run({
+          ...deviceColumns(d, lastSync),
+          raw: JSON.stringify(d),
+          settings: s === null ? null : JSON.stringify(s),
+          solar: days === null ? null : JSON.stringify(days),
+          fetched_at: fetchedAt,
+        });
       }
     })();
   }
 
   getDevices(): DeviceRow[] {
-    return (this.db.prepare('SELECT * FROM devices ORDER BY last_sync_utc DESC NULLS LAST, name').all() as (RawRow & { settings: string | null })[]).map(
-      (r) => ({ ...(parseRow<DeviceRow>(r) as DeviceRow), settings: r.settings === null ? null : (JSON.parse(r.settings) as DeviceSettings) }),
-    );
+    return (
+      this.db.prepare('SELECT * FROM devices ORDER BY last_sync_utc DESC NULLS LAST, name').all() as (RawRow & { settings: string | null; solar: string | null })[]
+    ).map((r) => ({
+      ...(parseRow<DeviceRow>(r) as DeviceRow),
+      settings: r.settings === null ? null : (JSON.parse(r.settings) as DeviceSettings),
+      solar: r.solar === null ? null : (JSON.parse(r.solar) as SolarDaySummary[]),
+    }));
   }
 
   setProfile(data: ProfileData, fetchedAt: number): void {

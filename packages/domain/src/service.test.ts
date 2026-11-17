@@ -1354,8 +1354,8 @@ describe('GarminService', () => {
     expect(calls.length).toBe(before);
   });
 
-  it('lists devices with their settings from the reference sync', async () => {
-    const { service, count } = setup();
+  it('lists devices with their settings and solar days from the reference sync', async () => {
+    const { service, store, calls, count } = setup();
     const res = await service.getDevices();
     expect(count('getDeviceSettings')).toBe(5);
     expect(res.data.devices).toHaveLength(5);
@@ -1369,9 +1369,27 @@ describe('GarminService', () => {
       primary: true,
       last_sync_utc: '2026-10-11T17:48:39Z',
       settings: { time_format: 'time_twenty_four_hr', date_format: 'date_day_month', units: 'metric', alarms: 0, alarms_on: 0 },
+      // Daily sums of the trimmed E8-8a recording (12 readings a day); the readings stay out.
+      solar: [
+        { date: '2026-11-14', time_gained_ms: 0, solar_minutes: 5, peak_solar_utilization: 1.1 },
+        { date: '2026-11-15', time_gained_ms: 3, solar_minutes: 8, peak_solar_utilization: 50.3 },
+      ],
     });
+    // Only the fenix 8 Solar charges from the sun: one solar request, the last 7 days.
+    expect(calls.filter((c) => c.method === 'getDeviceSolar').map((c) => c.args)).toEqual([[2730757515, '2026-10-02', '2026-10-08']]);
+    expect(res.data.devices.slice(1).filter((d) => 'solar' in d)).toEqual([]);
+    expect(JSON.stringify(store.getDevices())).not.toContain('solarInputReadings');
     await service.getDevices();
     expect(count('getDeviceSettings')).toBe(5);
+    expect(count('getDeviceSolar')).toBe(1);
+  });
+
+  it('leaves solar out of get_devices when the solar request fails', async () => {
+    const { service, count } = setup({ solar: Object.assign(new Error('x'), { code: 'SERVER_ERROR' }) });
+    const res = await service.getDevices();
+    expect(count('getDeviceSolar')).toBe(1);
+    expect(res.data.devices[0]).toMatchObject({ id: 2730757515, settings: { units: 'metric' } });
+    expect(res.data.devices[0]).not.toHaveProperty('solar');
   });
 
   it('lists activity type keys with their parent from the reference sync', async () => {

@@ -424,7 +424,18 @@ export const gearOutput = envelope({
 });
 
 export const devicesOutput = envelope({
-  devices: list(z.looseObject({ id: num, name: str, model: str, firmware: str, primary: bool, last_sync_utc: str, settings: any })),
+  devices: list(
+    z.looseObject({
+      id: num,
+      name: str,
+      model: str,
+      firmware: str,
+      primary: bool,
+      last_sync_utc: str,
+      settings: any,
+      solar: list(z.looseObject({ date: str, time_gained_ms: num, solar_minutes: num, peak_solar_utilization: num })),
+    }),
+  ),
 });
 
 export const deleteActivityOutput = envelope({ deleted: bool, activity_id: num });

@@ -62,6 +62,8 @@ const contracts: Record<string, z.ZodType> = {
   courses: s.coursesSchema,
   course: s.courseSchema,
   'earned-badges': s.earnedBadgesSchema,
+  /** E8-8a recording of a solar watch: 2 of 7 days, 12 of ~1440 readings a day, activities and sleeps dropped. */
+  'device-solar': s.deviceSolarSchema,
 };
 
 describe('schema contracts', () => {

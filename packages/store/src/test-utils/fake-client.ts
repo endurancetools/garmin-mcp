@@ -13,6 +13,8 @@ export interface FakeClientOptions {
   unlisted?: number[];
   delayMs?: number;
   failWith?: (method: string, arg?: unknown) => Error | undefined;
+  /** Device 7 charges from the sun, so a devices refresh also fetches its solar days. */
+  solarDevice?: boolean;
 }
 
 export function activity(id: number, day: string, extra: Partial<ActivitySummary> = {}): ActivitySummary {
@@ -87,7 +89,9 @@ export function fakeClient(opts: FakeClientOptions = {}) {
     listGear: () => call('listGear', undefined, () => [{ uuid: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', displayName: 'Shoe', gearTypeName: 'Shoes', gearStatusName: 'active' }]),
     getGearStats: () => call('getGearStats', undefined, () => ({ totalDistance: 100_000 })),
     getGearActivities: () => call('getGearActivities', undefined, () => activities.slice(0, 1)),
-    listDevices: () => call('listDevices', undefined, () => [{ deviceId: 7, displayName: 'FR965', productDisplayName: 'Forerunner 965' }]),
+    listDevices: () =>
+      call('listDevices', undefined, () => [{ deviceId: 7, displayName: 'FR965', productDisplayName: 'Forerunner 965', solarChargeCapable: opts.solarDevice === true }]),
+    getDeviceSolar: (id: number, from: string, to: string) => call('getDeviceSolar', { id, from, to }, () => fixture('device-solar')),
     getDeviceSettings: (id: number) => call('getDeviceSettings', id, () => ({ deviceId: id, timeFormat: 'time_twenty_four_hr', measurementUnits: 'metric' })),
     getLastUsedDevice: () => call('getLastUsedDevice', undefined, () => ({ userDeviceId: 7, lastUsedDeviceUploadTime: Date.parse('2026-10-08T06:00:00Z') })),
     getActivityTypes: () =>

@@ -90,3 +90,5 @@
 {"prompt": "How much water did I drink each day last week compared with my goal?", "expect": {"tool": "query_health", "args_include": {"metrics": ["hydration"]}}, "forbid": ["garmin_sync"]}
 {"prompt": "Ile przewyższenia ma trasa mojego najbliższego startu?", "expect": {"tool": "list_workouts"}, "forbid": ["get_activities", "garmin_sync"]}
 {"prompt": "Which course is set for my next race and how long is it?", "expect": {"tool": "list_workouts"}, "forbid": ["get_activities", "garmin_sync"]}
+{"prompt": "Ile słońca złapał mój zegarek solarny w tym tygodniu? Ładuje się w ogóle od słońca?", "expect": {"tool": "get_devices"}, "forbid": ["query_health", "get_period_summary", "garmin_sync"]}
+{"prompt": "How much solar charging did my watch get over the last week?", "expect": {"tool": "get_devices"}, "forbid": ["query_health", "get_period_summary", "garmin_sync"]}

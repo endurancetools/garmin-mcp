@@ -817,8 +817,11 @@ export class GarminClient {
     return this.http.request('GET', '/device-service/deviceservice/mylastused', { schema: s.deviceLastUsedSchema });
   }
 
-  /** Daily solar gain of a solar-charging device. Path confirmed by a recording (E8-2). */
-  async getDeviceSolar(deviceId: number, from: IsoDate, to: IsoDate = from): Promise<unknown> {
+  /**
+   * Solar days of a solar-charging device: per day the gain and one reading a minute.
+   * Path confirmed by a recording (E8-2), shape by a solar watch's recording (E8-8a).
+   */
+  async getDeviceSolar(deviceId: number, from: IsoDate, to: IsoDate = from): Promise<s.DeviceSolar> {
     return this.http.request('GET', `/web-gateway/solar/${positive(deviceId)}/${assertIsoDate(from)}/${assertIsoDate(to)}`, {
       query: { singleDayView: from === to },
       schema: s.deviceSolarSchema,
