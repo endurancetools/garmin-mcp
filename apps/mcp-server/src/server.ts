@@ -7,7 +7,7 @@ import { toToolError } from './errors.js';
 import type { Runtime, SyncProgressOptions } from 'garmin-mcp-domain';
 import type { SyncJobProgress } from 'garmin-mcp-store';
 import { canSignIn, withSignIn } from './sign-in.js';
-import { inputSchema, selectTools, type ToolDef } from './tools.js';
+import { analytics, inputSchema, selectTools, type ToolDef } from './tools.js';
 
 export const SERVER_NAME = 'garmin-mcp';
 /** Read from the package's own package.json (src/ in tests, dist/ when installed), so `nx release` bumps it. */
@@ -142,11 +142,12 @@ async function completeIds(getService: () => Promise<GarminService>, ids: (s: Ga
 }
 
 function registerResources(server: McpServer, getService: () => Promise<GarminService>) {
-  const readJson = async (uri: URL, read: (s: GarminService) => Promise<unknown> | unknown) => {
+  /** `autoSync: false` serves what the cache has, even when the read reports a gap. */
+  const readJson = async (uri: URL, read: (s: GarminService) => Promise<unknown> | unknown, autoSync = true) => {
     let body: unknown;
     try {
       const service = await getService();
-      body = await service.withAutoSync(async () => read(service));
+      body = autoSync ? await service.withAutoSync(async () => read(service)) : await read(service);
     } catch (err) {
       body = { error: toToolError(err) };
     }
@@ -180,6 +181,17 @@ function registerResources(server: McpServer, getService: () => Promise<GarminSe
     (s) => s.getActivityTypes(),
   );
   resource('sync-status', 'garmin://sync-status', 'Recent sync runs, date coverage and record counts of the local cache', (s) => s.syncStatus());
+  // Read on every new conversation by some clients, so it never downloads: a gap is a note naming the tool that fills it.
+  server.registerResource(
+    'today',
+    'garmin://today',
+    {
+      description:
+        "Today at a glance from the local cache, nothing downloaded: the readiness decision (GO/MODIFY/REST) with each signal's rating, last night in one line and the workouts planned for today",
+      mimeType: 'application/json',
+    },
+    (u) => readJson(u, (s) => analytics(s).today(), false),
+  );
 
   template(
     'activity',
@@ -242,6 +254,81 @@ function registerPrompts(server: McpServer) {
               'Look at get_period_summary for the last two weeks, get_training_status and query_health (hrv, sleep, resting_hr, last 14 days) before proposing. ' +
               'Propose day by day with purpose, duration and intensity (HR zones or pace). Do not create anything yet: after I approve, ' +
               'show each session with create_workout and dry_run: true, then save it with create_workout (a preset for standard sessions, otherwise a typed definition) and put them on the calendar with schedule_workouts.',
+          },
+        },
+      ],
+    }),
+  );
+  server.registerPrompt(
+    'sleep_report',
+    {
+      title: 'Sleep report',
+      description: 'Sleep over a range of nights, then the worst night hour by hour',
+      argsSchema: z.object({
+        from: z.string().optional().describe('First night, by the date of the morning, YYYY-MM-DD; default 6 days before `to`'),
+        to: z.string().optional().describe('Last night, YYYY-MM-DD; default today'),
+      }),
+    },
+    ({ from, to }) => ({
+      messages: [
+        {
+          role: 'user',
+          content: {
+            type: 'text',
+            text:
+              `Report on my sleep${from ? ` from ${from}` : ''}${to ? ` to ${to}` : ''}. ` +
+              'Call get_sleep with from and to first for the table of nights (without dates it gives the last 7). ' +
+              'Then take the worst night (lowest sleep score, or the shortest when scores are missing) and call get_sleep with its date for the timeline: stages, awakenings, lowest heart rate, HRV and SpO2 with times, Body Battery. ' +
+              'Summarise duration, score, stages and their trend in a short paragraph, walk through the worst night hour by hour and what likely disturbed it (late start, long awakenings, high heart rate), ' +
+              'compare it with the other nights, and finish with one or two practical suggestions.',
+          },
+        },
+      ],
+    }),
+  );
+  server.registerPrompt(
+    'activity_review',
+    {
+      title: 'Activity review',
+      description: 'Review one activity and compare it with similar sessions',
+      argsSchema: z.object({ activity_id: z.string().optional().describe('Activity id; default the most recent activity') }),
+    },
+    ({ activity_id }) => ({
+      messages: [
+        {
+          role: 'user',
+          content: {
+            type: 'text',
+            text:
+              `Review my ${activity_id ? `activity ${activity_id}` : 'most recent activity (get_activities with limit 1 finds it)'}. ` +
+              'Call get_activity with detail "summary", then with detail "splits" for the laps and, for a structured workout, how each step went. ' +
+              'Then call compare_activities with similar_to set to its id to set it against my similar sessions. ' +
+              'Tell me in a few short paragraphs how it went: pace or power against heart rate, how even the splits were, any drift or fading, and whether it was better, worse or usual next to the similar sessions. ' +
+              'Finish with one thing to keep and one to change next time.',
+          },
+        },
+      ],
+    }),
+  );
+  server.registerPrompt(
+    'race_check',
+    {
+      title: 'Race check',
+      description: 'How ready I am for the next race: form, predictions and the days left',
+      argsSchema: z.object({ race: z.string().optional().describe('Race name or date; default the next race on the calendar') }),
+    },
+    ({ race }) => ({
+      messages: [
+        {
+          role: 'user',
+          content: {
+            type: 'text',
+            text:
+              `Check how ready I am for ${race ? race : 'my next race'}. ` +
+              'Call list_workouts to find the race in upcoming_events (with a training plan, the primary event is the goal race) and the days left, ' +
+              'then get_load for my form (CTL, ATL, TSB) and get_training_status for the race predictions and the VO2max trend. ' +
+              'Say whether my form and its trend suit the race date, how the predicted time for its distance compares with any goal I mention, ' +
+              'and what the remaining days should look like (keep building, taper, rest). If no race is on the calendar, say so and ask me for its date and distance.',
           },
         },
       ],

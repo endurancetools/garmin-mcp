@@ -95,6 +95,24 @@
       "description": "Plan next week and create the workouts",
       "arguments": ["goal", "days_available"],
       "text": "Plan my next training week. Goal: ${arguments.goal}. Days available: ${arguments.days_available}. Look at get_period_summary for the last two weeks, get_training_status and query_health (hrv, sleep, resting_hr, last 14 days) before proposing. Propose day by day with purpose, duration and intensity (HR zones or pace). Do not create anything yet: after I approve, show each session with create_workout and dry_run: true, then save it with create_workout (a preset for standard sessions, otherwise a typed definition) and put them on the calendar with schedule_workouts."
+    },
+    {
+      "name": "sleep_report",
+      "description": "Sleep over a range of nights, then the worst night hour by hour",
+      "arguments": ["from", "to"],
+      "text": "Report on my sleep from ${arguments.from} to ${arguments.to}. Call get_sleep with from and to first for the table of nights (without dates it gives the last 7). Then take the worst night (lowest sleep score, or the shortest when scores are missing) and call get_sleep with its date for the timeline: stages, awakenings, lowest heart rate, HRV and SpO2 with times, Body Battery. Summarise duration, score, stages and their trend in a short paragraph, walk through the worst night hour by hour and what likely disturbed it (late start, long awakenings, high heart rate), compare it with the other nights, and finish with one or two practical suggestions."
+    },
+    {
+      "name": "activity_review",
+      "description": "Review one activity next to similar sessions",
+      "arguments": ["activity_id"],
+      "text": "Review my activity ${arguments.activity_id}. Call get_activity with detail \"summary\", then with detail \"splits\" for the laps and, for a structured workout, how each step went. Then call compare_activities with similar_to set to its id to set it against my similar sessions. Tell me in a few short paragraphs how it went: pace or power against heart rate, how even the splits were, any drift or fading, and whether it was better, worse or usual next to the similar sessions. Finish with one thing to keep and one to change next time."
+    },
+    {
+      "name": "race_check",
+      "description": "Readiness for the next race: form, predictions, days left",
+      "arguments": ["race"],
+      "text": "Check how ready I am for ${arguments.race}. Call list_workouts to find the race in upcoming_events (with a training plan, the primary event is the goal race) and the days left, then get_load for my form (CTL, ATL, TSB) and get_training_status for the race predictions and the VO2max trend. Say whether my form and its trend suit the race date, how the predicted time for its distance compares with any goal I mention, and what the remaining days should look like (keep building, taper, rest). If no race is on the calendar, say so and ask me for its date and distance."
     }
   ],
   "compatibility": { "platforms": ["darwin", "linux", "win32"], "runtimes": { "node": ">=22" } }

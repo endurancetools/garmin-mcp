@@ -184,6 +184,38 @@ export function sleepTimeline(sleepRaw: unknown, hrvRaw: unknown, timeZone: stri
   return Object.keys(out).length > 0 ? out : undefined;
 }
 
+/**
+ * One night in one line, e.g. "23:13-06:48, 7 h 22 min, score 79 (fair), deep 0.8 h, REM 1.6 h,
+ * awake 0.2 h, 1 awakening, HRV 34 ms, resting HR 56 bpm"; clock times in `timeZone`, parts
+ * without a value left out. Undefined for a row without sleep. Read from the row alone.
+ */
+export function sleepLine(row: SleepRow, timeZone: string): string | undefined {
+  if (!row.duration_s) return undefined;
+  const night = sleepNight(row);
+  const awakenings = sleepTimeline(row.raw, undefined, timeZone)?.awakenings?.count;
+  const clockFmt = new Intl.DateTimeFormat('en-GB', { timeZone, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+  const clock = (utc: string | undefined) => {
+    const ms = utc === undefined ? Number.NaN : Date.parse(utc);
+    return Number.isNaN(ms) ? undefined : clockFmt.format(new Date(ms));
+  };
+  const start = clock(night.start_utc);
+  const end = clock(night.end_utc);
+  const minutes = Math.round(row.duration_s / 60);
+  const h = (v: number | undefined, label: string) => (v === undefined ? undefined : `${label} ${round(v, 1)} h`);
+  const parts = [
+    start && end ? `${start}-${end}` : undefined,
+    `${Math.floor(minutes / 60)} h ${minutes % 60} min`,
+    night.score !== undefined ? `score ${night.score}${night.quality ? ` (${night.quality})` : ''}` : undefined,
+    h(night.stages_h?.deep, 'deep'),
+    h(night.stages_h?.rem, 'REM'),
+    h(night.stages_h?.awake, 'awake'),
+    awakenings !== undefined ? `${awakenings} awakening${awakenings === 1 ? '' : 's'}` : undefined,
+    night.avg_overnight_hrv_ms !== undefined ? `HRV ${round(night.avg_overnight_hrv_ms, 0)} ms` : undefined,
+    night.resting_hr_bpm !== undefined ? `resting HR ${night.resting_hr_bpm} bpm` : undefined,
+  ];
+  return parts.filter((p): p is string => p !== undefined).join(', ');
+}
+
 export interface SleepRangeSummary {
   nights: number;
   avg_duration_h?: number;

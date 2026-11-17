@@ -32,7 +32,19 @@ With `GARMIN_ENABLE_DESTRUCTIVE=true` there are also `delete_activity`, `delete_
 
 Resources the client can read directly: your profile, gear, devices, the list of activity type keys, and the sync status; plus `garmin://activity/{id}` and `garmin://workout/{id}` for one item.
 
-Prompts: `weekly_review` and `plan_next_week`, ready-made conversation starters some clients show in a menu.
+`garmin://today` is the morning at a glance: today's GO / MODIFY / REST decision from `get_readiness` with the rating of each signal, last night in one line (e.g. "23:13-06:48, 7 h 22 min, score 79 (fair), deep 0.8 h, REM 1.6 h, awake 0.2 h, 1 awakening, HRV 34 ms, resting HR 56 bpm") and the workouts on today's calendar. It is read from the local cache only and never downloads anything, so a client can attach it to every conversation; when something is missing, the note names the tool that downloads it (`get_readiness`, `get_sleep` or `list_workouts`).
+
+Prompts are ready-made conversation starters some clients show in a menu (Claude Code lists them as `/mcp__garmin__<name>` commands):
+
+| Prompt | Arguments | What it does |
+| --- | --- | --- |
+| `weekly_review` | `week_of` | reviews a training week (volume, intensity, recovery, form) and asks how it felt |
+| `plan_next_week` | `goal`, `days_available` | proposes next week day by day and, once you approve, creates the workouts and puts them on the calendar |
+| `sleep_report` | `from`, `to` | sleep over a range of nights (default the last 7), then the worst night hour by hour from its timeline |
+| `activity_review` | `activity_id` | one activity (default the most recent) with its laps, then side by side with your similar sessions |
+| `race_check` | `race` | the next race on your calendar, days left, form (CTL/ATL/TSB) and Garmin's race predictions, and what the remaining days should look like |
+
+Every argument is optional. Resources and prompts are not part of the tool list, so they add nothing to the context the model reads with every message.
 
 ## Training analytics
 

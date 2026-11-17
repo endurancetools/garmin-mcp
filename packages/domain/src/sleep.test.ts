@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { MAX_STAGE_SEGMENTS, sleepTimeline } from './sleep.js';
+import { sleepColumns } from 'garmin-mcp-store';
+import { MAX_STAGE_SEGMENTS, sleepLine, sleepTimeline } from './sleep.js';
 import { fixture } from './test-utils/fake.js';
 
 const sleep = fixture('sleep') as Record<string, unknown>;
@@ -64,5 +65,18 @@ describe('sleepTimeline', () => {
   it('has nothing to show for a night without series', () => {
     expect(sleepTimeline({ dailySleepDTO: { sleepTimeSeconds: 28_800 } }, undefined, 'UTC')).toBeUndefined();
     expect(sleepTimeline(null, null, 'UTC')).toBeUndefined();
+  });
+});
+
+describe('sleepLine', () => {
+  const row = (raw: unknown) => ({ date: '2026-10-10', fetched_at: 0, raw, ...sleepColumns(raw as never) });
+
+  it('puts the recorded night in one line, clock times in the user time zone', () => {
+    expect(sleepLine(row(sleep), 'Europe/Warsaw')).toBe('23:13-06:48, 7 h 22 min, score 79 (fair), deep 0.8 h, REM 1.6 h, awake 0.2 h, 1 awakening, HRV 34 ms, resting HR 56 bpm');
+  });
+
+  it('leaves out what the night lacks, and has no line without sleep', () => {
+    expect(sleepLine(row({ dailySleepDTO: { sleepTimeSeconds: 28_800 } }), 'UTC')).toBe('8 h 0 min');
+    expect(sleepLine(row({ dailySleepDTO: { sleepTimeSeconds: 0 } }), 'UTC')).toBeUndefined();
   });
 });

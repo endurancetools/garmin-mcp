@@ -91,7 +91,7 @@ Measured on a real account after a 90-day sync (433 requests in about an hour): 
 
 `delete_activity`, `delete_workout`, `delete_weigh_in` and overwriting a saved workout (`create_workout` with `workout_id`) are only available with `GARMIN_ENABLE_DESTRUCTIVE=true`.
 
-Resources: `garmin://profile`, `garmin://gear`, `garmin://devices`, `garmin://activity-types`, `garmin://sync-status`, and the templates `garmin://activity/{id}` and `garmin://workout/{id}` with id completion. Prompts: `weekly_review`, `plan_next_week`.
+Resources: `garmin://profile`, `garmin://gear`, `garmin://devices`, `garmin://activity-types`, `garmin://sync-status`, `garmin://today` (today's readiness decision, last night in one line and the workouts planned for today, from the local cache without downloading), and the templates `garmin://activity/{id}` and `garmin://workout/{id}` with id completion. Prompts: `weekly_review`, `plan_next_week`, `sleep_report` (a range of nights, then the worst one hour by hour), `activity_review` (one activity, then the sessions similar to it) and `race_check` (the next race, form and race predictions). Resources and prompts are not part of the tool list, so they add nothing to its context budget.
 
 Every response is `{ data, meta: { source: cache|live|partial|local, fetched_at, coverage?, sync_hint? } }`, as JSON text and as `structuredContent` matching the tool's `outputSchema`; failures are `{ error: { code, message, hint } }`.
 

@@ -483,6 +483,60 @@ describe('AnalyticsService.getReadiness', () => {
   });
 });
 
+describe('AnalyticsService.today', () => {
+  it("gives today's readiness, last night in one line and today's workouts from the cache", async () => {
+    const t = trained();
+    t.daily('sleep', '2026-09-01', TODAY, () => ({ score: 80, duration_s: 8 * 3600 }));
+    t.daily('hrv', '2026-09-01', TODAY, () => ({ last_night_avg: 60, weekly_avg: 60, status: 'BALANCED', baseline_low: 55, baseline_high: 70 }));
+    t.store.upsertWorkout({ workoutId: 77, workoutName: 'Tempo 3x10 min', sportType: { sportTypeId: 1, sportTypeKey: 'running' }, estimatedDurationInSecs: 3900 }, NOW);
+    t.store.addSchedule(901, 77, TODAY, { id: 901, itemType: 'workout', date: TODAY, title: 'Tempo 3x10 min', workoutId: 77 }, NOW);
+    t.store.addSchedule(902, 78, '2026-10-09', { id: 902, itemType: 'workout', date: '2026-10-09', title: 'Long run', workoutId: 78 }, NOW);
+    const res = await t.analytics.today();
+    const full = await t.analytics.getReadiness();
+    expect(res.data).toEqual({
+      date: TODAY,
+      readiness: {
+        decision: full.data.decision,
+        partial: full.data.partial,
+        counts: full.data.counts,
+        signals: Object.fromEntries(full.data.signals.map((s) => [s.name, s.rating])),
+        recommendation: full.data.recommendation,
+      },
+      last_night: '8 h 0 min, score 80',
+      planned: [{ workout_id: 77, name: 'Tempo 3x10 min', sport: 'running', estimated_duration: '1:05:00' }],
+    });
+    expect(res.data.readiness.signals).toMatchObject({ hrv: 'ok', sleep: 'ok' });
+    expect(res.meta.source).toBe('cache');
+    expect(res.meta.sync_hint).toBeUndefined();
+    expect(res.meta.note).toMatch(/list_workouts refreshes it/);
+    expect(t.calls).toEqual([]);
+  });
+
+  it('downloads nothing even with on-demand fetching on, and names the tools that would', async () => {
+    const t = setup({ fetchOnDemand: true });
+    const res = await t.analytics.today();
+    expect(res.data).toMatchObject({ date: TODAY, readiness: { partial: true, counts: { unknown: 7 } }, last_night: null, planned: [] });
+    expect(res.meta).toEqual({
+      source: 'cache',
+      note:
+        'Some days of the last 4 weeks are not in the cache: get_readiness downloads them and decides on complete data. ' +
+        "Last night is not in the cache: get_sleep downloads it. Today's calendar was not downloaded in the last 15 minutes: list_workouts refreshes it.",
+    });
+    expect(t.calls).toEqual([]);
+    // The tool on the same cache does download.
+    await t.analytics.getReadiness().catch(() => undefined);
+    expect(t.calls.length).toBeGreaterThan(0);
+  });
+
+  it('says when last night has no sleep', async () => {
+    const t = trained();
+    t.daily('sleep', TODAY, TODAY, () => ({ duration_s: 0 }));
+    const res = await t.analytics.today();
+    expect(res.data.last_night).toBeNull();
+    expect(res.meta.note).toMatch(/No sleep recorded last night\./);
+  });
+});
+
 describe('AnalyticsService thresholds', () => {
   it('records changed Garmin profile thresholds before a read', async () => {
     const { analytics, store } = trained();

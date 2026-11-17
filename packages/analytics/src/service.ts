@@ -1,5 +1,5 @@
 import { addDays, assertIsoDate, dateIn, InputError, type IsoDate } from 'garmin-mcp-config';
-import { activityWeather, compact, type Envelope, type GarminService, type ResponseMeta, type SyncProgressOptions } from 'garmin-mcp-domain';
+import { activityWeather, compact, hms, sleepLine, type Envelope, type GarminService, type ResponseMeta, type SyncProgressOptions } from 'garmin-mcp-domain';
 import {
   errInfo,
   parseRangeSet,
@@ -39,7 +39,17 @@ import {
   type SportLoad,
   type WeekSport,
 } from './load.js';
-import { DEFAULT_READINESS_RULES, isReadinessRuleValue, readiness, READINESS_LOAD_SOURCE, READINESS_WINDOW_DAYS, type Readiness } from './readiness.js';
+import {
+  DEFAULT_READINESS_RULES,
+  isReadinessRuleValue,
+  readiness,
+  READINESS_LOAD_SOURCE,
+  READINESS_WINDOW_DAYS,
+  type Readiness,
+  type ReadinessDecision,
+  type ReadinessRating,
+  type ReadinessSignalName,
+} from './readiness.js';
 import { buildSessions, decouplingEligible, sessionFromActivity, sessionFromImported, type Session, type SessionInput } from './session.js';
 import { sportGroup, sportList, type SportGroup } from './sport.js';
 import {
@@ -157,6 +167,23 @@ export interface ReadinessQuery {
   date?: string;
   /** Overrides of `DEFAULT_READINESS_RULES`; unknown keys and invalid values are ignored with a note. */
   rules?: Record<string, unknown>;
+}
+
+/** `garmin://today`: the morning at a glance, from the cache only. */
+export interface TodayBrief {
+  date: IsoDate;
+  /** `get_readiness` of today with the default rules: the decision, the rating of each signal and the advice. */
+  readiness: {
+    decision: ReadinessDecision;
+    partial: boolean;
+    counts: Record<ReadinessRating, number>;
+    signals: Partial<Record<ReadinessSignalName, ReadinessRating>>;
+    recommendation: string[];
+  };
+  /** Last night (the one that ended this morning) in one line; null when it is not in the cache or has no sleep. */
+  last_night: string | null;
+  /** Workouts on today's calendar. */
+  planned: { workout_id?: number; name?: string; sport?: string; estimated_duration?: string }[];
 }
 
 export interface ThresholdsQuery {
@@ -325,9 +352,9 @@ export class AnalyticsService {
     recordProfileThresholds(this.#store, this.#now(), this.garmin.timeZone);
   }
 
-  /** Fetch the Garmin profile when missing or stale (only with `fetchOnDemand`), then record its thresholds. */
-  async #profile(): Promise<{ ensured: EnsureResult; gap: Partial<ResponseMeta> }> {
-    const ensured = await this.garmin.syncer.ensureReference('profile', this.#budget);
+  /** Fetch the Garmin profile when missing or stale (only with `fetchOnDemand` and `fetch`), then record its thresholds. */
+  async #profile(fetch = true): Promise<{ ensured: EnsureResult; gap: Partial<ResponseMeta> }> {
+    const ensured: EnsureResult = fetch ? await this.garmin.syncer.ensureReference('profile', this.#budget) : { source: 'cache' };
     this.#recordProfile();
     return { ensured, gap: this.garmin.referenceCoverage('profile') };
   }
@@ -576,7 +603,8 @@ export class AnalyticsService {
     return this.garmin.withAutoSync(() => this.#readiness(q), opts);
   }
 
-  async #readiness(q: ReadinessQuery): Promise<Envelope<Readiness>> {
+  /** `fetch: false` reads the cache as it is, even with on-demand fetching on (`garmin://today`). */
+  async #readiness(q: ReadinessQuery, fetch = true): Promise<Envelope<Readiness>> {
     const today = this.garmin.today();
     const date = q.date ? assertIsoDate(q.date, 'date') : today;
     if (date > today) throw new InputError(`date (${date}) is in the future`, `Readiness needs the night and morning of the day; use a date up to ${today}.`);
@@ -584,9 +612,8 @@ export class AnalyticsService {
     const from = addDays(date, -READINESS_WINDOW_DAYS);
     const kinds: readonly DailyKind[] = SCOPE_DAILY.all;
     const [profile, ...ensured] = await Promise.all([
-      this.#profile(),
-      this.garmin.syncer.ensureDaily(kinds, from, date, this.#budget),
-      this.garmin.syncer.ensureActivities(from, date, this.#budget),
+      this.#profile(fetch),
+      ...(fetch ? [this.garmin.syncer.ensureDaily(kinds, from, date, this.#budget), this.garmin.syncer.ensureActivities(from, date, this.#budget)] : []),
     ]);
 
     const store = this.#store;
@@ -608,6 +635,53 @@ export class AnalyticsService {
     const allNotes = ruleInput.note ? [...notes, ruleInput.note] : notes;
     const gap = withProfileGap(this.garmin.coverage('period', from, date, kinds), profile.gap);
     return { data: compact(result), meta: readMeta([profile.ensured, ...ensured], gap, allNotes) };
+  }
+
+  // ------------------------------------------------------------ garmin://today
+
+  /**
+   * Today's readiness decision (default rules), last night in one line and the workouts on today's
+   * calendar, read from the cache only: nothing is downloaded, not even with on-demand fetching or
+   * auto fetch on, and `meta` has no `sync_hint`. What the cache lacks is a note naming the tool
+   * that downloads it.
+   */
+  async today(): Promise<Envelope<TodayBrief>> {
+    const date = this.garmin.today();
+    const { data: r } = await this.#readiness({ date }, false);
+    const store = this.#store;
+    const [sleep] = store.getDaily('sleep', date, date);
+    const lastNight = sleep ? (sleepLine(sleep, this.garmin.timeZone) ?? null) : null;
+    const planned = store.getSchedule(date, date).map((s) => {
+      const workout = s.workout_id === null ? undefined : store.getWorkout(s.workout_id);
+      return compact({
+        workout_id: s.workout_id ?? undefined,
+        name: workout?.name ?? s.raw.title ?? undefined,
+        sport: workout?.sport ?? s.raw.sportTypeKey ?? undefined,
+        estimated_duration: hms(workout?.raw.estimatedDurationInSecs),
+      });
+    });
+    const syncer = this.garmin.syncer;
+    const missing: string[] = [];
+    const from = addDays(date, -READINESS_WINDOW_DAYS);
+    if (!syncer.coverage(SCOPE_DAILY.all, from, date).complete || syncer.activityGaps(from, date).length > 0) {
+      missing.push('Some days of the last 4 weeks are not in the cache: get_readiness downloads them and decides on complete data.');
+    }
+    if (!sleep) missing.push('Last night is not in the cache: get_sleep downloads it.');
+    else if (lastNight === null) missing.push('No sleep recorded last night.');
+    if (syncer.calendarGap(date, date)) missing.push("Today's calendar was not downloaded in the last 15 minutes: list_workouts refreshes it.");
+    const data: TodayBrief = {
+      date,
+      readiness: {
+        decision: r.decision,
+        partial: r.partial,
+        counts: r.counts,
+        signals: Object.fromEntries(r.signals.map((s) => [s.name, s.rating])),
+        recommendation: r.recommendation,
+      },
+      last_night: lastNight,
+      planned,
+    };
+    return { data, meta: compact({ source: 'cache' as const, note: missing.length ? missing.join(' ') : undefined }) };
   }
 
   // ------------------------------------------------------------ get_thresholds

@@ -28,9 +28,10 @@ export function activity(id: number, date: IsoDate, extra: Record<string, unknow
 
 /**
  * An analytics service over an in-memory store whose Garmin client fails every call: the
- * tests seed synthetic rows and never reach Garmin (on-demand fetching off).
+ * tests seed synthetic rows and never reach Garmin (on-demand fetching off unless `fetchOnDemand`,
+ * when a read that tries to fetch fails and is listed in `calls`).
  */
-export function setup(opts: { autoSync?: boolean } = {}) {
+export function setup(opts: { autoSync?: boolean; fetchOnDemand?: boolean } = {}) {
   const calls: string[] = [];
   const client = new Proxy(
     {},
@@ -45,7 +46,7 @@ export function setup(opts: { autoSync?: boolean } = {}) {
     },
   );
   const store = Store.open(':memory:');
-  const syncer = new Syncer(client as never, store, { timeZone: 'UTC', now: () => NOW, fetchOnDemand: false });
+  const syncer = new Syncer(client as never, store, { timeZone: 'UTC', now: () => NOW, fetchOnDemand: opts.fetchOnDemand ?? false });
   const jobs = new SyncJobRunner(syncer, store, { chunkDays: 7, pause: { minMs: 0, maxMs: 0 }, maxRequestsPerDay: 10_000, timeZone: 'UTC', now: () => NOW });
   const garmin = new GarminService({
     client: client as never,

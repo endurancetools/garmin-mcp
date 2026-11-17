@@ -363,15 +363,41 @@ describe('MCP server', () => {
   it('serves resources and prompts', async () => {
     const client = await connect(runtime());
     const resources = (await client.listResources()).resources.map((r) => r.uri);
-    expect(resources).toEqual(['garmin://profile', 'garmin://gear', 'garmin://devices', 'garmin://activity-types', 'garmin://sync-status']);
+    expect(resources).toEqual(['garmin://profile', 'garmin://gear', 'garmin://devices', 'garmin://activity-types', 'garmin://sync-status', 'garmin://today']);
     const types = await client.readResource({ uri: 'garmin://activity-types' });
     expect(JSON.parse((types.contents[0] as { text: string }).text)).toMatchObject({ data: { activity_types: [{ key: 'trail_running', parent: 'running' }] } });
     const status = await client.readResource({ uri: 'garmin://sync-status' });
     expect(JSON.parse((status.contents[0] as { text: string }).text)).toMatchObject({ today: '2026-10-08' });
     const prompts = (await client.listPrompts()).prompts.map((p) => p.name);
-    expect(prompts).toEqual(['weekly_review', 'plan_next_week']);
+    expect(prompts).toEqual(['weekly_review', 'plan_next_week', 'sleep_report', 'activity_review', 'race_check']);
     const p = await client.getPrompt({ name: 'weekly_review', arguments: { week_of: '2026-10-05' } });
     expect(JSON.stringify(p.messages)).toContain('get_period_summary');
+    const prompt = async (name: string, args: Record<string, string> = {}) =>
+      (await client.getPrompt({ name, arguments: args })).messages.map((m) => (m.content as { text: string }).text).join();
+    expect(await prompt('sleep_report', { from: '2026-10-01', to: '2026-10-07' })).toMatch(/^Report on my sleep from 2026-10-01 to 2026-10-07\. Call get_sleep with from and to .* call get_sleep with its date for the timeline/);
+    expect(await prompt('sleep_report')).toMatch(/^Report on my sleep\. /);
+    expect(await prompt('activity_review', { activity_id: '21001' })).toMatch(/^Review my activity 21001\. Call get_activity with detail "summary", then with detail "splits".* compare_activities with similar_to/);
+    expect(await prompt('activity_review')).toMatch(/^Review my most recent activity \(get_activities with limit 1 finds it\)\./);
+    expect(await prompt('race_check')).toMatch(/^Check how ready I am for my next race\. Call list_workouts .* get_load .* get_training_status/);
+  });
+
+  it('serves garmin://today from the cache without downloading, even with auto fetch on', async () => {
+    const now = Date.parse('2026-10-08T12:00:00Z');
+    const garminCalls: string[] = [];
+    const garmin = new Proxy({}, { get: (_, name) => (name === 'then' ? undefined : () => (garminCalls.push(String(name)), Promise.reject(new Error('no Garmin')))) });
+    const store = Store.open(':memory:');
+    const syncer = new Syncer(garmin as never, store, { timeZone: 'UTC', now: () => now, fetchOnDemand: true });
+    const jobs = new SyncJobRunner(syncer, store, { chunkDays: 7, pause: { minMs: 0, maxMs: 0 }, maxRequestsPerDay: 10, timeZone: 'UTC', now: () => now });
+    const service = new GarminService({ client: garmin as never, store, syncer, jobs, timeZone: 'UTC', downloadDir: os.tmpdir(), budgetMs: 100, autoSync: true, now: () => now });
+    store.putDaily('sleep', '2026-10-08', { duration_s: 7.5 * 3600, score: 84 }, {}, now);
+    const client = await connect(runtime({}, service));
+    const res = await client.readResource({ uri: 'garmin://today' });
+    expect(res.contents[0]?.mimeType).toBe('application/json');
+    const body = JSON.parse((res.contents[0] as { text: string }).text) as { data: Record<string, unknown>; meta: Record<string, unknown> };
+    expect(body.data).toMatchObject({ date: '2026-10-08', readiness: { decision: expect.stringMatching(/^(GO|MODIFY|REST)$/), partial: true }, last_night: '7 h 30 min, score 84', planned: [] });
+    expect(body.meta).toMatchObject({ source: 'cache', note: expect.stringContaining('get_readiness downloads them') });
+    expect(garminCalls).toEqual([]);
+    store.close();
   });
 
   it('matches the tools and prompts listed in the Claude Desktop manifest', async () => {

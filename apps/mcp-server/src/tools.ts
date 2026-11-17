@@ -69,7 +69,7 @@ const LOCAL_WRITE: ToolAnnotations = { readOnlyHint: false, destructiveHint: fal
 
 /** One `AnalyticsService` per `GarminService` (the runtime keeps one service per account). */
 const analyticsServices = new WeakMap<GarminService, AnalyticsService>();
-function analytics(service: GarminService): AnalyticsService {
+export function analytics(service: GarminService): AnalyticsService {
   let a = analyticsServices.get(service);
   if (!a) analyticsServices.set(service, (a = new AnalyticsService(service)));
   return a;
