@@ -359,7 +359,19 @@ export const listWorkoutsOutput = envelope({
     z.looseObject({ date: str, workout_id: num, title: str, schedule_id: num, source: z.enum(['library', 'plan']).optional(), plan_name: str, sport: str, description: str }),
   ),
   upcoming_events: list(
-    z.looseObject({ id: num, date: str, title: str, race: bool, primary: bool, distance_km: num, start_time: str, time_zone: str, location: str, url: str }),
+    z.looseObject({
+      id: num,
+      date: str,
+      title: str,
+      race: bool,
+      primary: bool,
+      distance_km: num,
+      start_time: str,
+      time_zone: str,
+      location: str,
+      url: str,
+      course: obj({ id: num, name: str, distance_km: num, elevation_gain_m: num }),
+    }),
   ),
   plan: obj({
     name: str,

@@ -13,7 +13,7 @@ Coverage:
 
 All reads come from the local SQLite cache. Data that garmin-mcp does not sync is not available, even if the client has a method for it.
 
-Totals for the 111 reads: 70 full, 13 partial, 28 missing.
+Totals for the 111 reads: 73 full, 13 partial, 25 missing.
 
 ## Reads
 
@@ -117,7 +117,7 @@ Totals for the 111 reads: 70 full, 13 partial, 28 missing.
 | Garmin Coach / adaptive plan workouts | `list_workouts` → `upcoming_schedule` (`source: "plan"`), `plan` | partial | plan name, kind, dates, current phase and target event; a one-line description (time, distance, Training Effect) only for the current week, as Garmin lists the tasks of one week; no steps (`get_workout` needs a library workout); cannot be unscheduled |
 | Training plan workouts | `list_workouts` → `upcoming_schedule` (`source: "plan"`), `plan` | partial | phased plans are not confirmed by a recording: workouts with a plan id are listed, the plan itself may not download |
 | Workout as a FIT file | — | missing | |
-| Calendar events and races | `list_workouts` `from`, `to` → `upcoming_events` | partial | any date range; the custom goal time is not fetched (one extra request per event;) |
+| Calendar events and races | `list_workouts` `from`, `to` → `upcoming_events` | partial | any date range; with the assigned course (id, name, distance, elevation gain); the custom goal time is not fetched (one extra request per event;) |
 
 ### Profile, gear, devices, weight
 
@@ -142,9 +142,9 @@ Totals for the 111 reads: 70 full, 13 partial, 28 missing.
 
 | Garmin Connect data | garmin-mcp | Coverage | Note |
 | --- | --- | --- | --- |
-| Courses | — | missing | not planned yet. |
-| Course details | — | missing | |
-| Course as GPX | — | missing | |
+| Courses | `garmin://courses` | full | id, name, sport, distance and elevation gain, newest first; downloaded when read (auto fetch) and kept for an hour |
+| Course details | `garmin://course/{id}` | full | distance, elevation, lowest and highest point, the profile in 20 stretches (gain, loss, grade) and the climbs; positions only with `GARMIN_REDACT=false` |
+| Course as GPX | `garmin course download <id>` (CLI, `--out` for a file or directory) | full | |
 
 ### Stage 4: nutrition, women's health, challenges, badges
 
@@ -195,7 +195,8 @@ garmin-mcp deliberately has few writes; listed so nothing disappears silently.
 | Heart rate zones | — () |
 | Reprocess data on Garmin's side | — (closest: `garmin_sync` `force: true`, which re-downloads instead of asking Garmin to reprocess) |
 | FIT download directory (local setting) | `GARMIN_FIT_DOWNLOAD_DIR` or `download_activity_file` `output_dir` |
-| Upload or delete a course | — () |
+| Upload a course (GPX) | `garmin course upload <file.gpx>` (CLI; prints the new course id; without a name in the file the course is named after it) |
+| Delete a course | — () |
 | Hydration | `garmin log water <ml>` (CLI, `--date` for another day; prints the day's total) |
 | Nutrition settings, custom foods, food log | — () |
 

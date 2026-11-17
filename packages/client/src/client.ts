@@ -639,6 +639,40 @@ export class GarminClient {
     return this.http.request('GET', `/course-service/course/${positive(id)}`, { schema: s.courseSchema });
   }
 
+  /** The course as a GPX file, as Connect's "Export to GPX" gives it. Path not confirmed by a recording yet (E8-30). */
+  async downloadCourseGpx(id: number): Promise<BinaryResponse> {
+    return this.http.download(`/course-service/course/gpx/${positive(id)}`);
+  }
+
+  /**
+   * Imports a GPX file as a new course the way Connect's course import does: Garmin reads the
+   * file (`POST /course-service/course/import`, multipart field `file`) into a course that is not
+   * saved yet, and `POST /course-service/course` saves it; without a name in the file the course
+   * is named after the file. Returns the saved course. Paths and shapes are not confirmed by a
+   * recording yet (E8-30).
+   */
+  async uploadCourseGpx(fileName: string, data: Uint8Array): Promise<s.Course> {
+    const base = fileName.split(/[\\/]/).pop() ?? fileName;
+    if (!/\.gpx$/i.test(base)) throw new InputError(`${fileName}: only .gpx files can be uploaded as a course`);
+    const form = new FormData();
+    form.append('file', new Blob([data as Uint8Array<ArrayBuffer>], { type: 'application/gpx+xml' }), base);
+    const imported = (await this.http.upload('/course-service/course/import', form)).body;
+    if (!imported || typeof imported !== 'object' || Array.isArray(imported)) {
+      throw new GarminError('VALIDATION', 'Unexpected response shape from /course-service/course/import: no course');
+    }
+    const draft = imported as Record<string, unknown>;
+    const name = typeof draft.courseName === 'string' && draft.courseName.trim() !== '' ? draft.courseName : base.replace(/\.gpx$/i, '');
+    const path = '/course-service/course';
+    const saved = await this.http.request('POST', path, { json: { ...draft, courseName: name }, schema: s.courseSchema });
+    // The course may exist even when its id is missing from the answer, so a retry could add it twice.
+    if (!isId((saved as Partial<s.Course> | null)?.courseId)) {
+      throw new GarminError('VALIDATION', `Unexpected response shape from ${path}: no courseId`, {
+        hint: 'The course may have been saved anyway: check the courses in Garmin Connect before uploading it again.',
+      });
+    }
+    return saved;
+  }
+
   async getEarnedBadges(): Promise<unknown> {
     return this.http.request('GET', '/badge-service/badge/earned', { schema: s.earnedBadgesSchema });
   }

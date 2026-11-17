@@ -4,6 +4,7 @@ export * from './activity-metrics.js';
 export * from './body.js';
 export * from './calendar.js';
 export * from './climbs.js';
+export * from './courses.js';
 export * from './energy.js';
 export * from './exercise-sets.js';
 export * from './fit.js';

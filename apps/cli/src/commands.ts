@@ -484,6 +484,35 @@ export function buildProgram(deps: ProgramDeps = {}): Command {
       if (reports.some((r) => r.status === 'failed')) process.exitCode = 1;
     });
 
+  const course = program.command('course').description('courses in Garmin Connect: download one as GPX, upload a GPX file as a new course');
+  course
+    .command('download <id>')
+    .description('save a course as a GPX file, e.g. `garmin course download 102339772 --out races/`')
+    .option('--out <path>', 'file to write, or an existing directory for the file Garmin names (default: the current directory)')
+    .option('--json', 'machine readable output')
+    .action(async (id: string, opts: { out?: string; json?: boolean }, cmd: Command) => {
+      const courseId = Number(id);
+      if (!Number.isSafeInteger(courseId) || courseId <= 0) throw new InputError(`course id must be a positive integer, got "${id}"`);
+      const file = await withGarmin(cmd, (g) => g.downloadCourseGpx(courseId));
+      const dest = path.resolve(opts.out ?? '.');
+      const target = fs.existsSync(dest) && fs.statSync(dest).isDirectory() ? path.join(dest, file.name) : dest;
+      fs.writeFileSync(target, file.data);
+      if (opts.json) return out(JSON.stringify({ course_id: courseId, path: target, bytes: file.data.length }, null, 2));
+      out(`Saved course ${courseId} as ${target} (${file.data.length} bytes).`);
+    });
+  course
+    .command('upload <file>')
+    .description('upload a GPX file as a new course; without a name in the file the course is named after it')
+    .option('--json', 'machine readable output')
+    .action(async (file: string, opts: { json?: boolean }, cmd: Command) => {
+      if (path.extname(file).toLowerCase() !== '.gpx') throw new InputError(`${file}: only .gpx files can be uploaded as a course`);
+      const data = new Uint8Array(fs.readFileSync(path.resolve(file)));
+      const res = await withGarmin(cmd, (g) => g.uploadCourse(path.basename(file), data));
+      if (opts.json) return out(JSON.stringify(res, null, 2));
+      const what = [res.name && `"${res.name}"`, res.distance_km !== undefined && `${res.distance_km} km`, res.elevation_gain_m !== undefined && `${res.elevation_gain_m} m up`].filter(Boolean).join(', ');
+      out(`${res.file}: uploaded as course ${res.id}${what ? ` (${what})` : ''}.`);
+    });
+
   const log = program.command('log').description('add a measurement to Garmin Connect: weight (with body fat), blood pressure or water');
   const dateHelp = 'when: YYYY-MM-DD or "YYYY-MM-DD HH:MM" local time (default now; a past day without a time is 12:00)';
   const number = (value: string, what: string): number => {

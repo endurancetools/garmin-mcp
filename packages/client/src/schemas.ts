@@ -748,6 +748,7 @@ export const courseSchema = z.looseObject({
     .nullish(),
   coursePoints: z.array(z.looseObject({})).nullish(),
 });
+export type Course = z.infer<typeof courseSchema>;
 
 /** Solar days of the device, plus the activities and sleeps of the range. */
 export const deviceSolarSchema = z.looseObject({

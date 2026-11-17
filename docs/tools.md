@@ -16,7 +16,7 @@ You do not need to call tools by name; the assistant does. This page tells you w
 | `get_training_status` | VO2max, training readiness, recovery time, Garmin's status, load and load focus, CTL/ATL/TSB from Garmin's training load (`garmin_load_model`), race predictions, endurance and hill scores, fitness age, personal records, heat and altitude acclimation |
 | `get_body_composition` | weigh-ins with trend |
 | `get_period_summary` | a week, a month or any range up to a year: volume per sport, heart rate zones, active and rest days, longest and hardest session, CTL/ATL/TSB from Garmin's training load at the end (`garmin_load_model`), health and energy averages |
-| `list_workouts`, `get_workout` | your workout library, scheduled workouts, races and events in any date range, with readable steps |
+| `list_workouts`, `get_workout` | your workout library, scheduled workouts, races and events (with the course of a race) in any date range, with readable steps |
 | `create_workout`, `schedule_workouts` | build a workout from a preset (run intervals, walk/run, easy zone 2, strength circuit) or from typed steps with repeats and heart rate, pace or power targets; `dry_run: true` shows the steps and estimated duration before anything is saved; put it on the calendar or take it off |
 | `get_gear`, `get_devices` | gear with distance, devices with firmware, last sync and settings |
 | `garmin_sync` | download a scope (activities, health, training, reference or all) and date range explicitly, with progress |
@@ -30,7 +30,9 @@ With `GARMIN_ENABLE_DESTRUCTIVE=true` there are also `delete_activity`, `delete_
 
 ## Resources and prompts
 
-Resources the client can read directly: your profile, gear, devices, the list of activity type keys, and the sync status; plus `garmin://activity/{id}` and `garmin://workout/{id}` for one item.
+Resources the client can read directly: your profile, gear, devices, the list of activity type keys, your courses and the sync status; plus `garmin://activity/{id}`, `garmin://workout/{id}` and `garmin://course/{id}` for one item.
+
+`garmin://course/{id}` describes a course before you ride or run it: distance, elevation gain and loss, the lowest and highest point, the profile in 20 stretches of equal length and the climbs (found as in `get_activity` with `bucket: "climbs"`). Positions are left out while `GARMIN_REDACT` is on. Courses are downloaded when read and kept for an hour; `list_workouts` adds the course of a race to its event.
 
 `garmin://today` is the morning at a glance: today's GO / MODIFY / REST decision from `get_readiness` with the rating of each signal, last night in one line (e.g. "23:13-06:48, 7 h 22 min, score 79 (fair), deep 0.8 h, REM 1.6 h, awake 0.2 h, 1 awakening, HRV 34 ms, resting HR 56 bpm") and the workouts on today's calendar. It is read from the local cache only and never downloads anything, so a client can attach it to every conversation; when something is missing, the note names the tool that downloads it (`get_readiness`, `get_sleep` or `list_workouts`).
 

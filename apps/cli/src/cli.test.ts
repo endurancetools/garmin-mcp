@@ -330,6 +330,7 @@ describe('cli', () => {
       'thresholds',
       'import-activities',
       'upload',
+      'course',
       'log',
       'doctor',
       'serve',
@@ -339,6 +340,8 @@ describe('cli', () => {
     expect(thresholds?.commands.map((c) => c.name())).toEqual(['list', 'add', 'export', 'import']);
     const log = buildProgram().commands.find((c) => c.name() === 'log');
     expect(log?.commands.map((c) => c.name())).toEqual(['weight', 'bp', 'water']);
+    const course = buildProgram().commands.find((c) => c.name() === 'course');
+    expect(course?.commands.map((c) => c.name())).toEqual(['download', 'upload']);
   });
 
   it('reports the version from its own package.json', () => {
@@ -709,6 +712,8 @@ function writer(bodyUpload: unknown = { status: 'processing' }) {
     }),
     addBloodPressure: () => null,
     addHydration: () => ({ calendarDate: '2026-10-08', valueInML: 1500 }),
+    downloadCourseGpx: () => ({ data: new TextEncoder().encode('<gpx/>'), contentType: 'application/gpx+xml', filename: 'Kampinos.gpx' }),
+    uploadCourseGpx: () => ({ courseId: 900001, courseName: 'Evening Loop', distanceMeter: 5230, elevationGainMeter: 84.4 }),
   };
   const client = new Proxy(
     {},
@@ -783,6 +788,34 @@ describe('garmin upload', () => {
     await expect(run(deps, 'upload', file('new.fit'), file('track.kml'))).rejects.toThrow('track.kml: only .fit, .gpx, .tcx files can be uploaded');
     await expect(run(deps, 'upload', file('new.fit'), path.join(tmp, 'missing.fit'))).rejects.toThrow('ENOENT');
     expect(calls).toEqual([]);
+  });
+});
+
+describe('garmin course', () => {
+  it('saves a course as GPX into a directory or a file', async () => {
+    const { deps, calls } = writer();
+    const dir = fs.mkdtempSync(path.join(tmp, 'courses-'));
+    expect((await run(deps, 'course', 'download', '102339772', '--out', dir)).stdout).toBe(`Saved course 102339772 as ${path.join(dir, 'Kampinos.gpx')} (6 bytes).\n`);
+    expect(fs.readFileSync(path.join(dir, 'Kampinos.gpx'), 'utf8')).toBe('<gpx/>');
+    const target = path.join(dir, 'race.gpx');
+    expect(json<{ path: string; bytes: number }>((await run(deps, 'course', 'download', '102339772', '--out', target, '--json')).stdout)).toEqual({ course_id: 102339772, path: target, bytes: 6 });
+    expect(calls.map((c) => [c.name, ...c.args])).toEqual([
+      ['downloadCourseGpx', 102339772],
+      ['downloadCourseGpx', 102339772],
+    ]);
+    await expect(run(deps, 'course', 'download', 'abc')).rejects.toThrow('course id must be a positive integer');
+  });
+
+  it('uploads a GPX file as a course and refuses other files before any request', async () => {
+    const { deps, calls } = writer();
+    const gpx = path.join(tmp, 'Evening Loop.gpx');
+    fs.writeFileSync(gpx, '<gpx/>');
+    expect((await run(deps, 'course', 'upload', gpx)).stdout).toBe('Evening Loop.gpx: uploaded as course 900001 ("Evening Loop", 5.23 km, 84 m up).\n');
+    expect(calls.map((c) => c.name)).toEqual(['uploadCourseGpx']);
+    expect(calls[0]?.args).toEqual(['Evening Loop.gpx', new TextEncoder().encode('<gpx/>')]);
+    expect(json((await run(deps, 'course', 'upload', gpx, '--json')).stdout)).toEqual({ file: 'Evening Loop.gpx', id: 900001, name: 'Evening Loop', distance_km: 5.23, elevation_gain_m: 84 });
+    await expect(run(deps, 'course', 'upload', path.join(tmp, 'route.fit'))).rejects.toThrow('only .gpx files can be uploaded as a course');
+    expect(calls).toHaveLength(2);
   });
 });
 

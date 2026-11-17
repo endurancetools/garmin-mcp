@@ -1056,6 +1056,105 @@ describe('GarminService', () => {
     ]);
   });
 
+  it('adds the course of a race from the course list, fetched once within the reference TTL', async () => {
+    const { service, count } = setup({ raceCourse: 102339772 });
+    const res = await service.listWorkouts({});
+    expect(res.data.upcoming_events?.[0]).toMatchObject({
+      id: 30000003,
+      course: { id: 102339772, name: 'anon-courseName', distance_km: 56.73, elevation_gain_m: 1837 },
+    });
+    expect(output.listWorkoutsOutput.safeParse(JSON.parse(JSON.stringify(res))).error).toBeUndefined();
+    await service.listWorkouts({});
+    expect(count('listCourses')).toBe(1);
+    expect(count('getCourse')).toBe(0);
+  });
+
+  it('takes a race course missing from the course list from its details, and keeps the id when that fails', async () => {
+    const shared = { courseId: 4242, courseName: 'Race loop', activityTypePk: 1, distanceMeter: 21097.5, elevationGainMeter: 120.4 };
+    const found = setup({ raceCourse: 4242, courses: { 4242: shared } });
+    const res = await found.service.listWorkouts({});
+    expect(res.data.upcoming_events?.[0]?.course).toEqual({ id: 4242, name: 'Race loop', distance_km: 21.1, elevation_gain_m: 120 });
+    expect(found.calls.filter((c) => c.method === 'getCourse').map((c) => c.args)).toEqual([[4242]]);
+    const missing = setup({ raceCourse: 4243 });
+    const gone = await missing.service.listWorkouts({});
+    expect(gone.data.upcoming_events?.[0]?.course).toEqual({ id: 4243, name: 'anon-courseName' });
+    expect(gone.meta.note).toMatch(/Course 4243 could not be downloaded \(NOT_FOUND\)/);
+    // Without auto fetch nothing is requested and the note says why.
+    const off = setup({ raceCourse: 102339772, autoFetch: false });
+    await off.service.jobs.run({ scope: 'reference', from: '2026-10-08', to: '2026-12-07' });
+    const cached = await off.service.listWorkouts({});
+    expect(cached.data.upcoming_events?.[0]?.course).toEqual({ id: 102339772, name: 'anon-courseName' });
+    expect(cached.meta.note).toMatch(/Courses are not downloaded yet/);
+    expect(off.count('listCourses')).toBe(0);
+  });
+
+  it('serves the course list and one course with its profile and climbs, positions only without redaction', async () => {
+    // A 10 km course: flat, a 1.5 km climb at 6 % from 4 km, flat again.
+    const geoPoints = Array.from({ length: 201 }, (_, i) => {
+      const d = i * 50;
+      const elevation = 200 + Math.min(Math.max(d - 4000, 0), 1500) * 0.06;
+      return { latitude: 52 + i * 0.0004, longitude: 21 + i * 0.0001, elevation, distance: d, timestamp: 0 };
+    });
+    const hilly = { courseId: 4242, courseName: 'Hill loop', activityTypePk: 6, distanceMeter: 10000, elevationGainMeter: 90, elevationLossMeter: 0, startPoint: geoPoints[0], geoPoints };
+    const { service, store, count } = setup({ courses: { 4242: hilly } });
+    const list = await service.listCourses();
+    expect(list.data.courses).toEqual([
+      { id: 102339772, name: 'anon-courseName', sport: 'trail_running', distance_km: 56.73, elevation_gain_m: 1837 },
+      expect.objectContaining({ id: expect.any(Number) }),
+      expect.objectContaining({ id: expect.any(Number) }),
+    ]);
+    expect(list.meta.source).toBe('live');
+    expect(service.courseIds()).toEqual(list.data.courses.map((c) => c.id));
+    const one = await service.getCourse(4242);
+    expect(one.data).toMatchObject({ id: 4242, name: 'Hill loop', distance_km: 10, elevation_gain_m: 90, min_elevation_m: 200, max_elevation_m: 290 });
+    // Sport from the cached activity types when the course is not in the list.
+    store.setActivityTypes([{ typeId: 6, typeKey: 'trail_running' }]);
+    store.setCourse(4242, hilly, NOW - 2 * 3600_000);
+    const typed = await service.getCourse(4242);
+    expect(typed.data.sport).toBe('trail_running');
+    const profile = typed.data.profile as Record<string, number>[];
+    expect(profile).toHaveLength(20);
+    expect(profile[0]).toEqual({ start_km: 0, distance_km: 0.5, elevation_m: 200, elevation_gain_m: 0, elevation_loss_m: 0, avg_grade_pct: 0 });
+    expect(profile[8]).toMatchObject({ start_km: 4, elevation_m: 200, elevation_gain_m: 30, avg_grade_pct: 6 });
+    expect(profile.reduce((sum, s) => sum + (s.elevation_gain_m ?? 0), 0)).toBe(90);
+    expect(typed.data.climbs).toEqual([{ start_km: expect.closeTo(4, 0), distance_km: expect.closeTo(1.5, 0), elevation_gain_m: expect.closeTo(90, -1), avg_grade_pct: expect.closeTo(6, 0), max_grade_pct: expect.closeTo(6, 0) }]);
+    expect(JSON.stringify(typed.data)).not.toMatch(/lat|lon/);
+    expect(typed.meta.note).toBe('Positions left out: GPS is removed while GARMIN_REDACT is on.');
+    expect(count('getCourse')).toBe(2);
+
+    const open = setup({ redact: false, courses: { 4242: hilly } });
+    const shown = await open.service.getCourse(4242);
+    expect(shown.data.start).toEqual({ lat: 52, lon: 21 });
+    expect((shown.data.profile as Record<string, number>[])[1]).toMatchObject({ start_km: 0.5, lat: 52.004, lon: 21.001 });
+    expect(shown.meta.note).toBeUndefined();
+  });
+
+  it('keeps an empty climb list with a note, and passes a missing course on as an error', async () => {
+    const { service } = setup();
+    const flat = await service.getCourse(102339772);
+    expect(flat.data).toMatchObject({ id: 102339772, name: 'anon-courseName', distance_km: 56.73, climbs: [] });
+    expect((flat.data.profile as unknown[]).length).toBe(20);
+    expect(flat.meta.note).toMatch(/^No climbs: a climb is at least 500 m long/);
+    await expect(service.getCourse(1)).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    const off = setup({ autoFetch: false });
+    const none = await off.service.listCourses();
+    expect(none.data).toEqual({ courses: [] });
+    expect(none.meta.note).toMatch(/fetched only by a question about it with auto fetch on/);
+    expect((await off.service.getCourse(1)).data).toEqual({ id: 1 });
+    expect(off.calls).toEqual([]);
+  });
+
+  it('downloads a course as GPX and uploads one, dropping the cached list', async () => {
+    const { service, store, calls } = setup();
+    expect(await service.downloadCourseGpx(102339772)).toEqual({ name: 'course-102339772.gpx', data: new TextEncoder().encode('<gpx/>') });
+    await service.listCourses();
+    expect(store.getCourse()).toBeDefined();
+    const data = new TextEncoder().encode('<gpx/>');
+    expect(await service.uploadCourse('/tmp/Evening Loop.gpx', data)).toEqual({ file: 'Evening Loop.gpx', id: 900001, name: 'Evening Loop', distance_km: 5.23, elevation_gain_m: 84 });
+    expect(calls.find((c) => c.method === 'uploadCourseGpx')?.args).toEqual(['/tmp/Evening Loop.gpx', data]);
+    expect(store.getCourse()).toBeUndefined();
+  });
+
   it('lists the workouts of a Garmin Coach plan with a line from the plan week and the plan block', async () => {
     const now = Date.parse('2026-11-17T12:00:00Z');
     const { service, calls, count } = setup({ plan: true, now });

@@ -88,3 +88,5 @@
 {"prompt": "Do I have any alarms switched on on my watch?", "expect": {"tool": "get_devices"}, "forbid": ["get_sleep", "query_health"]}
 {"prompt": "Czy w tym tygodniu piłem wystarczająco dużo wody?", "expect": {"tool": "query_health", "args_include": {"metrics": ["hydration"]}, "args_exclude": {"granularity": "hour"}}, "forbid": ["garmin_sync", "get_period_summary"]}
 {"prompt": "How much water did I drink each day last week compared with my goal?", "expect": {"tool": "query_health", "args_include": {"metrics": ["hydration"]}}, "forbid": ["garmin_sync"]}
+{"prompt": "Ile przewyższenia ma trasa mojego najbliższego startu?", "expect": {"tool": "list_workouts"}, "forbid": ["get_activities", "garmin_sync"]}
+{"prompt": "Which course is set for my next race and how long is it?", "expect": {"tool": "list_workouts"}, "forbid": ["get_activities", "garmin_sync"]}

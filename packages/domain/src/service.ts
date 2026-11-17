@@ -14,7 +14,7 @@ import {
   type IsoDate,
   type Logger,
 } from 'garmin-mcp-config';
-import { errInfo, FATAL_CODES, isFresh, SCOPE_DAILY, signInPause, TTL, type DailyKind, type DetailKind, type EnsureResult, type ReferenceKind, type Store, type SyncJobProgress, type SyncJobReport, type SyncJobRunner, type SyncScope, type Syncer, type TrainingPlanCache } from 'garmin-mcp-store';
+import { errInfo, FATAL_CODES, isFresh, SCOPE_DAILY, signInPause, TTL, type DailyKind, type DetailKind, type EnsureResult, type ReferenceKind, type Store, type SyncJobProgress, type SyncJobReport, type SyncJobRunner, type SyncScope, type Syncer, type TrainingPlanCache, type CourseCache } from 'garmin-mcp-store';
 import fs from 'node:fs';
 import path from 'node:path';
 import { activityBrief, activityListItem, eventTypeKey, periodActivitySummary } from './activities.js';
@@ -23,6 +23,7 @@ import { gapPace, GPS_STREAM_METRICS, hrSource, motionTime, redactActivityRaw, r
 import { bodyComposition } from './body.js';
 import { calendarEvent } from './calendar.js';
 import { CLIMB_RULES } from './climbs.js';
+import { courseBriefFromDetail, courseDetail, courseList, eventCourseRef, type CourseBrief } from './courses.js';
 import { deviceSettings } from './devices.js';
 import { energyBalance } from './energy.js';
 import { checkExerciseSets, exerciseSetsBody, exerciseSetsInput, rawExerciseSets, type ExerciseSetInput } from './exercise-sets.js';
@@ -1481,13 +1482,16 @@ export class GarminService {
     const rows = this.store.getWorkouts({ sport: q.sport, limit: Math.min(q.limit ?? 50, 200) });
     const scheduled = this.store.getSchedule(from, to);
     const events = this.store.getCalendarEvents(from, to);
+    const refs = events.flatMap((e) => eventCourseRef(e.raw) ?? []);
+    const courses = refs.length > 0 ? await this.#eventCourses(refs) : undefined;
     const planOf = (s: (typeof scheduled)[number]) => (plan.cached && plan.cached.id === s.raw.trainingPlanId ? plan.cached.raw : undefined);
     let meta = this.#meta(
-      [ensured, calendar, ...(plan.result ? [plan.result] : [])],
-      [this.store.referenceFetchedAt('workouts'), plan.result && plan.cached?.fetched_at],
+      [ensured, calendar, ...(plan.result ? [plan.result] : []), ...(courses?.results ?? [])],
+      [this.store.referenceFetchedAt('workouts'), plan.result && plan.cached?.fetched_at, ...(courses?.times ?? [])],
       this.#calendarGap(from, to),
     );
     if (plan.note) meta = withNote(meta, plan.note);
+    if (courses?.note) meta = withNote(meta, courses.note);
     if (q.sport !== undefined && rows.length === 0) meta = withNote(meta, workoutSportNote(q.sport));
     return {
       data: compact({
@@ -1518,7 +1522,14 @@ export class GarminService {
               })
             : compact({ date: s.date, workout_id: s.workout_id, title: s.raw.title, schedule_id: s.id, source: s.source }),
         ),
-        upcoming_events: events.map((e) => compact(calendarEvent(e.raw))),
+        upcoming_events: events.map((e) => {
+          const ref = eventCourseRef(e.raw);
+          const course = ref && (courses?.byId.get(ref.id) ?? { id: ref.id });
+          return compact({
+            ...calendarEvent(e.raw),
+            course: course && { id: course.id, name: course.name ?? ref.name, distance_km: course.distance_km, elevation_gain_m: course.elevation_gain_m },
+          });
+        }),
         plan:
           plan.cached?.raw && plan.active
             ? trainingPlanBlock(plan.cached.raw, plan.active.adaptive, this.today(), this.#planEvents(plan.cached.raw))
@@ -1566,6 +1577,128 @@ export class GarminService {
     const to = typeof p.endDate === 'string' ? p.endDate.slice(0, 10) : undefined;
     if (!from || !to || !isIsoDate(from) || !isIsoDate(to)) return [];
     return this.store.getCalendarEvents(from, to).map((e) => calendarEvent(e.raw));
+  }
+
+  // ------------------------------------------------------------ courses
+
+  /**
+   * The course list (no id) or one course: from the cache while younger than the reference TTL
+   * (1 h), else one request within the daily request limit, made only with auto fetch on; no
+   * sync job fetches courses. A failed request leaves what the cache has, with a note and the
+   * error, so a read with nothing cached can throw it.
+   */
+  async #lazyCourse(courseId?: number): Promise<{ cached?: CourseCache; result: EnsureResult; note?: string; error?: unknown }> {
+    const cached = this.store.getCourse(courseId);
+    const what = courseId === undefined ? 'the course list' : `course ${courseId}`;
+    if (cached && isFresh(cached.fetched_at, TTL.reference, this.#now())) return { cached, result: { source: 'cache' } };
+    if (!(this.#autoSync || this.syncer.fetchOnDemand)) {
+      const note = `Courses are not downloaded yet: ${what} is fetched only by a question about it with auto fetch on (GARMIN_AUTO_FETCH), never by garmin_sync.`;
+      return { cached, result: { source: 'cache' }, note: cached ? undefined : note };
+    }
+    try {
+      const res = await this.syncer.lazyRequest(courseId === undefined ? 'courses' : `course:${courseId}`, () =>
+        courseId === undefined ? this.client.listCourses() : this.client.getCourse(courseId),
+      );
+      if ('blocked' in res) {
+        const why = res.blocked.reason === 'budget' ? 'The daily Garmin request limit is used up' : 'Syncing with Garmin is paused';
+        return { cached, result: { source: 'cache' }, note: `${why}; ${what} downloads after ${iso(res.blocked.resume_at)} when asked again.` };
+      }
+      const fresh = { raw: res.value ?? null, fetched_at: this.#now() };
+      this.store.setCourse(courseId, fresh.raw, fresh.fetched_at);
+      return { cached: fresh, result: { source: 'live' } };
+    } catch (error) {
+      const kept = cached ? `; this is the copy from ${iso(cached.fetched_at)}` : '';
+      return { cached, result: { source: 'cache' }, note: `${what[0]?.toUpperCase()}${what.slice(1)} could not be downloaded (${errInfo(error).code})${kept}.`, error };
+    }
+  }
+
+  /** `garmin://courses`: the account's courses in brief, newest first. */
+  async listCourses() {
+    const got = await this.#lazyCourse();
+    if (!got.cached && got.error) throw got.error;
+    const courses = compact(courseList(got.cached?.raw));
+    const meta = this.#meta([got.result], [got.cached?.fetched_at]);
+    // No courses is an answer: the empty list stays.
+    return { data: { courses }, meta: got.note ? withNote(meta, got.note) : meta };
+  }
+
+  /**
+   * `garmin://course/{id}`: one course with its profile in 20 stretches and its climbs. Positions
+   * (the start and the start of every stretch) only with GARMIN_REDACT off.
+   */
+  async getCourse(id: number) {
+    const got = await this.#lazyCourse(id);
+    if (!got.cached && got.error) throw got.error;
+    const notes = got.note ? [got.note] : [];
+    let data: Record<string, unknown> = { id };
+    if (got.cached?.raw) {
+      const detail = courseDetail(got.cached.raw, { coordinates: !this.#redact, sport: this.#courseSport(id, got.cached.raw) });
+      // No climbs is an answer: the empty list stays.
+      data = { ...compact(detail), climbs: compact(detail.climbs) };
+      if (detail.climbs.length === 0 && detail.profile.length > 0) {
+        notes.push(`No climbs: a climb is at least ${CLIMB_RULES.minLengthM} m long, ${CLIMB_RULES.minAvgGradePct} % steep on average and ${CLIMB_RULES.minGainM} m high.`);
+      }
+      if (this.#redact) notes.push('Positions left out: GPS is removed while GARMIN_REDACT is on.');
+    } else if (got.cached) {
+      notes.push(`Garmin gave no details for course ${id}.`);
+    }
+    const meta = this.#meta([got.result], [got.cached?.fetched_at]);
+    return { data, meta: notes.length > 0 ? withNote(meta, notes.join(' ')) : meta };
+  }
+
+  /** Ids of the cached course list for completing `garmin://course/{id}`; never calls Garmin. */
+  courseIds(): number[] {
+    return this.store.courseIds();
+  }
+
+  /** The sport of a course: from the cached list, else its type id in the cached activity types. */
+  #courseSport(id: number, raw: unknown): string | undefined {
+    const listed = courseList(this.store.getCourse()?.raw).find((c) => c.id === id)?.sport;
+    if (listed) return listed;
+    const typeId = (raw as { activityTypePk?: unknown } | null)?.activityTypePk;
+    return this.store.getActivityTypes().find((t) => t.typeId === typeId)?.typeKey ?? undefined;
+  }
+
+  /**
+   * The courses of calendar events in brief: from the course list, and a course not in it (a
+   * race course shared by the organiser) from its own details; whatever cannot be fetched keeps
+   * the id and the name the calendar gives.
+   */
+  async #eventCourses(refs: readonly { id: number; name?: string }[]): Promise<{ byId: Map<number, CourseBrief>; results: EnsureResult[]; times: number[]; note?: string }> {
+    const list = await this.#lazyCourse();
+    const byId = new Map(courseList(list.cached?.raw).map((c) => [c.id as number, c]));
+    const results = [list.result];
+    const times = list.cached ? [list.cached.fetched_at] : [];
+    const notes = list.note ? [list.note] : [];
+    for (const id of new Set(refs.map((r) => r.id))) {
+      if (byId.has(id) || !list.cached) continue;
+      const one = await this.#lazyCourse(id);
+      results.push(one.result);
+      if (one.cached) times.push(one.cached.fetched_at);
+      if (one.note) notes.push(one.note);
+      if (one.cached?.raw) byId.set(id, courseBriefFromDetail(one.cached.raw));
+    }
+    return { byId, results, times, note: notes.length > 0 ? notes.join(' ') : undefined };
+  }
+
+  /**
+   * `garmin course download`: the course as a GPX file, straight from Garmin (one request), with
+   * the file name Garmin gives or `course-<id>.gpx`.
+   */
+  async downloadCourseGpx(id: number): Promise<{ name: string; data: Uint8Array }> {
+    const file = await this.client.downloadCourseGpx(id);
+    const name = file.filename && /\.gpx$/i.test(file.filename) ? path.basename(file.filename) : `course-${id}.gpx`;
+    return { name, data: file.data };
+  }
+
+  /**
+   * `garmin course upload`: a GPX file as a new course. The cached course list is dropped, so the
+   * next read of `garmin://courses` has the new course.
+   */
+  async uploadCourse(file: string, data: Uint8Array) {
+    const saved = await this.client.uploadCourseGpx(file, data);
+    this.store.forgetCourses();
+    return compact({ file: path.basename(file), ...courseBriefFromDetail(saved, this.#courseSport(saved.courseId as number, saved)) });
   }
 
   /**

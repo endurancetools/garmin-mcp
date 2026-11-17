@@ -50,6 +50,10 @@ export function setup(
   opts: { activities?: ActivitySummary[]; plan?: boolean; gone?: ReadonlySet<number>; zip?: Uint8Array; budgetMs?: number; delayMs?: number; autoFetch?: boolean; autoSync?: boolean; redact?: boolean; now?: number;
     /** Water logged per day (fields of Garmin's hydration summary); other days answer the recorded day without an entry. */
     hydration?: Record<string, { valueInML?: number; sweatLossInML?: number }>;
+    /** Course of the race on the calendar (`courseId`; field of the recorded calendar items, never set there). */
+    raceCourse?: number;
+    /** Course details by id; other ids answer 404, the recorded course (102339772) its fixture. */
+    courses?: Record<number, unknown>;
   } = {},
 ) {
   const now = opts.now ?? NOW;
@@ -269,7 +273,8 @@ export function setup(
         const recorded = fixture('calendar-month') as { calendarItems: unknown[] };
         // With `plan`, the recorded Garmin Coach workouts (2026-11-17..22) and the plan start.
         const plan = opts.plan ? (fixture('calendar-month-plan') as { calendarItems: unknown[] }).calendarItems : [];
-        return { ...recorded, calendarItems: [...recorded.calendarItems, RACE, ...plan] };
+        const race = opts.raceCourse === undefined ? RACE : { ...RACE, courseId: opts.raceCourse, courseName: 'anon-courseName' };
+        return { ...recorded, calendarItems: [...recorded.calendarItems, race, ...plan] };
       }),
     getAdaptiveTrainingPlan: (id: number) => rec('getAdaptiveTrainingPlan', [id], () => fixture('adaptive-plan')),
     // The phased plan path is not confirmed by a recording.
@@ -307,6 +312,16 @@ export function setup(
     getBodyBattery: (from: string, to: string) => rec('getBodyBattery', [from, to], () => fixture('body-battery')),
     getDailyEvents: (date: string) => rec('getDailyEvents', [date], () => ({ calendarDate: date })),
     getHydration: (date: string) => rec('getHydration', [date], () => ({ ...(fixture('hydration-day') as object), calendarDate: date, ...opts.hydration?.[date] })),
+    listCourses: () => rec('listCourses', [], () => fixture('courses')),
+    getCourse: (id: number) =>
+      rec('getCourse', [id], () => {
+        const known = opts.courses?.[id] ?? (id === 102339772 ? fixture('course') : undefined);
+        if (known === undefined) throw notFound(`course/${id}`);
+        return known;
+      }),
+    downloadCourseGpx: (id: number) => rec('downloadCourseGpx', [id], () => ({ data: new TextEncoder().encode('<gpx/>'), contentType: 'application/gpx+xml', filename: undefined })),
+    uploadCourseGpx: (file: string, data: Uint8Array) =>
+      rec('uploadCourseGpx', [file, data], () => ({ courseId: 900001, courseName: 'Evening Loop', activityTypePk: 1, distanceMeter: 5230, elevationGainMeter: 84.4 })),
     downloadActivity: (id: number, format: string) => rec('downloadActivity', [id, format], () => ({ data: opts.zip ?? new Uint8Array([1, 2, 3]), contentType: 'application/zip', filename: undefined })),
   };
   const store = Store.open(':memory:');

@@ -166,6 +166,21 @@ describe('Store', () => {
     expect(store.getTrainingPlan()).toEqual({ id: 48, raw: { name: 'Half' }, fetched_at: T });
   });
 
+  it('keeps the course list and single courses, and forgets the list', () => {
+    const store = Store.open(':memory:');
+    expect(store.getCourse()).toBeUndefined();
+    expect(store.courseIds()).toEqual([]);
+    store.setCourse(undefined, [{ courseId: 7, courseName: 'A' }, { courseId: 'x' }, { courseId: 9 }], T);
+    store.setCourse(7, { courseId: 7, geoPoints: [] }, T + 1);
+    expect(store.getCourse()).toEqual({ raw: [{ courseId: 7, courseName: 'A' }, { courseId: 'x' }, { courseId: 9 }], fetched_at: T });
+    expect(store.getCourse(7)).toEqual({ raw: { courseId: 7, geoPoints: [] }, fetched_at: T + 1 });
+    expect(store.courseIds()).toEqual([7, 9]);
+    expect(store.courseIds(1)).toEqual([7]);
+    store.forgetCourses();
+    expect(store.getCourse()).toBeUndefined();
+    expect(store.getCourse(7)).toBeDefined();
+  });
+
   it("keeps Garmin's threshold history as one value", () => {
     const store = Store.open(':memory:');
     expect(store.getThresholdHistory()).toBeUndefined();

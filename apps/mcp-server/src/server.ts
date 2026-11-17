@@ -180,6 +180,12 @@ function registerResources(server: McpServer, getService: () => Promise<GarminSe
     'Garmin activity type keys (e.g. running, trail_running, lap_swimming) with their parent type: the values get_activities `type` filters by and update_activity `type` accepts. Comes from the reference sync.',
     (s) => s.getActivityTypes(),
   );
+  resource(
+    'courses',
+    'garmin://courses',
+    'Courses saved in Garmin Connect, newest first: id, name, sport, distance and elevation gain. Downloaded when read (auto fetch) and kept for an hour.',
+    (s) => s.listCourses(),
+  );
   resource('sync-status', 'garmin://sync-status', 'Recent sync runs, date coverage and record counts of the local cache', (s) => s.syncStatus());
   // Read on every new conversation by some clients, so it never downloads: a gap is a note naming the tool that fills it.
   server.registerResource(
@@ -206,6 +212,13 @@ function registerResources(server: McpServer, getService: () => Promise<GarminSe
     'One saved workout by id with its steps: the same as get_workout',
     (s) => s.store.getWorkouts({ limit: 20 }).map((w) => w.id),
     (s, id) => s.getWorkout(id),
+  );
+  template(
+    'course',
+    'garmin://course/{id}',
+    'One course by id: distance, elevation, the profile in 20 stretches of equal length and the climbs; positions only with GARMIN_REDACT=false',
+    (s) => s.courseIds(),
+    (s, id) => s.getCourse(id),
   );
 }
 

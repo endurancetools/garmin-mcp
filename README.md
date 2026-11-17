@@ -80,7 +80,7 @@ Measured on a real account after a 90-day sync (433 requests in about an hour): 
 | `get_training_status` | VO2max, readiness, recovery time, Garmin status, load and load focus, `garmin_load_model` (CTL/ATL/TSB from Garmin's training load, optionally the daily series); race predictions, endurance/hill score, fitness age, personal records, acclimation |
 | `get_body_composition` | weigh-ins in kg with trend |
 | `get_period_summary` | week, month or any `from`..`to` range up to 366 days: volume per sport, HR zones, rest days, longest/hardest, `garmin_load_model` at the end, health and energy averages |
-| `list_workouts`, `get_workout` | workout library, scheduled workouts, races and events from the calendar in any date range (default: next 60 days), readable steps |
+| `list_workouts`, `get_workout` | workout library, scheduled workouts, races and events (with the course of a race) from the calendar in any date range (default: next 60 days), readable steps |
 | `create_workout`, `schedule_workouts` | workouts from presets (run intervals, walk/run, easy Z2, strength circuit) or a typed definition (nestable repeats, HR/pace/power targets); `create_workout` with `dry_run: true` shows the steps and estimated duration without saving; `schedule_workouts` puts workouts on the calendar and takes them off again |
 | `get_gear`, `get_devices` | gear with distance, devices with last sync and settings |
 | `garmin_sync` | explicit download of a scope (all/activities/health/training/reference) and date range, with progress notifications |
@@ -91,7 +91,7 @@ Measured on a real account after a 90-day sync (433 requests in about an hour): 
 
 `delete_activity`, `delete_workout`, `delete_weigh_in`, overwriting a saved workout (`create_workout` with `workout_id`) and replacing the strength sets of an activity (`update_activity` with `exercise_sets`) are only available with `GARMIN_ENABLE_DESTRUCTIVE=true`.
 
-Resources: `garmin://profile`, `garmin://gear`, `garmin://devices`, `garmin://activity-types`, `garmin://sync-status`, `garmin://today` (today's readiness decision, last night in one line and the workouts planned for today, from the local cache without downloading), and the templates `garmin://activity/{id}` and `garmin://workout/{id}` with id completion. Prompts: `weekly_review`, `plan_next_week`, `sleep_report` (a range of nights, then the worst one hour by hour), `activity_review` (one activity, then the sessions similar to it) and `race_check` (the next race, form and race predictions). Resources and prompts are not part of the tool list, so they add nothing to its context budget.
+Resources: `garmin://profile`, `garmin://gear`, `garmin://devices`, `garmin://activity-types`, `garmin://sync-status`, `garmin://today` (today's readiness decision, last night in one line and the workouts planned for today, from the local cache without downloading), `garmin://courses` (your courses with distance and elevation gain), and the templates `garmin://activity/{id}`, `garmin://workout/{id}` and `garmin://course/{id}` (a course's profile in 20 stretches and its climbs) with id completion. Prompts: `weekly_review`, `plan_next_week`, `sleep_report` (a range of nights, then the worst one hour by hour), `activity_review` (one activity, then the sessions similar to it) and `race_check` (the next race, form and race predictions). Resources and prompts are not part of the tool list, so they add nothing to its context budget.
 
 Every response is `{ data, meta: { source: cache|live|partial|local, fetched_at, coverage?, sync_hint? } }`, as JSON text and as `structuredContent` matching the tool's `outputSchema`; failures are `{ error: { code, message, hint } }`.
 
@@ -116,6 +116,8 @@ garmin thresholds export [--out <file.csv>]                     # date,param,val
 garmin thresholds import <file.csv>
 garmin import-activities <file.csv...>                          # Garmin Connect "Activities" CSV exports
 garmin upload <file.fit|gpx|tcx...> [--json]                    # new activities to Garmin Connect
+garmin course download <id> [--out <file|dir>] [--json]         # a course as GPX
+garmin course upload <file.gpx> [--json]                        # a GPX file as a new course
 garmin log weight <kg> [--fat <pct>] [--date] [--json]          # measurements to Garmin Connect; --date "YYYY-MM-DD HH:MM"
 garmin log bp <systolic/diastolic> [--pulse --note --date --json]
 garmin log water <ml> [--date] [--json]
@@ -126,7 +128,7 @@ garmin logout
 
 `load`, `readiness` and `thresholds` print the same results as the `get_load`, `get_readiness` and `get_thresholds` tools: markdown tables by default, the tool's `{ data, meta }` envelope with `--json`. They read the local database only and never download; missing days come back as a note with the `garmin sync` command that fills them. `import-activities` adds activities from Garmin Connect CSV exports (English or Polish headers) for dates the synced activities do not cover, and `thresholds export`/`import` keep a copy of the threshold history in a CSV file.
 
-`upload` and `log` write to Garmin Connect. `upload` sends FIT, GPX or TCX files as new activities and prints each new activity's id; the activity goes into the local database at once. A file Garmin already has is reported as a duplicate and does not fail the command. `log` adds a weigh-in in kg, a blood pressure reading (`120/80`, optionally `--pulse` and `--note`) or water in ml to a day, now or at `--date` (a past day without a time is 12:00; nothing in the future). The MCP tools do not write these measurements: a reading tool would no longer be safe to call without asking.
+`upload` and `log` write to Garmin Connect. `upload` sends FIT, GPX or TCX files as new activities and prints each new activity's id; the activity goes into the local database at once. A file Garmin already has is reported as a duplicate and does not fail the command. `log` adds a weigh-in in kg, a blood pressure reading (`120/80`, optionally `--pulse` and `--note`) or water in ml to a day, now or at `--date` (a past day without a time is 12:00; nothing in the future). The MCP tools do not write these measurements: a reading tool would no longer be safe to call without asking. `course download` saves a course as a GPX file and `course upload` adds a GPX file as a new course.
 
 Run it with `npx -y garmin-mcp-cli <command>` or install it globally (`npm i -g garmin-mcp-cli`).
 

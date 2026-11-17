@@ -34,6 +34,9 @@ const fakeService = {
   getActivityTypes: async () => ({ data: { activity_types: [{ key: 'trail_running', parent: 'running' }] }, meta }),
   getActivity: async (id: number, detail: string) => ({ data: { id, detail, name: 'Morning Run' }, meta }),
   getWorkout: async (id: number) => ({ data: { workout_id: id, name: 'Easy Z2' }, meta }),
+  listCourses: async () => ({ data: { courses: [{ id: 102339772, name: 'Loop' }] }, meta }),
+  getCourse: async (id: number) => ({ data: { id, name: 'Loop', profile: [], climbs: [] }, meta }),
+  courseIds: () => [102339772, 4242],
   updateActivity: async (id: number, patch: unknown) => {
     activityWrites.push({ method: 'updateActivity', args: [id, patch] });
     return { data: { updated: true, activity: { id, name: 'Morning Run' } }, meta };
@@ -377,7 +380,7 @@ describe('MCP server', () => {
   it('serves activity and workout templates with id completion, without listing them', async () => {
     const client = await connect(runtime());
     const templates = (await client.listResourceTemplates()).resourceTemplates.map((t) => t.uriTemplate);
-    expect(templates).toEqual(['garmin://activity/{id}', 'garmin://workout/{id}']);
+    expect(templates).toEqual(['garmin://activity/{id}', 'garmin://workout/{id}', 'garmin://course/{id}']);
     expect((await client.listResources()).resources.map((r) => r.uri)).not.toContain('garmin://activity/1');
     const body = (uri: string) => client.readResource({ uri }).then((r) => JSON.parse((r.contents[0] as { text: string }).text) as Record<string, unknown>);
     expect(await body('garmin://activity/1')).toEqual({ data: { id: 1, detail: 'summary', name: 'Morning Run' }, meta });
@@ -387,12 +390,16 @@ describe('MCP server', () => {
     expect(await complete('garmin://activity/{id}', '')).toEqual(['21001', '21002', '3']);
     expect(await complete('garmin://activity/{id}', '210')).toEqual(['21001', '21002']);
     expect(await complete('garmin://workout/{id}', '')).toEqual(['6515728609']);
+    expect(await body('garmin://course/4242')).toEqual({ data: { id: 4242, name: 'Loop', profile: [], climbs: [] }, meta });
+    expect(await complete('garmin://course/{id}', '42')).toEqual(['4242']);
   });
 
   it('serves resources and prompts', async () => {
     const client = await connect(runtime());
     const resources = (await client.listResources()).resources.map((r) => r.uri);
-    expect(resources).toEqual(['garmin://profile', 'garmin://gear', 'garmin://devices', 'garmin://activity-types', 'garmin://sync-status', 'garmin://today']);
+    expect(resources).toEqual(['garmin://profile', 'garmin://gear', 'garmin://devices', 'garmin://activity-types', 'garmin://courses', 'garmin://sync-status', 'garmin://today']);
+    const courses = await client.readResource({ uri: 'garmin://courses' });
+    expect(JSON.parse((courses.contents[0] as { text: string }).text)).toEqual({ data: { courses: [{ id: 102339772, name: 'Loop' }] }, meta });
     const types = await client.readResource({ uri: 'garmin://activity-types' });
     expect(JSON.parse((types.contents[0] as { text: string }).text)).toMatchObject({ data: { activity_types: [{ key: 'trail_running', parent: 'running' }] } });
     const status = await client.readResource({ uri: 'garmin://sync-status' });

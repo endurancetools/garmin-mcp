@@ -93,6 +93,12 @@ export interface TrainingPlanCache {
   fetched_at: number;
 }
 
+/** A course list or one course as the course reads last fetched it; `raw` is null when Garmin did not give it. */
+export interface CourseCache {
+  raw: unknown;
+  fetched_at: number;
+}
+
 /**
  * Garmin's own threshold history as the analytics reads last fetched it: running lactate
  * threshold heart rate and speed per day, and the latest cycling FTP. A part is null when
@@ -725,6 +731,34 @@ export class Store {
   getThresholdHistory(): ThresholdHistoryCache | undefined {
     const v = this.getMeta('threshold_history');
     return v === undefined ? undefined : (JSON.parse(v) as ThresholdHistoryCache);
+  }
+
+  /**
+   * The account's course list and single courses, each kept as one JSON value in `meta`
+   * (fetched by the course reads, no sync job). Without an id it is the list.
+   */
+  setCourse(id: number | undefined, raw: unknown, fetchedAt: number): void {
+    this.setMeta(id === undefined ? 'courses' : `course:${id}`, JSON.stringify({ raw, fetched_at: fetchedAt } satisfies CourseCache));
+  }
+
+  getCourse(id?: number): CourseCache | undefined {
+    const v = this.getMeta(id === undefined ? 'courses' : `course:${id}`);
+    return v === undefined ? undefined : (JSON.parse(v) as CourseCache);
+  }
+
+  /** Drops the cached course list, so the next read fetches it again (after a course was added). */
+  forgetCourses(): void {
+    this.db.prepare("DELETE FROM meta WHERE key = 'courses'").run();
+  }
+
+  /** Ids of the cached course list, newest first as Garmin lists them; never calls Garmin. */
+  courseIds(limit = 20): number[] {
+    const list = this.getCourse()?.raw;
+    if (!Array.isArray(list)) return [];
+    return list
+      .map((c) => (c as { courseId?: unknown } | null)?.courseId)
+      .filter((id): id is number => typeof id === 'number' && Number.isSafeInteger(id) && id > 0)
+      .slice(0, limit);
   }
 
   getSchedule(from: IsoDate, to: IsoDate): ScheduleRow[] {

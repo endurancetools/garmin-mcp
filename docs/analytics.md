@@ -192,6 +192,8 @@ Around 5% is the usual orientation point: below it the session was aerobically s
 
 `get_activity` with `detail: "stream_summary"` and `bucket: "climbs"` finds the climbs of one activity in its stream (distance and elevation, the same download as the other buckets; no FIT file) and gives one row per climb: where it starts (`start_km`), its length (`distance_km`), gain (`elevation_gain_m`), average and steepest grade, the usual stream means (pace and grade adjusted pace, or speed, heart rate, power, dynamics), VAM and, with power, W/kg. Time outside climbs is left out. An activity without climbs gives an empty list and a note; one without distance or elevation in its stream gives no `stream_summary`.
 
+The same rules find the climbs of a course in `garmin://course/{id}`, from the course's points (distance and elevation, no time): start, length, gain and average and steepest grade, without the stream means.
+
 A climb is a stretch of at least **500 m** with an average grade of at least **3 %** and at least **30 m** of gain from its foot to its top. Below 3 % the gradient hardly changes pace or power on a road or path; a shorter or lower rise (a bridge, a short ramp) is over too soon for heart rate and power to say anything about it. All the numbers are `CLIMB_RULES` in `packages/domain/src/climbs.ts`.
 
 How it is found:

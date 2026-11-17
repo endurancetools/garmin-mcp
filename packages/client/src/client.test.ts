@@ -178,6 +178,58 @@ describe('GarminClient', () => {
     expect(warn).not.toHaveBeenCalled();
   });
 
+  it('downloads a course as GPX', async () => {
+    const gpx = '<?xml version="1.0"?><gpx><trk><name>Loop</name></trk></gpx>';
+    let path = '';
+    server.use(
+      http.get(`${API}/course-service/course/gpx/:id`, ({ request }) => {
+        path = new URL(request.url).pathname;
+        return new HttpResponse(gpx, { headers: { 'content-type': 'application/gpx+xml', 'content-disposition': 'attachment; filename="Loop.gpx"' } });
+      }),
+    );
+    const file = await makeClient().client.downloadCourseGpx(102339772);
+    expect(path).toBe('/course-service/course/gpx/102339772');
+    expect(new TextDecoder().decode(file.data)).toBe(gpx);
+    expect(file.filename).toBe('Loop.gpx');
+    await expect(makeClient().client.downloadCourseGpx(0)).rejects.toBeInstanceOf(InputError);
+  });
+
+  it('uploads a GPX file as a course: import, then save with a name', async () => {
+    const seen: { path: string; file?: string; body?: unknown }[] = [];
+    let imported: unknown = { courseName: null, distanceMeter: 5000, geoPoints: [{ latitude: 1, longitude: 2, elevation: 100, distance: 0 }] };
+    let saved: unknown = { courseId: 777, courseName: 'Evening Loop', distanceMeter: 5000 };
+    server.use(
+      http.post(`${API}/course-service/course/import`, async ({ request }) => {
+        const file = (await request.formData()).get('file') as File;
+        seen.push({ path: 'import', file: file.name });
+        return HttpResponse.json(imported as never);
+      }),
+      http.post(`${API}/course-service/course`, async ({ request }) => {
+        seen.push({ path: 'save', body: await request.json() });
+        return HttpResponse.json(saved as never);
+      }),
+    );
+    const { client } = makeClient();
+    const data = new TextEncoder().encode('<gpx/>');
+    await expect(client.uploadCourseGpx('/tmp/Evening Loop.GPX', data)).resolves.toMatchObject({ courseId: 777 });
+    expect(seen).toEqual([
+      { path: 'import', file: 'Evening Loop.GPX' },
+      { path: 'save', body: expect.objectContaining({ courseName: 'Evening Loop', distanceMeter: 5000 }) },
+    ]);
+    // A name from the file stays.
+    imported = { courseName: 'Kampinos', distanceMeter: 5000 };
+    await client.uploadCourseGpx('a.gpx', data);
+    expect(seen.at(-1)?.body).toMatchObject({ courseName: 'Kampinos' });
+    // Without an id in the answer the course may still exist: the error says to check first.
+    saved = { courseName: 'Kampinos' };
+    await expect(client.uploadCourseGpx('a.gpx', data)).rejects.toMatchObject({ code: 'VALIDATION', hint: expect.stringMatching(/check the courses/) });
+    imported = [];
+    await expect(client.uploadCourseGpx('a.gpx', data)).rejects.toMatchObject({ code: 'VALIDATION' });
+    const before = seen.length;
+    await expect(client.uploadCourseGpx('a.fit', data)).rejects.toMatchObject({ code: 'INVALID_INPUT' });
+    expect(seen).toHaveLength(before);
+  });
+
   it('pages through all activities', async () => {
     const pages: number[] = [];
     const { client } = makeClient();
