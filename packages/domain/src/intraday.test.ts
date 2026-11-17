@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { hourlyTable, intradayKinds } from './intraday.js';
 import { fixture } from './test-utils/fake.js';
 
-const FIXTURES: Record<Exclude<IntradayKind, 'daily_events'>, string> = {
+const FIXTURES: Record<Exclude<IntradayKind, 'daily_events' | 'hydration'>, string> = {
   heart_rate: 'heart-rate-day',
   stress: 'stress-day',
   respiration: 'respiration-day',

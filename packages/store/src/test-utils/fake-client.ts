@@ -104,6 +104,7 @@ export function fakeClient(opts: FakeClientOptions = {}) {
     getBodyBattery: (from: string, to: string) => call('getBodyBattery', { from, to }, () => fixture('body-battery')),
     // No recorded fixture yet (E8-2); the store keeps the response as it comes.
     getDailyEvents: (date: string) => call('getDailyEvents', date, () => ({ calendarDate: date })),
+    getHydration: (date: string) => call('getHydration', date, () => ({ ...(fixture('hydration-day') as object), calendarDate: date })),
     getCalendar: (year: number, month: number) =>
       call('getCalendar', { year, month }, () => ({
         calendarItems: [

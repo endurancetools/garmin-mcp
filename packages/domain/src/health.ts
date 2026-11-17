@@ -15,6 +15,7 @@ export const HEALTH_METRICS = [
   'intensity_minutes',
   'calories',
   'floors',
+  'hydration',
 ] as const;
 export type HealthMetric = (typeof HEALTH_METRICS)[number];
 /** `query_health` rows: per day, per ISO week, or per hour (up to 3 days, from the intraday series). */
@@ -25,13 +26,26 @@ export interface HealthRows {
   daily: DailyRows['daily_summary'][];
   sleep: DailyRows['sleep'][];
   hrv: DailyRows['hrv'][];
+  /** Garmin's hydration summary per day (`hydration` metric), from the `intraday` table. */
+  hydration?: { date: string; raw: unknown }[];
 }
 
-/** Which tables a metric needs. */
+/** Which daily tables a metric needs; `hydration` needs none (it is kept per day in `intraday`). */
 export function tablesFor(metrics: readonly HealthMetric[]): ('daily_summary' | 'sleep' | 'hrv')[] {
   const t = new Set<'daily_summary' | 'sleep' | 'hrv'>();
-  for (const m of metrics) t.add(m === 'hrv' ? 'hrv' : m === 'sleep' ? 'sleep' : 'daily_summary');
+  for (const m of metrics) if (m !== 'hydration') t.add(m === 'hrv' ? 'hrv' : m === 'sleep' ? 'sleep' : 'daily_summary');
   return [...t];
+}
+
+/**
+ * Water of one day from Garmin's hydration summary: drunk, goal and sweat loss in ml. Garmin
+ * sends `valueInML: null` (with the goal) for a day nothing was logged, so such a day has no
+ * entry and is left out rather than shown as 0.
+ */
+function hydrationEntry(raw: unknown): Fields | undefined {
+  const drunk = rawNum(raw, 'valueInML');
+  if (drunk === undefined) return undefined;
+  return { hydration_ml: drunk, hydration_goal_ml: rawNum(raw, 'goalInML'), sweat_loss_ml: rawNum(raw, 'sweatLossInML') };
 }
 
 type Value = number | string | undefined;
@@ -44,7 +58,13 @@ function rawNum(raw: unknown, key: string): number | undefined {
 }
 
 /** Per-day values of one metric, keyed by output field (with unit in the name). */
-function dayFields(metric: HealthMetric, d: DailyRows['daily_summary'] | undefined, s: DailyRows['sleep'] | undefined, h: DailyRows['hrv'] | undefined): Fields {
+function dayFields(
+  metric: HealthMetric,
+  d: DailyRows['daily_summary'] | undefined,
+  s: DailyRows['sleep'] | undefined,
+  h: DailyRows['hrv'] | undefined,
+  water: Fields | undefined,
+): Fields {
   switch (metric) {
     case 'steps':
       return { steps: d?.steps ?? undefined, distance_km: km(rawNum(d?.raw, 'totalDistanceMeters')) };
@@ -77,6 +97,8 @@ function dayFields(metric: HealthMetric, d: DailyRows['daily_summary'] | undefin
       };
     case 'floors':
       return { floors: rawNum(d?.raw, 'floorsAscended') };
+    case 'hydration':
+      return water ?? {};
   }
 }
 
@@ -110,6 +132,7 @@ const PRIMARY: Record<HealthMetric, string> = {
   intensity_minutes: 'intensity_min',
   calories: 'calories_total_kcal',
   floors: 'floors',
+  hydration: 'hydration_ml',
 };
 
 export interface MetricSummary {
@@ -142,10 +165,16 @@ export function healthTable(
   const index = <T extends { date: string }>(xs: T[]) => new Map(xs.map((x) => [x.date, x]));
   const build = (src: HealthRows) => {
     const [d, s, h] = [index(src.daily), index(src.sleep), index(src.hrv)];
-    const dates = [...new Set([...d.keys(), ...s.keys(), ...h.keys()])].toSorted();
+    // Only days with a water entry: a day without one is left out, not 0.
+    const w = new Map<string, Fields>();
+    for (const r of src.hydration ?? []) {
+      const entry = hydrationEntry(r.raw);
+      if (entry) w.set(r.date, entry);
+    }
+    const dates = [...new Set([...d.keys(), ...s.keys(), ...h.keys(), ...w.keys()])].toSorted();
     return dates.map((date) => {
       const out: Fields = {};
-      for (const m of metrics) Object.assign(out, dayFields(m, d.get(date), s.get(date), h.get(date)));
+      for (const m of metrics) Object.assign(out, dayFields(m, d.get(date), s.get(date), h.get(date), w.get(date)));
       return { date, fields: out };
     });
   };

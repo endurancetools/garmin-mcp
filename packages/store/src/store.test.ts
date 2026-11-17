@@ -11,8 +11,8 @@ const T = 1_791_400_000_000;
 describe('Store', () => {
   it('migrates a fresh database', () => {
     const store = Store.open(':memory:');
-    expect(schemaVersion(store.db)).toBe(11);
-    expect(store.getMeta('schema_version')).toBe('11');
+    expect(schemaVersion(store.db)).toBe(12);
+    expect(store.getMeta('schema_version')).toBe('12');
   });
 
   it('keeps cached activity details when migration 3 widens the detail kinds', () => {
@@ -267,6 +267,25 @@ describe('Store', () => {
     expect(store.getActivityDetail(1, 'split_summaries')).toEqual({ raw: null, fetched_at: T });
     store.deleteActivity(1);
     expect(store.getActivityDetail(1, 'typed_splits')).toBeUndefined();
+  });
+
+  it('keeps cached intraday series when migration 12 adds the hydration kind', () => {
+    const db = new Database(':memory:');
+    for (const sql of MIGRATIONS.slice(0, 11)) db.exec(sql);
+    db.pragma('user_version = 11');
+    db.prepare(`INSERT INTO intraday (date, kind, raw, fetched_at) VALUES ('2026-10-07', 'steps', '[]', ?)`).run(T);
+    expect(() => db.prepare(`INSERT INTO intraday (date, kind, raw, fetched_at) VALUES ('2026-10-07', 'hydration', '{}', ?)`).run(T)).toThrow(/CHECK constraint/);
+    migrate(db);
+    expect(schemaVersion(db)).toBe(MIGRATIONS.length);
+    const store = new Store(db);
+    expect(store.getIntraday('2026-10-07')).toEqual([{ kind: 'steps', raw: [], fetched_at: T }]);
+    store.putIntraday('2026-10-07', 'hydration', { valueInML: 1500 }, T + 1);
+    store.putIntraday('2026-10-09', 'hydration', null, T + 2);
+    store.putIntraday('2026-10-12', 'hydration', { valueInML: 900 }, T + 3);
+    expect(store.getIntradayRange('hydration', '2026-10-07', '2026-10-11')).toEqual([
+      { date: '2026-10-07', kind: 'hydration', raw: { valueInML: 1500 }, fetched_at: T + 1 },
+      { date: '2026-10-09', kind: 'hydration', raw: null, fetched_at: T + 2 },
+    ]);
   });
 
   it('keeps one intraday series per day and kind', () => {

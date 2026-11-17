@@ -47,7 +47,10 @@ export function summary(id: number, day: string, extra: Partial<ActivitySummary>
 }
 
 export function setup(
-  opts: { activities?: ActivitySummary[]; plan?: boolean; gone?: ReadonlySet<number>; zip?: Uint8Array; budgetMs?: number; delayMs?: number; autoFetch?: boolean; autoSync?: boolean; redact?: boolean; now?: number } = {},
+  opts: { activities?: ActivitySummary[]; plan?: boolean; gone?: ReadonlySet<number>; zip?: Uint8Array; budgetMs?: number; delayMs?: number; autoFetch?: boolean; autoSync?: boolean; redact?: boolean; now?: number;
+    /** Water logged per day (fields of Garmin's hydration summary); other days answer the recorded day without an entry. */
+    hydration?: Record<string, { valueInML?: number; sweatLossInML?: number }>;
+  } = {},
 ) {
   const now = opts.now ?? NOW;
   const calls: { method: string; args: unknown[] }[] = [];
@@ -303,6 +306,7 @@ export function setup(
     getSteps: (date: string) => rec('getSteps', [date], () => fixture('steps-chart')),
     getBodyBattery: (from: string, to: string) => rec('getBodyBattery', [from, to], () => fixture('body-battery')),
     getDailyEvents: (date: string) => rec('getDailyEvents', [date], () => ({ calendarDate: date })),
+    getHydration: (date: string) => rec('getHydration', [date], () => ({ ...(fixture('hydration-day') as object), calendarDate: date, ...opts.hydration?.[date] })),
     downloadActivity: (id: number, format: string) => rec('downloadActivity', [id, format], () => ({ data: opts.zip ?? new Uint8Array([1, 2, 3]), contentType: 'application/zip', filename: undefined })),
   };
   const store = Store.open(':memory:');

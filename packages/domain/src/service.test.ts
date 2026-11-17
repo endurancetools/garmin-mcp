@@ -103,6 +103,60 @@ describe('GarminService', () => {
     expect(week.data.rows?.[0]).toMatchObject({ week: '2026-W41', days: 4, calories_total_kcal_avg: 2400, calories_consumed_kcal_avg: 2150 });
   });
 
+  describe('query_health hydration', () => {
+    const WATER = { '2026-10-06': { valueInML: 2000, sweatLossInML: 600 }, '2026-10-07': { valueInML: 2500, sweatLossInML: 400 } };
+
+    it('returns water drunk, goal and sweat loss per day and leaves out days without an entry', async () => {
+      const { service, count } = setup({ hydration: WATER });
+      const res = await service.queryHealth(['hydration'], '2026-10-05', '2026-10-08');
+      expect(output.healthOutput.safeParse(JSON.parse(JSON.stringify(res))).error).toBeUndefined();
+      expect(res.data.rows).toEqual([
+        { date: '2026-10-06', hydration_ml: 2000, hydration_goal_ml: 2800, sweat_loss_ml: 600 },
+        { date: '2026-10-07', hydration_ml: 2500, hydration_goal_ml: 2800, sweat_loss_ml: 400 },
+      ]);
+      expect(res.data.summary?.hydration).toMatchObject({ avg: 2250, min: 2000, max: 2500, days_with_data: 2 });
+      expect(res.meta.source).toBe('live');
+      expect(res.meta.note).toBeUndefined();
+      // One request per day, no daily summaries; closed days and today's fresh answer are kept.
+      expect(count('getHydration')).toBe(4);
+      expect(count('getDailySummary')).toBe(0);
+      const week = await service.queryHealth(['hydration'], '2026-10-05', '2026-10-08', 'week');
+      expect(week.data.rows).toEqual([{ week: '2026-W41', week_start: '2026-10-05', days: 2, hydration_ml_avg: 2250, hydration_goal_ml_avg: 2800, sweat_loss_ml_avg: 500 }]);
+      expect(week.meta.source).toBe('cache');
+      expect(count('getHydration')).toBe(4);
+    });
+
+    it('fetches only the asked days up to today and sits next to other metrics, also per hour', async () => {
+      const { service, count } = setup({ hydration: WATER });
+      const res = await service.queryHealth(['steps', 'hydration'], '2026-10-07', '2026-10-10');
+      expect(count('getHydration')).toBe(2);
+      expect(res.data.rows?.find((r) => r.date === '2026-10-07')).toMatchObject({ steps: expect.any(Number), hydration_ml: 2500 });
+      expect(res.data.rows?.find((r) => r.date === '2026-10-08')).not.toHaveProperty('hydration_ml');
+      const hourly = await service.queryHealth(['steps', 'hydration'], '2026-10-07', '2026-10-07', 'hour');
+      expect((hourly.data as { daily?: unknown[] }).daily).toEqual([{ date: '2026-10-07', hydration_ml: 2500, hydration_goal_ml: 2800, sweat_loss_ml: 400 }]);
+      expect(count('getHydration')).toBe(2);
+    });
+
+    it('says so when no water is logged, and without auto fetch what is not downloaded', async () => {
+      const empty = await setup().service.queryHealth(['hydration'], '2026-10-06', '2026-10-07');
+      expect(empty.data.rows ?? []).toEqual([]);
+      expect(empty.meta.note).toBe('No water intake is logged in Garmin Connect for 2026-10-06..2026-10-07.');
+      const { service, calls } = setup({ autoFetch: false, hydration: WATER });
+      const res = await service.queryHealth(['hydration'], '2026-10-06', '2026-10-07');
+      expect(calls).toEqual([]);
+      expect(res.meta.sync_hint).toBeUndefined();
+      expect(res.meta.note).toMatch(/^Hydration of 2 day\(s\) between 2026-10-06 and 2026-10-07 is not downloaded yet.*GARMIN_AUTO_FETCH/);
+    });
+
+    it('waits for a sync pause and says when the hydration comes', async () => {
+      const { service, store, calls } = setup({ hydration: WATER });
+      store.setMeta('sync:paused_until', String(Date.parse('2026-10-08T15:00:00Z')));
+      const res = await service.queryHealth(['hydration'], '2026-10-06', '2026-10-07');
+      expect(calls).toEqual([]);
+      expect(res.meta.note).toBe('Syncing with Garmin is paused; hydration of the days still missing downloads after 2026-10-08T15:00:00.000Z when asked again.');
+    });
+  });
+
   it('returns partial data with coverage when Garmin is slow', async () => {
     const { service } = setup({ budgetMs: 30, delayMs: 50 });
     const res = await service.queryHealth(['steps'], '2026-09-01', '2026-10-08');

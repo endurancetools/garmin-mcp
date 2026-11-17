@@ -36,8 +36,11 @@ export const DAILY_KINDS: readonly DailyKind[] = ['daily_summary', 'sleep', 'hrv
  */
 export type DetailKind = 'summary' | 'splits' | 'hr_zones' | 'details' | 'weather' | 'power_zones' | 'exercise_sets' | 'power_curve' | 'typed_splits' | 'split_summaries';
 export type ReferenceKind = 'profile' | 'gear' | 'devices' | 'workouts' | 'activity_types';
-/** Intraday series kept per day in the `intraday` table; `stress` also carries the Body Battery curve. */
-export const INTRADAY_KINDS = ['heart_rate', 'stress', 'respiration', 'spo2', 'steps', 'body_battery_events', 'daily_events'] as const;
+/**
+ * Series kept per day in the `intraday` table and fetched lazily, one request per day and kind;
+ * `stress` also carries the Body Battery curve, `hydration` is the day's water summary.
+ */
+export const INTRADAY_KINDS = ['heart_rate', 'stress', 'respiration', 'spo2', 'steps', 'body_battery_events', 'daily_events', 'hydration'] as const;
 export type IntradayKind = (typeof INTRADAY_KINDS)[number];
 export interface IntradayRow {
   kind: IntradayKind;
@@ -528,6 +531,12 @@ export class Store {
     const rows = this.db.prepare('SELECT kind, raw, fetched_at FROM intraday WHERE date = ?').all(date) as RawRow[];
     const byKind = new Map(rows.map((r) => [r.kind as IntradayKind, parseRow<IntradayRow>(r) as IntradayRow]));
     return kinds.flatMap((k) => byKind.get(k) ?? []);
+  }
+
+  /** Stored rows of one kind for the days of [from, to], by date; days never fetched are left out. */
+  getIntradayRange(kind: IntradayKind, from: IsoDate, to: IsoDate): ({ date: string } & IntradayRow)[] {
+    const rows = this.db.prepare('SELECT date, kind, raw, fetched_at FROM intraday WHERE kind = ? AND date >= ? AND date <= ? ORDER BY date').all(kind, from, to) as RawRow[];
+    return rows.map((r) => parseRow<{ date: string } & IntradayRow>(r) as { date: string } & IntradayRow);
   }
 
   /** kind → fetched_at for the series of `date` already stored. */

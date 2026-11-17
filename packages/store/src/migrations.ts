@@ -310,4 +310,18 @@ export const MIGRATIONS: readonly string[] = [
   DROP TABLE activity_details;
   ALTER TABLE activity_details_v11 RENAME TO activity_details;
   `,
+  /* 12 */ `
+  -- The day's hydration (water drunk, goal, sweat loss) sits next to the intraday series: one
+  -- response per day, fetched lazily by the question that needs it, never by a sync job.
+  CREATE TABLE intraday_v12 (
+    date TEXT NOT NULL,
+    kind TEXT NOT NULL CHECK (kind IN ('heart_rate', 'stress', 'respiration', 'spo2', 'steps', 'body_battery_events', 'daily_events', 'hydration')),
+    raw TEXT NOT NULL,
+    fetched_at INTEGER NOT NULL,
+    PRIMARY KEY (date, kind)
+  );
+  INSERT INTO intraday_v12 (date, kind, raw, fetched_at) SELECT date, kind, raw, fetched_at FROM intraday;
+  DROP TABLE intraday;
+  ALTER TABLE intraday_v12 RENAME TO intraday;
+  `,
 ];

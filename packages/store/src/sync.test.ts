@@ -272,7 +272,7 @@ describe('Syncer', () => {
   });
 });
 
-const INTRADAY_METHODS = ['getHeartRate', 'getStress', 'getRespiration', 'getSpo2', 'getSteps', 'getBodyBattery', 'getDailyEvents'];
+const INTRADAY_METHODS = ['getHeartRate', 'getStress', 'getRespiration', 'getSpo2', 'getSteps', 'getBodyBattery', 'getDailyEvents', 'getHydration'];
 const intradayCalls = (calls: Record<string, number>) => Object.fromEntries(Object.entries(calls).filter(([m]) => INTRADAY_METHODS.includes(m)));
 const MIN = 60_000;
 

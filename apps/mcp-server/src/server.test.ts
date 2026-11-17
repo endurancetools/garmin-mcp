@@ -182,11 +182,11 @@ describe('MCP server', () => {
     const overwrite = all.find((t) => t.name === 'create_workout')?.inputSchema;
     // 2020-12 is MCP's default dialect, so no input schema spends context on naming it.
     expect(all.filter((t) => '$schema' in t.inputSchema)).toEqual([]);
-    expect(context(tools)).toBeLessThanOrEqual(39_654);
+    expect(context(tools)).toBeLessThanOrEqual(39_753);
     expect(size(create)).toBeLessThanOrEqual(11_500);
-    expect(context(all)).toBeLessThanOrEqual(41_640);
-    expect(size(tools)).toBeLessThanOrEqual(91_489);
-    expect(size(all)).toBeLessThanOrEqual(95_615);
+    expect(context(all)).toBeLessThanOrEqual(41_739);
+    expect(size(tools)).toBeLessThanOrEqual(91_588);
+    expect(size(all)).toBeLessThanOrEqual(95_714);
     // Without destructive tools create_workout is a strict object (a stray workout_id fails loudly).
     const { workout_id: _overwrite, ...properties } = overwrite?.properties ?? {};
     expect(create).toEqual({ ...overwrite, properties, additionalProperties: false });

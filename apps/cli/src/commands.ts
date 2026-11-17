@@ -321,7 +321,12 @@ export function buildProgram(deps: ProgramDeps = {}): Command {
       if (!store) throw new GarminError('NO_DATABASE', 'No local database yet', { hint: 'Run `garmin login` and `garmin sync` first.' });
       const to = opts.to ?? new Intl.DateTimeFormat('en-CA', { timeZone: config.timezone }).format(new Date());
       const from = opts.from ?? addDays(to, -13);
-      const rows = { daily: store.getDaily('daily_summary', from, to), sleep: store.getDaily('sleep', from, to), hrv: store.getDaily('hrv', from, to) };
+      const rows = {
+        daily: store.getDaily('daily_summary', from, to),
+        sleep: store.getDaily('sleep', from, to),
+        hrv: store.getDaily('hrv', from, to),
+        hydration: store.getIntradayRange('hydration', from, to),
+      };
       const result = healthTable([metric as HealthMetric], rows, from, to, opts.week ? 'week' : 'day');
       store.close();
       if (opts.json) return out(JSON.stringify(result, null, 2));

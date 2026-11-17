@@ -480,6 +480,7 @@ export class Syncer {
         steps: () => c.getSteps(date),
         body_battery_events: () => c.getBodyBattery(date, date),
         daily_events: () => c.getDailyEvents(date),
+        hydration: () => c.getHydration(date),
       };
       let raw: unknown;
       try {

@@ -13,7 +13,7 @@ Coverage:
 
 All reads come from the local SQLite cache. Data that garmin-mcp does not sync is not available, even if the client has a method for it.
 
-Totals for the 111 reads: 69 full, 13 partial, 29 missing.
+Totals for the 111 reads: 70 full, 13 partial, 28 missing.
 
 ## Reads
 
@@ -71,8 +71,8 @@ Totals for the 111 reads: 69 full, 13 partial, 29 missing.
 | Morning training readiness | `get_training_status` → `readiness` | full | morning (`AFTER_WAKEUP_RESET`) value is preferred |
 | Recovery time remaining | `get_training_status` `to` = date → `recovery.remaining_h` | full | newest readiness snapshot of the day; no fallback to recovery time of recent activities |
 | Body composition | `get_body_composition` `from`, `to` | full | |
-| Blood pressure | — | missing | not planned yet. |
-| Hydration | — | missing | client has `getHydration`, not synced. |
+| Blood pressure | — | missing | client has `getBloodPressure`; waits for a recording with readings to confirm their shape. |
+| Hydration | `query_health` `metrics: [hydration]` | full | ml drunk, goal and sweat loss per day (week: averages); downloaded per day by the question, days without a water entry left out |
 | All-day events | — | missing | waits for a recording of its shape. |
 | Lifestyle logging | — | missing | |
 

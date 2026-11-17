@@ -1229,20 +1229,56 @@ export class GarminService {
   async #dailyHealth(metrics: readonly HealthMetric[], from: IsoDate, to: IsoDate, granularity: 'day' | 'week') {
     const historyFrom = addDays(to, -27) < from ? addDays(to, -27) : from;
     const tables = tablesFor(metrics);
-    const ensured = await this.syncer.ensureDaily(tables, historyFrom, to, this.#budget);
+    const [ensured, water] = await Promise.all([
+      tables.length > 0 ? this.syncer.ensureDaily(tables, historyFrom, to, this.#budget) : undefined,
+      metrics.includes('hydration') ? this.#ensureHydration(from, to) : undefined,
+    ]);
     const load = (a: IsoDate, b: IsoDate) => ({
       daily: tables.includes('daily_summary') ? this.store.getDaily('daily_summary', a, b) : [],
       sleep: tables.includes('sleep') ? this.store.getDaily('sleep', a, b) : [],
       hrv: tables.includes('hrv') ? this.store.getDaily('hrv', a, b) : [],
+      hydration: water ? this.store.getIntradayRange('hydration', a, b) : [],
     });
     const history = load(historyFrom, to);
     const inRange = load(from, to);
     const table = healthTable(metrics, inRange, from, to, granularity, history);
-    const times = [...inRange.daily, ...inRange.sleep, ...inRange.hrv].map((r) => r.fetched_at);
-    const cov = this.syncer.coverage(tables, from, to);
-    const result = { ...ensured, coverage: cov };
-    const gap = this.#dailyGap('health', tables, from, to);
-    return { table, result, times, gap, meta: this.#meta([result], times, gap) };
+    const times = [...inRange.daily, ...inRange.sleep, ...inRange.hrv, ...inRange.hydration].map((r) => r.fetched_at);
+    const results: EnsureResult[] = [
+      ...(ensured ? [{ ...ensured, coverage: this.syncer.coverage(tables, from, to) }] : []),
+      ...(water?.results ?? []),
+    ];
+    let gap = this.#dailyGap('health', tables, from, to);
+    const waterNote = water && water.note(table.summary.hydration?.days_with_data ?? 0);
+    if (waterNote) gap = { ...gap, note: gap.note ? `${gap.note} ${waterNote}` : waterNote };
+    return { table, results, times, gap, meta: this.#meta(results, times, gap) };
+  }
+
+  /**
+   * The `hydration` metric: Garmin's water summary of each day of [from, to] up to today, one
+   * request per day the cache lacks (today's after 15 min), kept in the `intraday` table. Fetched
+   * only here, with auto fetch on and within the daily request limit, never by `garmin_sync`.
+   * `note` says what is missing, or that no water was logged at all.
+   */
+  async #ensureHydration(from: IsoDate, to: IsoDate) {
+    const today = this.today();
+    const days = from <= today ? eachDay(from, to < today ? to : today) : [];
+    const fetch = this.#autoSync || this.syncer.fetchOnDemand;
+    const ensured = await Promise.all(days.map((d) => this.syncer.ensureIntraday(d, ['hydration'], this.#budget, { fetch })));
+    const results: EnsureResult[] = ensured.map((r) => ({ source: r.source }));
+    const missing = days.filter((_, i) => (ensured[i]?.missing.length ?? 0) > 0);
+    const blocked = ensured.find((r) => r.blocked)?.blocked;
+    const note = (daysWithData: number): string | undefined => {
+      if (blocked) {
+        const why = blocked.reason === 'budget' ? 'The daily Garmin request limit is used up' : 'Syncing with Garmin is paused';
+        return `${why}; hydration of the days still missing downloads after ${iso(blocked.resume_at)} when asked again.`;
+      }
+      if (!fetch && missing.length > 0) {
+        return `Hydration of ${missing.length} day(s) between ${missing[0]} and ${missing.at(-1)} is not downloaded yet: it is fetched only by a query_health question with auto fetch on (GARMIN_AUTO_FETCH), never by garmin_sync.`;
+      }
+      if (days.length > 0 && missing.length === 0 && daysWithData === 0) return `No water intake is logged in Garmin Connect for ${from}..${to}.`;
+      return undefined;
+    };
+    return { results, note };
   }
 
   /**
@@ -1269,7 +1305,7 @@ export class GarminService {
     const series = fetchDays.map((date) => ({ date, series: this.store.getIntraday(date, kinds) }));
     const table = hourlyTable(hourly, series, from, to, this.#tz);
 
-    const results: EnsureResult[] = [...(daily ? [daily.result] : []), ...ensured.map((r) => ({ source: r.source }))];
+    const results: EnsureResult[] = [...(daily?.results ?? []), ...ensured.map((r) => ({ source: r.source }))];
     const times = [...(daily?.times ?? []), ...series.flatMap((s) => s.series.map((r) => r.fetched_at))];
     let meta = this.#meta(results, times, daily?.gap);
     const notFetched = fetchDays.filter((_, i) => (ensured[i]?.missing.length ?? 0) > 0 && !ensured[i]?.blocked);

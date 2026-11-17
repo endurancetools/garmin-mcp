@@ -86,3 +86,5 @@
 {"prompt": "When did Garmin last change my cycling FTP, and what was it before?", "expect": {"tool": "get_thresholds", "args_include": {"history": true}}, "forbid": ["set_threshold", "get_activities", "get_training_status"]}
 {"prompt": "Ile budzików mam ustawionych na zegarku i ile z nich jest włączonych?", "expect": {"tool": "get_devices"}, "forbid": ["get_sleep", "query_health"]}
 {"prompt": "Do I have any alarms switched on on my watch?", "expect": {"tool": "get_devices"}, "forbid": ["get_sleep", "query_health"]}
+{"prompt": "Czy w tym tygodniu piłem wystarczająco dużo wody?", "expect": {"tool": "query_health", "args_include": {"metrics": ["hydration"]}, "args_exclude": {"granularity": "hour"}}, "forbid": ["garmin_sync", "get_period_summary"]}
+{"prompt": "How much water did I drink each day last week compared with my goal?", "expect": {"tool": "query_health", "args_include": {"metrics": ["hydration"]}}, "forbid": ["garmin_sync"]}
