@@ -2,7 +2,7 @@
 
 [![npm](https://img.shields.io/npm/v/garmin-mcp-server)](https://www.npmjs.com/package/garmin-mcp-server)
 [![CI](https://github.com/endurancetools/garmin-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/endurancetools/garmin-mcp/actions/workflows/ci.yml)
-[![MCP registry](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fregistry.modelcontextprotocol.io%2Fv0.1%2Fservers%2Fio.github.endurancetools%252Fgarmin-mcp%2Fversions&query=%24.servers%5B-1%3A%5D.server.version&label=MCP%20registry&color=blue)](https://registry.modelcontextprotocol.io/v0.1/servers/io.github.endurancetools%2Fgarmin-mcp/versions)
+[![MCP registry](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fregistry.modelcontextprotocol.io%2Fv0.1%2Fservers%2Fio.github.endurancetools%252Fgarmin-mcp%2Fversions%2Flatest&query=%24.server.version&label=MCP%20registry&color=blue)](https://registry.modelcontextprotocol.io/v0.1/servers/io.github.endurancetools%2Fgarmin-mcp/versions/latest)
 
 **Ask your AI assistant how your training is really going.** Garmin MCP is an unofficial, open-source MCP server for your Garmin Connect data: training load, form and morning readiness computed on your machine with methods from published sports-science literature, with citations; 21 tools designed around the questions athletes ask, not a mirror of Garmin's API; a local SQLite cache that downloads only what a question needs; and structured workouts that go from the answer to your Garmin calendar and watch. It also reads activities, health, sleep, training status, body composition, gear, devices and the workout library.
 
