@@ -117,12 +117,18 @@ garmin thresholds add <date> <param> <value> [--source test|manual] [--note]
 garmin thresholds export [--out <file.csv>]                     # date,param,value,source,note
 garmin thresholds import <file.csv>
 garmin import-activities <file.csv...>                          # Garmin Connect "Activities" CSV exports
+garmin upload <file.fit|gpx|tcx...> [--json]                    # new activities to Garmin Connect
+garmin log weight <kg> [--date] [--json]                        # measurements to Garmin Connect; --date "YYYY-MM-DD HH:MM"
+garmin log bp <systolic/diastolic> [--pulse --note --date --json]
+garmin log water <ml> [--date] [--json]
 garmin doctor                        # TLS strategy, hosts, permissions, tokens, SQLite driver
 garmin serve [--transport stdio|streamable-http] [--port]
 garmin logout
 ```
 
 `load`, `readiness` and `thresholds` print the same results as the `get_load`, `get_readiness` and `get_thresholds` tools: markdown tables by default, the tool's `{ data, meta }` envelope with `--json`. They read the local database only and never download; missing days come back as a note with the `garmin sync` command that fills them. `import-activities` adds activities from Garmin Connect CSV exports (English or Polish headers) for dates the synced activities do not cover, and `thresholds export`/`import` keep a copy of the threshold history in a CSV file.
+
+`upload` and `log` write to Garmin Connect. `upload` sends FIT, GPX or TCX files as new activities and prints each new activity's id; the activity goes into the local database at once. A file Garmin already has is reported as a duplicate and does not fail the command. `log` adds a weigh-in in kg, a blood pressure reading (`120/80`, optionally `--pulse` and `--note`) or water in ml to a day, now or at `--date` (a past day without a time is 12:00; nothing in the future). The MCP tools do not write these measurements: a reading tool would no longer be safe to call without asking.
 
 Run it with `npx -y garmin-mcp-cli <command>` or install it globally (`npm i -g garmin-mcp-cli`).
 

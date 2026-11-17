@@ -54,6 +54,14 @@ export interface BinaryResponse {
   filename: string | undefined;
 }
 
+/** The answer of a multipart upload: 2xx, or one of the statuses the caller expects (e.g. 409). */
+export interface UploadResponse {
+  status: number;
+  body: unknown;
+}
+
+type Body = { json: unknown } | { form: FormData } | undefined;
+
 const defaultSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 /** Path hygiene mirrors python-garminconnect: no traversal, query or fragment in paths. */
@@ -128,7 +136,7 @@ export class HttpCore {
     path: string,
     options: RequestOptions<S> = {},
   ): Promise<S extends z.ZodType ? z.output<S> : unknown> {
-    const res = await this.#send(method, path, options.query, options.json, 'application/json');
+    const res = await this.#send(method, path, options.query, options.json === undefined ? undefined : { json: options.json }, 'application/json');
     if (res.status === 204) return null as never;
     const text = await res.text();
     if (looksLikeHtml(res.headers.get('content-type'), text)) throw new ForbiddenError(path, true);
@@ -159,14 +167,29 @@ export class HttpCore {
     return { data, contentType, filename };
   }
 
-  #send(method: string, path: string, query: Query | undefined, json: unknown, accept: string): Promise<Response> {
+  /**
+   * POSTs `form` as multipart/form-data. Statuses in `pass` come back like a 2xx instead of
+   * throwing, with their JSON body (an upload answers a duplicate with 409 and the reason).
+   */
+  async upload(path: string, form: FormData, pass: readonly number[] = []): Promise<UploadResponse> {
+    const res = await this.#send('POST', path, undefined, { form }, 'application/json', pass);
+    const text = await res.text();
+    if (looksLikeHtml(res.headers.get('content-type'), text)) throw new ForbiddenError(path, true);
+    try {
+      return { status: res.status, body: text.trim() === '' ? null : (JSON.parse(text) as unknown) };
+    } catch (err) {
+      throw new ClientNetworkError(path, 'response was not JSON', res.status, err);
+    }
+  }
+
+  #send(method: string, path: string, query: Query | undefined, body: Body, accept: string, pass: readonly number[] = []): Promise<Response> {
     assertSafePath(path);
     const url = new URL(`${this.#opts.baseUrl}/${path.replace(/^\/+/, '')}`);
     for (const [k, v] of Object.entries(query ?? {})) if (v !== undefined) url.searchParams.set(k, String(v));
-    return this.#limit(() => this.#attempt(method, url, path, json, accept));
+    return this.#limit(() => this.#attempt(method, url, path, body, accept, pass));
   }
 
-  async #attempt(method: string, url: URL, path: string, json: unknown, accept: string): Promise<Response> {
+  async #attempt(method: string, url: URL, path: string, body: Body, accept: string, pass: readonly number[]): Promise<Response> {
     let refreshed = false;
     for (let attempt = 0; ; attempt++) {
       const token = await this.#opts.tokens.getAccessToken();
@@ -181,9 +204,10 @@ export class HttpCore {
             ...this.#baseHeaders,
             Authorization: `Bearer ${token}`,
             Accept: accept,
-            ...(json === undefined ? {} : { 'Content-Type': 'application/json' }),
+            // A multipart body sets its own Content-Type with the boundary.
+            ...(body && 'json' in body ? { 'Content-Type': 'application/json' } : {}),
           },
-          body: json === undefined ? null : JSON.stringify(json),
+          body: body === undefined ? null : 'json' in body ? JSON.stringify(body.json) : body.form,
           signal: AbortSignal.timeout(this.#opts.timeoutMs),
         });
       } catch (err) {
@@ -196,7 +220,7 @@ export class HttpCore {
       }
       this.#log.debug({ method, path, status: res.status, ms: Math.round(performance.now() - started) }, 'connectapi');
 
-      if (res.ok) return res;
+      if (res.ok || pass.includes(res.status)) return res;
       if (res.status === 401) {
         await res.body?.cancel();
         if (refreshed) throw new UnauthorizedError(path);

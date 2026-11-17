@@ -12,6 +12,7 @@ export * from './format.js';
 export * from './health.js';
 export * from './intraday.js';
 export * from './load.js';
+export * from './measurements.js';
 export * from './output.js';
 export * from './paging.js';
 export * from './runtime.js';

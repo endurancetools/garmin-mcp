@@ -438,6 +438,70 @@ describe('GarminClient', () => {
     expect(bodies).toHaveLength(3);
   });
 
+  it('uploads an activity file as multipart and reads created, duplicate, processing and refused answers', async () => {
+    const seen: { name: string; size: number; type: string | null }[] = [];
+    let reply: { status: number; body: unknown } = { status: 201, body: {} };
+    server.use(
+      http.post(`${API}/upload-service/upload`, async ({ request }) => {
+        const file = (await request.formData()).get('file') as File;
+        seen.push({ name: file.name, size: file.size, type: request.headers.get('content-type') });
+        return HttpResponse.json(reply.body as Record<string, unknown>, { status: reply.status });
+      }),
+    );
+    const { client } = makeClient();
+    const data = new Uint8Array([14, 0x20, 1, 2, 3]);
+    reply = { status: 201, body: { detailedImportResult: { uploadId: 5, successes: [{ internalId: 901, externalId: null, messages: null }], failures: [] } } };
+    expect(await client.uploadActivityFile('/tmp/rides/Morning.FIT', data)).toEqual({ status: 'created', activityId: 901 });
+    expect(seen[0]).toEqual({ name: 'Morning.FIT', size: 5, type: expect.stringMatching(/^multipart\/form-data; boundary=/) });
+    // A duplicate is HTTP 409 with the existing activity, not an error.
+    reply = { status: 409, body: { detailedImportResult: { successes: [], failures: [{ internalId: 900, messages: [{ code: 202, content: 'Duplicate Activity.' }] }] } } };
+    expect(await client.uploadActivityFile('a.gpx', data)).toEqual({ status: 'duplicate', activityId: 900, message: 'Duplicate Activity.' });
+    reply = { status: 409, body: {} };
+    expect(await client.uploadActivityFile('a.tcx', data)).toEqual({ status: 'duplicate', message: 'Duplicate Activity.' });
+    reply = { status: 202, body: { detailedImportResult: { uploadId: 6, successes: [], failures: [] } } };
+    expect(await client.uploadActivityFile('a.fit', data)).toEqual({ status: 'processing' });
+    reply = { status: 200, body: { detailedImportResult: { successes: [], failures: [{ internalId: null, messages: [{ code: 400, content: 'Unrecognized file' }] }] } } };
+    expect(await client.uploadActivityFile('a.fit', data)).toEqual({ status: 'failed', message: 'Unrecognized file' });
+    // Other errors still throw.
+    reply = { status: 400, body: { message: 'Bad file' } };
+    await expect(client.uploadActivityFile('a.fit', data)).rejects.toMatchObject({ kind: 'network', status: 400 });
+    await expect(client.uploadActivityFile('a.kml', data)).rejects.toMatchObject({ code: 'INVALID_INPUT' });
+    expect(seen).toHaveLength(6);
+  });
+
+  it('adds weigh-ins, blood pressure and water at a local time with its instant', async () => {
+    const calls: { method: string; path: string; body: unknown }[] = [];
+    const record = async ({ request }: { request: Request }) => {
+      calls.push({ method: request.method, path: new URL(request.url).pathname, body: await request.json() });
+      return HttpResponse.json({ calendarDate: '2026-11-17', valueInML: 1500 });
+    };
+    server.use(
+      http.post(`${API}/weight-service/user-weight`, record),
+      http.post(`${API}/bloodpressure-service/bloodpressure`, record),
+      http.put(`${API}/usersummary-service/usersummary/hydration/log`, record),
+    );
+    const { client } = makeClient();
+    const at = { local: '2026-11-17T07:30:00', utc: new Date('2026-11-17T06:30:00Z') };
+    await client.addWeighIn(72.4, at);
+    await client.addBloodPressure({ systolic: 120, diastolic: 80, pulse: 62, at });
+    await client.addBloodPressure({ systolic: 118, diastolic: 76, notes: 'after coffee', at });
+    expect(await client.addHydration(500, at)).toMatchObject({ valueInML: 1500 });
+    expect(calls).toEqual([
+      { method: 'POST', path: '/weight-service/user-weight', body: { dateTimestamp: '2026-11-17T07:30:00.000', gmtTimestamp: '2026-11-17T06:30:00.000', unitKey: 'kg', sourceType: 'MANUAL', value: 72.4 } },
+      {
+        method: 'POST',
+        path: '/bloodpressure-service/bloodpressure',
+        body: { measurementTimestampLocal: '2026-11-17T07:30:00.00', measurementTimestampGMT: '2026-11-17T06:30:00.00', systolic: 120, diastolic: 80, pulse: 62, sourceType: 'MANUAL', notes: '' },
+      },
+      expect.objectContaining({ body: expect.not.objectContaining({ pulse: expect.anything() }) }),
+      { method: 'PUT', path: '/usersummary-service/usersummary/hydration/log', body: { calendarDate: '2026-11-17', timestampLocal: '2026-11-17T07:30:00.000', valueInML: 500 } },
+    ]);
+    expect((calls[2]!.body as { notes: string }).notes).toBe('after coffee');
+    await expect(client.addBloodPressure({ systolic: 80, diastolic: 120, at })).rejects.toMatchObject({ code: 'INVALID_INPUT' });
+    await expect(client.addHydration(0, at)).rejects.toMatchObject({ code: 'INVALID_INPUT' });
+    expect(calls).toHaveLength(4);
+  });
+
   it('puts gear on an activity and takes it off', async () => {
     const calls: string[] = [];
     server.use(

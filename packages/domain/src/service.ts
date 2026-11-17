@@ -29,6 +29,7 @@ import { compact, hms, isFootSport, iso, km, round, speedOrPace } from './format
 import { healthTable, tablesFor, type HealthGranularity, type HealthMetric } from './health.js';
 import { hourlyTable, intradayKinds, isHourlyMetric } from './intraday.js';
 import { activityListRow, activityTypeName, checkEditMode, checkManualActivity } from './manual-activity.js';
+import { checkPulse, checkWaterMl, checkWeightKg, measuredAt, parseBloodPressure } from './measurements.js';
 import { decodeCursor, encodeCursor, pageBySize } from './paging.js';
 import { bestEfforts, durationLabel, type BestEffort } from './power-curve.js';
 import { sleepNight, sleepRange, sleepTimeline } from './sleep.js';
@@ -139,6 +140,20 @@ export interface ActivitiesQuery {
  * id it adds a manual activity from `type`, `start`, `duration_min`, `distance_km`, `name`,
  * `description`, `rpe`, `feel` and `privacy`.
  */
+/** One file of `garmin upload`: what Garmin made of it and whether the new activity is in the cache. */
+export interface UploadReport {
+  file: string;
+  status: 'created' | 'duplicate' | 'processing' | 'failed';
+  activity_id?: number;
+  /** A created activity was downloaded into the local database. */
+  stored?: boolean;
+  name?: string;
+  type?: string;
+  /** Local start, "2026-11-16 18:30". */
+  start_local?: string;
+  message?: string;
+}
+
 export interface ActivityEdit {
   name?: string;
   type?: string;
@@ -933,6 +948,56 @@ export class GarminService {
       data: compact({ created: true, activity: r.data, privacy }),
       meta: { source: 'live' as const, fetched_at: iso(at) },
     }));
+  }
+
+  /**
+   * Uploads one FIT, GPX or TCX file (`garmin upload`). A new activity is stored like `addActivity`
+   * stores one, so it is in the cache without a sync; a duplicate or a file Garmin still processes
+   * comes back with its status and leaves the cache alone.
+   */
+  async uploadActivity(file: string, data: Uint8Array): Promise<UploadReport> {
+    const res = await this.client.uploadActivityFile(file, data);
+    if (res.status === 'duplicate') return compact({ file, status: res.status, activity_id: res.activityId, message: res.message });
+    if (res.status === 'failed') return { file, status: res.status, message: res.message };
+    if (res.status === 'processing') return { file, status: res.status };
+    const id = res.activityId;
+    try {
+      const activity = await this.client.getActivity(id);
+      const at = this.#now();
+      this.store.upsertActivities([activityListRow(activity)], at);
+      this.store.putActivityDetail(id, 'summary', activity, at);
+      const sum = activity.summaryDTO ?? {};
+      return compact({ file, status: res.status, activity_id: id, stored: true, name: activity.activityName ?? undefined, type: activity.activityTypeDTO?.typeKey ?? undefined, start_local: sum.startTimeLocal?.slice(0, 16).replace('T', ' ') ?? undefined });
+    } catch (err) {
+      // The upload is done either way; the activity comes with the next activity sync.
+      return { file, status: res.status, activity_id: id, stored: false, message: `not in the local database yet: ${errInfo(err).message}` };
+    }
+  }
+
+  /** `garmin log weight`: a manual weigh-in, then that day's weigh-ins downloaded again into the cache. */
+  async logWeight(kg: number, date?: string) {
+    const at = measuredAt(date, this.#tz, this.#now());
+    await this.client.addWeighIn(checkWeightKg(kg), at);
+    const day = at.local.slice(0, 10);
+    const refreshed = await this.syncer.syncWeighIns(day, day, true);
+    return compact({ logged: 'weight', weight_kg: kg, at: at.local.slice(0, 16).replace('T', ' '), stored: refreshed.errors.length === 0 });
+  }
+
+  /** `garmin log bp`: a manual blood pressure reading, "120/80" mmHg with an optional pulse. */
+  async logBloodPressure(reading: string, opts: { pulse?: number; note?: string; date?: string } = {}) {
+    const { systolic, diastolic } = parseBloodPressure(reading);
+    const pulse = opts.pulse === undefined ? undefined : checkPulse(opts.pulse);
+    const at = measuredAt(opts.date, this.#tz, this.#now());
+    await this.client.addBloodPressure({ systolic, diastolic, pulse, notes: opts.note, at });
+    return compact({ logged: 'blood_pressure', systolic, diastolic, pulse, at: at.local.slice(0, 16).replace('T', ' ') });
+  }
+
+  /** `garmin log water`: ml of water added to a day; Garmin answers with the day's total when it can. */
+  async logHydration(ml: number, date?: string) {
+    const at = measuredAt(date, this.#tz, this.#now());
+    const day = (await this.client.addHydration(checkWaterMl(ml), at)) as { valueInML?: unknown } | null;
+    const total = typeof day?.valueInML === 'number' ? day.valueInML : undefined;
+    return compact({ logged: 'water', water_ml: ml, date: at.local.slice(0, 10), day_total_ml: total });
   }
 
   /**

@@ -50,6 +50,26 @@ function privacyRule(privacy: ActivityPrivacy) {
   return { ...rule };
 }
 
+/** When a measurement was taken: the wall clock in the account's time zone and the instant. */
+export interface MeasuredAt {
+  /** Local time "2026-11-17T07:30:00". */
+  local: string;
+  utc: Date;
+}
+
+/** File types Garmin Connect imports as an activity. */
+export const UPLOAD_FORMATS = ['fit', 'gpx', 'tcx'] as const;
+
+/**
+ * What became of an uploaded activity file: a new activity, a duplicate of one Garmin already has
+ * (HTTP 409, with its id when Garmin names it), accepted but still processing (no id yet), or refused.
+ */
+export type UploadResult =
+  | { status: 'created'; activityId: number }
+  | { status: 'duplicate'; activityId?: number; message: string }
+  | { status: 'processing' }
+  | { status: 'failed'; message: string };
+
 /** A manual activity: one entered by hand, without a file from a device. */
 export interface ManualActivity {
   /** Activity type key; resolved like `ActivityPatch.typeKey`. */
@@ -314,6 +334,30 @@ export class GarminClient {
       });
     }
     return id;
+  }
+
+  /**
+   * Uploads a FIT, GPX or TCX file as a new activity (`POST /upload-service/upload`, multipart
+   * field `file`; Garmin tells the format by the file name). A 409 is a duplicate, not an error.
+   * Shape of the answer (`detailedImportResult`) not confirmed by a recording yet (E8-30).
+   */
+  async uploadActivityFile(fileName: string, data: Uint8Array): Promise<UploadResult> {
+    const ext = /\.([^.]+)$/.exec(fileName)?.[1]?.toLowerCase();
+    if (!ext || !(UPLOAD_FORMATS as readonly string[]).includes(ext)) throw new InputError(`${fileName}: only ${UPLOAD_FORMATS.map((f) => `.${f}`).join(', ')} files can be uploaded`);
+    const form = new FormData();
+    form.append('file', new Blob([data as Uint8Array<ArrayBuffer>], { type: 'application/octet-stream' }), fileName.split(/[\\/]/).pop() ?? fileName);
+    const res = await this.http.upload('/upload-service/upload', form, [409]);
+    const result = (res.body as { detailedImportResult?: ImportResult } | null)?.detailedImportResult ?? {};
+    const failure = result.failures?.[0];
+    const message = (failure?.messages ?? []).map((m) => m.content).filter((c): c is string => typeof c === 'string').join('; ');
+    if (res.status === 409) {
+      const id = failure?.internalId;
+      return { status: 'duplicate', ...(isId(id) && { activityId: id }), message: message || 'Duplicate Activity.' };
+    }
+    const id = result.successes?.[0]?.internalId;
+    if (isId(id)) return { status: 'created', activityId: id };
+    if (failure) return { status: 'failed', message: message || 'Garmin refused the file' };
+    return { status: 'processing' };
   }
 
   /**
@@ -660,17 +704,51 @@ export class GarminClient {
     });
   }
 
-  /** Adds a manual weigh-in at `at` (default now). */
-  async addWeighIn(kg: number, at: Date = new Date()): Promise<unknown> {
+  /** Adds a manual weigh-in at `at` (default now; a bare Date is read in the process' time zone). */
+  async addWeighIn(kg: number, at: Date | MeasuredAt = new Date()): Promise<unknown> {
     if (!(kg > 0)) throw new InputError('weight must be positive');
+    const when = at instanceof Date ? { local: localTimestamp(at), utc: at } : { local: `${at.local.slice(0, 19)}.000`, utc: at.utc };
     return this.http.request('POST', '/weight-service/user-weight', {
       json: {
-        dateTimestamp: localTimestamp(at),
-        gmtTimestamp: at.toISOString().slice(0, 23),
+        dateTimestamp: when.local,
+        gmtTimestamp: when.utc.toISOString().slice(0, 23),
         unitKey: 'kg',
         sourceType: 'MANUAL',
         value: kg,
       },
+    });
+  }
+
+  // ------------------------------------------------------------ blood pressure and hydration
+
+  /**
+   * Adds a manual blood pressure reading, mmHg (pulse in bpm left out when not given).
+   * Path and body as python-garminconnect sends them; not confirmed by a recording yet (E8-30).
+   */
+  async addBloodPressure(m: { systolic: number; diastolic: number; pulse?: number; notes?: string; at: MeasuredAt }): Promise<unknown> {
+    if (!(m.systolic > m.diastolic && m.diastolic > 0)) throw new InputError('systolic must be higher than diastolic, both positive');
+    return this.http.request('POST', '/bloodpressure-service/bloodpressure', {
+      json: {
+        measurementTimestampLocal: `${m.at.local.slice(0, 19)}.00`,
+        measurementTimestampGMT: `${m.at.utc.toISOString().slice(0, 19)}.00`,
+        systolic: m.systolic,
+        diastolic: m.diastolic,
+        ...(m.pulse !== undefined && { pulse: m.pulse }),
+        sourceType: 'MANUAL',
+        notes: m.notes ?? '',
+      },
+    });
+  }
+
+  /**
+   * Adds `ml` of water to the day of `at`. Garmin answers with the day's hydration summary.
+   * Path and body as python-garminconnect sends them; not confirmed by a recording yet (E8-30).
+   */
+  async addHydration(ml: number, at: MeasuredAt): Promise<unknown> {
+    if (!(ml > 0)) throw new InputError('water must be a positive number of ml');
+    return this.http.request('PUT', '/usersummary-service/usersummary/hydration/log', {
+      json: { calendarDate: assertIsoDate(at.local.slice(0, 10)), timestampLocal: `${at.local.slice(0, 19)}.000`, valueInML: ml },
+      schema: s.hydrationDaySchema,
     });
   }
 
@@ -703,6 +781,13 @@ export class GarminClient {
   }
 }
 
+
+interface ImportResult {
+  successes?: { internalId?: unknown }[];
+  failures?: { internalId?: unknown; messages?: { content?: unknown }[] }[];
+}
+
+const isId = (v: unknown): v is number => typeof v === 'number' && Number.isSafeInteger(v) && v > 0;
 
 function positive(id: number): number {
   if (!Number.isSafeInteger(id) || id <= 0) throw new InputError(`id must be a positive integer, got ${id}`);

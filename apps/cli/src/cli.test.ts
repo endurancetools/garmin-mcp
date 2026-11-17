@@ -1,5 +1,6 @@
 import type { Command } from 'commander';
 import { AnalyticsService } from 'garmin-mcp-analytics';
+import { ClientNetworkError } from 'garmin-mcp-client';
 import { eachDay, type GarminConfig } from 'garmin-mcp-config';
 import { GarminService } from 'garmin-mcp-domain';
 import { addRange, parseRangeSet, Store, Syncer, SyncJobRunner } from 'garmin-mcp-store';
@@ -322,12 +323,16 @@ describe('cli', () => {
       'readiness',
       'thresholds',
       'import-activities',
+      'upload',
+      'log',
       'doctor',
       'serve',
       'record',
     ]);
     const thresholds = buildProgram().commands.find((c) => c.name() === 'thresholds');
     expect(thresholds?.commands.map((c) => c.name())).toEqual(['list', 'add', 'export', 'import']);
+    const log = buildProgram().commands.find((c) => c.name() === 'log');
+    expect(log?.commands.map((c) => c.name())).toEqual(['weight', 'bp', 'water']);
   });
 
   it('reports the version from its own package.json', () => {
@@ -666,5 +671,154 @@ describe('garmin status', () => {
     expect(res.auth).toMatchObject({ logged_in: false, tokens_file: path.join(tmp, 'tokens.json') });
     const text = (await run({ ...deps, store: () => fake().store }, 'status')).stdout;
     expect(text).toContain('Analytics:      1 threshold rows, 0 imported activities');
+  });
+});
+
+// ------------------------------------------------------------ writes to Garmin Connect on a mocked client
+
+/**
+ * A Garmin service over an in-memory store whose client answers only the write methods of
+ * `upload` and `log` (and the reads that follow them); any other call fails the test.
+ */
+function writer() {
+  const calls: { name: string; args: unknown[] }[] = [];
+  const ride = {
+    activityId: 901,
+    activityName: 'Morning Ride',
+    activityTypeDTO: { typeId: 2, typeKey: 'cycling' },
+    summaryDTO: { startTimeLocal: '2026-10-07T07:00:00.0', startTimeGMT: '2026-10-07T07:00:00.0', distance: 30_000, duration: 3600 },
+  };
+  const methods: Record<string, (...args: unknown[]) => unknown> = {
+    uploadActivityFile: (name) => {
+      if (name === 'new.fit') return { status: 'created', activityId: 901 };
+      if (name === 'dup.gpx') return { status: 'duplicate', activityId: 900, message: 'Duplicate Activity.' };
+      if (name === 'slow.tcx') return { status: 'processing' };
+      throw new ClientNetworkError('/upload-service/upload', 'HTTP 400 - Bad file', 400);
+    },
+    getActivity: () => ride,
+    addWeighIn: () => null,
+    getWeighIns: () => ({
+      dailyWeightSummaries: [{ summaryDate: '2026-10-08', allWeightMetrics: [{ samplePk: 1, date: Date.parse('2026-10-08T07:30:00Z'), calendarDate: '2026-10-08', weight: 72_400, sourceType: 'MANUAL', timestampGMT: Date.parse('2026-10-08T07:30:00Z') }] }],
+    }),
+    addBloodPressure: () => null,
+    addHydration: () => ({ calendarDate: '2026-10-08', valueInML: 1500 }),
+  };
+  const client = new Proxy(
+    {},
+    {
+      get: (_, name) =>
+        name === 'then'
+          ? undefined
+          : (...args: unknown[]) => {
+              calls.push({ name: String(name), args });
+              const fn = methods[String(name)];
+              if (!fn) return Promise.reject(new Error(`Unexpected Garmin call: ${String(name)}`));
+              try {
+                return Promise.resolve(fn(...args));
+              } catch (e) {
+                return Promise.reject(e as Error);
+              }
+            },
+    },
+  );
+  const store = Store.open(':memory:');
+  const syncer = new Syncer(client as never, store, { timeZone: 'UTC', now: () => NOW, fetchOnDemand: false });
+  const jobs = new SyncJobRunner(syncer, store, { chunkDays: 7, pause: { minMs: 0, maxMs: 0 }, maxRequestsPerDay: 10_000, timeZone: 'UTC', now: () => NOW });
+  const garmin = new GarminService({ client: client as never, store, syncer, jobs, timeZone: 'UTC', downloadDir: os.tmpdir(), budgetMs: 200, autoSync: false, now: () => NOW });
+  const deps: ProgramDeps = { garmin: () => Promise.resolve({ garmin, close: () => {} }), now: () => NOW };
+  return { deps, store, calls };
+}
+
+describe('garmin upload', () => {
+  const file = (name: string) => {
+    const f = path.join(tmp, name);
+    fs.writeFileSync(f, new Uint8Array([14, 0x20, 1, 2, 3]));
+    return f;
+  };
+
+  it('uploads each file, stores a new activity and reports duplicates without failing', async () => {
+    const { deps, store, calls } = writer();
+    const { stdout } = await run(deps, 'upload', file('new.fit'), file('dup.gpx'), file('slow.tcx'));
+    expect(stdout).toBe(
+      [
+        'new.fit: uploaded as activity 901 (2026-10-07 07:00 cycling "Morning Ride")',
+        'dup.gpx: already in Garmin Connect as activity 900 (Duplicate Activity.), nothing uploaded',
+        'slow.tcx: accepted, Garmin is still processing it; it comes with the next `garmin sync --scope activities`',
+        '',
+      ].join('\n'),
+    );
+    expect(process.exitCode ?? 0).toBe(0);
+    expect(calls.map((c) => c.name)).toEqual(['uploadActivityFile', 'getActivity', 'uploadActivityFile', 'uploadActivityFile']);
+    expect(calls[0]?.args).toEqual(['new.fit', new Uint8Array([14, 0x20, 1, 2, 3])]);
+    // The new activity is in the cache before any sync.
+    expect(store.queryActivities({}).map((a) => [a.id, a.name, a.type])).toEqual([[901, 'Morning Ride', 'cycling']]);
+    expect(store.getActivityDetail(901, 'summary')).toBeDefined();
+  });
+
+  it('prints one JSON entry per file and fails on a refused file without stopping the others', async () => {
+    const { deps } = writer();
+    try {
+      const res = json<{ file: string; status: string; activity_id?: number; stored?: boolean; message?: string }[]>(
+        (await run(deps, 'upload', file('bad.fit'), file('new.fit'), '--json')).stdout,
+      );
+      expect(res).toEqual([
+        { file: 'bad.fit', status: 'failed', message: expect.stringContaining('HTTP 400 - Bad file') },
+        { file: 'new.fit', status: 'created', activity_id: 901, stored: true, name: 'Morning Ride', type: 'cycling', start_local: '2026-10-07 07:00' },
+      ]);
+      expect(process.exitCode).toBe(1);
+    } finally {
+      process.exitCode = 0;
+    }
+  });
+
+  it('checks every file before the first upload', async () => {
+    const { deps, calls } = writer();
+    await expect(run(deps, 'upload', file('new.fit'), file('track.kml'))).rejects.toThrow('track.kml: only .fit, .gpx, .tcx files can be uploaded');
+    await expect(run(deps, 'upload', file('new.fit'), path.join(tmp, 'missing.fit'))).rejects.toThrow('ENOENT');
+    expect(calls).toEqual([]);
+  });
+});
+
+describe('garmin log', () => {
+  it('adds a weigh-in and downloads that day again into the cache', async () => {
+    const { deps, store, calls } = writer();
+    expect((await run(deps, 'log', 'weight', '72.4')).stdout).toBe('Logged weight 72.4 kg at 2026-10-08 12:00.\n');
+    expect(calls.map((c) => [c.name, ...c.args])).toEqual([
+      ['addWeighIn', 72.4, { local: '2026-10-08T12:00:00', utc: new Date(NOW) }],
+      ['getWeighIns', '2026-10-08', '2026-10-08'],
+    ]);
+    expect(store.getBodyComposition('2026-10-08', '2026-10-08').map((r) => r.weight_kg)).toEqual([72.4]);
+    const res = json<{ logged: string; weight_kg: number; at: string; stored: boolean }>((await run(deps, 'log', 'weight', '72', '--date', '2026-10-01 07:15', '--json')).stdout);
+    expect(res).toEqual({ logged: 'weight', weight_kg: 72, at: '2026-10-01 07:15', stored: true });
+    await expect(run(deps, 'log', 'weight', 'abc')).rejects.toThrow('weight must be a number');
+    await expect(run(deps, 'log', 'weight', '720')).rejects.toThrow('weight (kg) must be from 20 to 400');
+    await expect(run(deps, 'log', 'weight', '72', '--date', '2026-10-09')).rejects.toThrow('is in the future');
+    expect(calls.filter((c) => c.name === 'addWeighIn')).toHaveLength(2);
+  });
+
+  it('adds blood pressure with an optional pulse and note', async () => {
+    const { deps, calls } = writer();
+    expect((await run(deps, 'log', 'bp', '120/80', '--pulse', '62')).stdout).toBe('Logged blood pressure 120/80 mmHg, pulse 62 at 2026-10-08 12:00.\n');
+    const res = json<Record<string, unknown>>((await run(deps, 'log', 'bp', '118/76', '--note', 'after coffee', '--date', '2026-10-07', '--json')).stdout);
+    expect(res).toEqual({ logged: 'blood_pressure', systolic: 118, diastolic: 76, at: '2026-10-07 12:00' });
+    expect(calls.map((c) => c.args[0])).toEqual([
+      { systolic: 120, diastolic: 80, pulse: 62, notes: undefined, at: { local: '2026-10-08T12:00:00', utc: new Date(NOW) } },
+      { systolic: 118, diastolic: 76, pulse: undefined, notes: 'after coffee', at: { local: '2026-10-07T12:00:00', utc: new Date('2026-10-07T12:00:00Z') } },
+    ]);
+    await expect(run(deps, 'log', 'bp', '80/120')).rejects.toThrow('systolic must be higher than diastolic');
+    await expect(run(deps, 'log', 'bp', '120/80', '--pulse', 'fast')).rejects.toThrow('--pulse must be a number');
+    expect(calls).toHaveLength(2);
+  });
+
+  it('adds water to a day and shows the day total Garmin answers with', async () => {
+    const { deps, calls } = writer();
+    expect((await run(deps, 'log', 'water', '500')).stdout).toBe('Logged 500 ml of water on 2026-10-08 (day total 1500 ml).\n');
+    const res = json<Record<string, unknown>>((await run(deps, 'log', 'water', '250', '--date', '2026-10-06', '--json')).stdout);
+    expect(res).toEqual({ logged: 'water', water_ml: 250, date: '2026-10-06', day_total_ml: 1500 });
+    expect(calls.map((c) => [c.args[0], (c.args[1] as { local: string }).local])).toEqual([
+      [500, '2026-10-08T12:00:00'],
+      [250, '2026-10-06T12:00:00'],
+    ]);
+    await expect(run(deps, 'log', 'water', '0')).rejects.toThrow('water (ml) must be a whole number from 1 to 5000');
   });
 });

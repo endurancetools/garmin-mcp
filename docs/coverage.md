@@ -179,6 +179,7 @@ garmin-mcp deliberately has few writes; listed so nothing disappears silently.
 | Activity privacy | `update_activity` `privacy` (`public`, `followers`, `private`) |
 | Strength exercise sets (exercise, reps, weight) | `update_activity` `exercise_sets` (replaces all sets; `keep_timing: true` keeps the recorded times; the previous sets come back in the answer) |
 | Manual activity | `update_activity` without `id`: `type`, `start` (local time), `duration_min`, optional `distance_km`, `name`, `description`, `rpe`, `feel`, `privacy` (private unless set) |
+| Upload an activity file (FIT, GPX, TCX) | `garmin upload <file...>` (CLI; prints the new activity id and stores the activity in the local cache; a duplicate is reported, not an error) |
 | Workout from a preset (run intervals, walk/run, easy Z2, strength circuit) | `create_workout` `preset` (with `dry_run: true` first: steps and estimated duration, nothing saved) |
 | Workout from typed steps (nestable repeats, HR/pace/power/cadence targets, strength exercises with load) | `create_workout` `definition` (`dry_run: true` shows it first) |
 | Workout from raw Garmin JSON | `create_workout` `garmin_json` (one per call; `dry_run: true` shows it first) |
@@ -187,15 +188,16 @@ garmin-mcp deliberately has few writes; listed so nothing disappears silently.
 | Unschedule workouts | `schedule_workouts` `unschedule` (schedule ids; the workout stays in the library) |
 | Delete workouts | `delete_workout` (opt-in `GARMIN_ENABLE_DESTRUCTIVE`) |
 | Delete weigh-ins | `delete_weigh_in` (opt-in, one sample) |
-| Add weigh-in or body composition | — (client has `addWeighIn`;) |
-| Blood pressure | — () |
+| Add weigh-in or body composition | `garmin log weight <kg>` (CLI, `--date` for an earlier time; the day's weigh-ins are downloaded again into the local cache). Weight only: body fat and the other body composition values are not written yet |
+| Blood pressure | `garmin log bp <systolic/diastolic>` (CLI, optional `--pulse`, `--note`, `--date`) |
 | Add or remove gear on an activity | `update_activity` `add_gear`, `remove_gear` (gear name or uuid) |
 | Add, edit or retire gear | — () |
 | Heart rate zones | — () |
 | Reprocess data on Garmin's side | — (closest: `garmin_sync` `force: true`, which re-downloads instead of asking Garmin to reprocess) |
 | FIT download directory (local setting) | `GARMIN_FIT_DOWNLOAD_DIR` or `download_activity_file` `output_dir` |
 | Upload or delete a course | — () |
-| Hydration, nutrition settings, custom foods, food log | — () |
+| Hydration | `garmin log water <ml>` (CLI, `--date` for another day; prints the day's total) |
+| Nutrition settings, custom foods, food log | — () |
 
 Workout templates are served by the presets of `create_workout` and the `plan_next_week` prompt.
 

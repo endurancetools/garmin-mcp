@@ -2,7 +2,8 @@ import { Command, Option } from 'commander';
 import { AnalyticsService, importActivities, LOAD_SOURCES, SET_THRESHOLD_SOURCES, type LoadSource } from 'garmin-mcp-analytics';
 import { BrowserUnavailableError, diagnose, findBrowser, isAuthError, pythonFallbackCommand, type LoginResult } from 'garmin-mcp-auth';
 import { addDays, assertIsoDate, GarminError, InputError, loadConfig, parsePauseSeconds, type GarminConfig, type RawConfig } from 'garmin-mcp-config';
-import { activityBrief, createRuntime, healthTable, HEALTH_METRICS, type HealthMetric, type Runtime } from 'garmin-mcp-domain';
+import { ClientNetworkError, UPLOAD_FORMATS } from 'garmin-mcp-client';
+import { activityBrief, createRuntime, healthTable, HEALTH_METRICS, type GarminService, type HealthMetric, type Runtime, type UploadReport } from 'garmin-mcp-domain';
 // The one sanctioned app-to-app import: `garmin serve` runs the MCP server in-process.
 import { startServer } from 'garmin-mcp-server';
 import { clearSignInPause, databasePath, forgetAccount, readAccount, SYNC_SCOPES, Store, type SyncScope } from 'garmin-mcp-store';
@@ -55,8 +56,16 @@ export interface AnalyticsHandle {
   close(): void;
 }
 
+/** The Garmin service of a command that writes to Garmin Connect, and how to release it. */
+export interface GarminHandle {
+  garmin: GarminService;
+  close(): void;
+}
+
 /** Seams for tests: the analytics commands and `status` run on an in-memory store there. */
 export interface ProgramDeps {
+  /** Opens the Garmin service for `upload` and `log` (default: the account's runtime). */
+  garmin?: (config: GarminConfig) => Promise<GarminHandle>;
   /** Opens the analytics service (default: the account's database through `runtime.service()`). */
   analytics?: (config: GarminConfig) => Promise<AnalyticsHandle>;
   /** Opens the local database for `status` (default: the account's file, if it exists). */
@@ -75,11 +84,41 @@ async function openAnalytics(config: GarminConfig): Promise<AnalyticsHandle> {
   return { analytics: new AnalyticsService(garmin), close: () => rt.close() };
 }
 
+async function openGarmin(config: GarminConfig): Promise<GarminHandle> {
+  const rt = createRuntime(config);
+  return { garmin: await rt.service(), close: () => rt.close() };
+}
+
+/** One line of `garmin upload` per file. */
+function uploadLine(r: UploadReport): string {
+  switch (r.status) {
+    case 'created': {
+      const what = [r.start_local, r.type, r.name && `"${r.name}"`].filter(Boolean).join(' ');
+      return `${r.file}: uploaded as activity ${r.activity_id}${what ? ` (${what})` : ''}${r.stored === false ? `; ${r.message}` : ''}`;
+    }
+    case 'duplicate':
+      return `${r.file}: already in Garmin Connect${r.activity_id ? ` as activity ${r.activity_id}` : ''} (${r.message}), nothing uploaded`;
+    case 'processing':
+      return `${r.file}: accepted, Garmin is still processing it; it comes with the next \`garmin sync --scope activities\``;
+    case 'failed':
+      return `${r.file}: refused by Garmin Connect: ${r.message}`;
+  }
+}
+
 const iso = (ms: number | null | undefined) => (ms ? new Date(ms).toISOString().replace('.000Z', 'Z') : '-');
 
 export function buildProgram(deps: ProgramDeps = {}): Command {
   const now = deps.now ?? Date.now;
   const openStore = deps.store ?? openLocalStore;
+  /** Runs `fn` with the Garmin service of the command (writes go to Garmin Connect). */
+  const withGarmin = async <T>(cmd: Command, fn: (g: GarminService) => Promise<T>): Promise<T> => {
+    const handle = await (deps.garmin ?? openGarmin)(configFrom(cmd));
+    try {
+      return await fn(handle.garmin);
+    } finally {
+      handle.close();
+    }
+  };
   /** Runs `fn` with the analytics service of the command; never downloads from Garmin. */
   const withAnalytics = async <T>(cmd: Command, fn: (a: AnalyticsService) => Promise<T> | T): Promise<T> => {
     const handle = await (deps.analytics ?? openAnalytics)(configFrom(cmd, { autoFetch: false }));
@@ -409,6 +448,75 @@ export function buildProgram(deps: ProgramDeps = {}): Command {
       );
       if (report.covered) out(`${report.covered} of them fall on dates covered by synced activities; analytics uses the synced ones there.`);
       for (const w of report.warnings) err(`warning: ${w}`);
+    });
+
+  program
+    .command('upload <files...>')
+    .description(`upload activity files (${UPLOAD_FORMATS.map((f) => `.${f}`).join(', ')}) to Garmin Connect; a new activity goes into the local database too, a duplicate is reported and skipped`)
+    .option('--json', 'machine readable report, one entry per file')
+    .action(async (files: string[], opts: { json?: boolean }, cmd: Command) => {
+      // Every file is read and checked before the first upload, so a typo uploads nothing.
+      const input = files.map((f) => {
+        const ext = path.extname(f).slice(1).toLowerCase();
+        if (!(UPLOAD_FORMATS as readonly string[]).includes(ext)) throw new InputError(`${f}: only ${UPLOAD_FORMATS.map((x) => `.${x}`).join(', ')} files can be uploaded`);
+        return { name: path.basename(f), data: new Uint8Array(fs.readFileSync(path.resolve(f))) };
+      });
+      const reports = await withGarmin(cmd, async (g) => {
+        const done: UploadReport[] = [];
+        for (const f of input) {
+          try {
+            done.push(await g.uploadActivity(f.name, f.data));
+          } catch (e) {
+            // A file Garmin rejects (4xx) does not stop the others; auth, Cloudflare and rate limits do.
+            if (!(e instanceof ClientNetworkError && e.status !== undefined && e.status >= 400 && e.status < 500)) throw e;
+            done.push({ file: f.name, status: 'failed', message: e.message });
+          }
+        }
+        return done;
+      });
+      if (opts.json) out(JSON.stringify(reports, null, 2));
+      else for (const r of reports) out(uploadLine(r));
+      if (reports.some((r) => r.status === 'failed')) process.exitCode = 1;
+    });
+
+  const log = program.command('log').description('add a measurement to Garmin Connect: weight, blood pressure or water');
+  const dateHelp = 'when: YYYY-MM-DD or "YYYY-MM-DD HH:MM" local time (default now; a past day without a time is 12:00)';
+  const number = (value: string, what: string): number => {
+    const n = Number(value);
+    if (value.trim() === '' || !Number.isFinite(n)) throw new InputError(`${what} must be a number, got "${value}"`);
+    return n;
+  };
+  log
+    .command('weight <kg>')
+    .description('add a weigh-in in kg, e.g. `garmin log weight 72.4`')
+    .option('--date <date>', dateHelp)
+    .option('--json', 'machine readable output')
+    .action(async (kg: string, opts: { date?: string; json?: boolean }, cmd: Command) => {
+      const res = await withGarmin(cmd, (g) => g.logWeight(number(kg, 'weight'), opts.date));
+      out(opts.json ? JSON.stringify(res, null, 2) : `Logged weight ${res.weight_kg} kg at ${res.at}.`);
+    });
+  log
+    .command('bp <reading>')
+    .description('add a blood pressure reading in mmHg, systolic/diastolic, e.g. `garmin log bp 120/80 --pulse 62`')
+    .option('--pulse <bpm>', 'pulse in beats per minute')
+    .option('--note <text>', 'note stored with the reading')
+    .option('--date <date>', dateHelp)
+    .option('--json', 'machine readable output')
+    .action(async (reading: string, opts: { pulse?: string; note?: string; date?: string; json?: boolean }, cmd: Command) => {
+      const pulse = opts.pulse === undefined ? undefined : number(opts.pulse, '--pulse');
+      const res = await withGarmin(cmd, (g) => g.logBloodPressure(reading, { pulse, note: opts.note, date: opts.date }));
+      if (opts.json) return out(JSON.stringify(res, null, 2));
+      out(`Logged blood pressure ${res.systolic}/${res.diastolic} mmHg${res.pulse ? `, pulse ${res.pulse}` : ''} at ${res.at}.`);
+    });
+  log
+    .command('water <ml>')
+    .description('add water in ml to a day, e.g. `garmin log water 500`')
+    .option('--date <date>', dateHelp)
+    .option('--json', 'machine readable output')
+    .action(async (ml: string, opts: { date?: string; json?: boolean }, cmd: Command) => {
+      const res = await withGarmin(cmd, (g) => g.logHydration(number(ml, 'water'), opts.date));
+      if (opts.json) return out(JSON.stringify(res, null, 2));
+      out(`Logged ${res.water_ml} ml of water on ${res.date}${res.day_total_ml !== undefined ? ` (day total ${res.day_total_ml} ml)` : ''}.`);
     });
 
   program
