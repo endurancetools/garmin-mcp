@@ -56,3 +56,6 @@
 {"prompt": "Podsumuj tydzień treningowy, w którym wypadał 8 października 2026.", "expect": {"tool": "get_period_summary", "args_include": {"period": "week", "anchor_date": "2026-10-08"}}, "forbid": ["garmin_sync"]}
 {"prompt": "Pokaż TSS każdej aktywności z września 2026.", "expect": {"tool": "get_load", "args_include": {"from": "2026-09-01", "to": "2026-09-30", "include_activities": true}}, "forbid": ["get_activities", "garmin_sync"]}
 {"prompt": "On activity 21001 set my perceived effort to 7 and how I felt to strong.", "expect": {"tool": "update_activity", "args_include": {"id": 21001, "rpe": 7, "feel": 75}}, "forbid": ["get_activity"]}
+{"prompt": "How did I sleep on the night from 7 to 8 October 2026? Show the stages.", "expect": {"tool": "get_sleep", "args_include": {"date": "2026-10-08"}}, "forbid": ["query_health"]}
+{"prompt": "Zapisz aktywność 21001 jako oryginalny plik FIT w podfolderze races.", "expect": {"tool": "download_activity_file", "args_include": {"id": 21001, "format": "fit", "output_dir": "races"}}, "forbid": ["get_activity"]}
+{"prompt": "Which running workouts do I have saved in my Garmin library?", "expect": {"tool": "list_workouts", "args_include": {"sport": "running"}}, "forbid": ["get_activities", "get_workout", "garmin_sync"]}

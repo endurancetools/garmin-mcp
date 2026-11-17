@@ -2,6 +2,12 @@
 
 All notable changes to Garmin MCP. All `garmin-mcp-*` packages share one version. The same list is on the [documentation site](https://endurancetools.github.io/garmin-mcp/changelog/).
 
+## Unreleased
+
+### Tools
+
+- **Clearer `list_workouts`, `download_activity_file` and `get_sleep`.** Each now names the tool to use instead: `get_workout` for the steps of one workout, `schedule_workouts` for the calendar and `get_activities` for sessions already done; `get_activity` when the assistant should read an activity rather than save it as a file. `list_workouts` says that `sport` and `limit` narrow only the library and `from`/`to` only the calendar. `download_activity_file` says how the file is named and that it replaces an earlier download of the same activity and format. `get_sleep` says that a night is named by the date of the morning it ended on, that a range can span up to 3 years, and that missing nights are downloaded within the daily request limit.
+
 ## 0.6.2 (2026-11-17)
 
 ### Tools

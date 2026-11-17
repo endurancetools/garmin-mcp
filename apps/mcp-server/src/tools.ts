@@ -205,8 +205,10 @@ export const TOOLS: ToolDef[] = [
     name: 'download_activity_file',
     title: 'Download activity file',
     description:
-      'Save an activity as a file on this machine (fit, gpx, tcx, kml or csv) and return its path. ' +
-      'Use when the user wants the file itself, e.g. to import elsewhere.',
+      'Download one activity from Garmin Connect and save it as a file on this machine (fit, gpx, tcx, kml or csv), returning its path and size. ' +
+      'Use it when the user wants the file itself, e.g. to import into another app; to read an activity\'s numbers, laps or streams in the answer use get_activity instead. ' +
+      'Prefer fit, the original recording, unless the destination needs another format. ' +
+      'The file is named <id>.<format> and replaces an earlier download of the same activity and format; every call fetches it from Garmin again.',
     input: {
       id: id.describe('Activity id from get_activities'),
       format: z.enum(['fit', 'gpx', 'tcx', 'kml', 'csv']).default('fit').describe('fit: original device file; gpx, tcx, kml: track; csv: laps'),
@@ -242,10 +244,11 @@ export const TOOLS: ToolDef[] = [
     name: 'get_sleep',
     title: 'Get sleep',
     description:
-      'Sleep for one night (`date`) with stages, score, SpO2, respiration and overnight HRV, ' +
-      'or for a range (`from`..`to`; no arguments: the last 7 nights) a per-night table with averages and trends. ' +
+      'Sleep for one night with stages, score, SpO2, respiration and overnight HRV, or for a range a per-night table with averages and trends. ' +
       'Use it for sleep stages and the detail of particular nights; for sleep hours next to other daily metrics, or months by week, use query_health. ' +
-      'A night without sleep data comes back as sleep null.',
+      'A night is named by the date of the morning it ended on: the night of 7 to 8 October is 2026-10-08. ' +
+      'No arguments returns the last 7 nights; a range can span up to 3 years, one row per night. ' +
+      'Nights not in the cache yet are downloaded from Garmin within the daily request limit, and a night without sleep data comes back as sleep null.',
     input: {
       date: date.optional().describe('One night, by the date of the morning; takes precedence over from/to'),
       from: date.optional().describe('Range start; default 6 days before `to`'),
@@ -310,10 +313,11 @@ export const TOOLS: ToolDef[] = [
     name: 'list_workouts',
     title: 'Workouts and calendar',
     description:
-      'For "my next race", "what is planned this week" or "which workouts do I have": the saved workout library (`workouts`), ' +
-      'scheduled workouts (`upcoming_schedule`) and races or events the user added or subscribed to (`upcoming_events`; ' +
-      '`race`/`primary` present only when true, `primary` marks the goal race of an active training plan). The calendar covers `from` to `to` ' +
-      '(default: today and the next 60 days); any range works, past or future, and months not in the cache yet are downloaded on the way.',
+      'List the saved workout library (`workouts`), the scheduled workouts (`upcoming_schedule`) and the races or events the user added or subscribed to (`upcoming_events`). ' +
+      'Use it for "my next race", "what is planned this week" or "which workouts do I have", and to find a workout id or schedule_id. ' +
+      'For the steps of one workout use get_workout, to put a workout on the calendar or take it off schedule_workouts, for sessions already done get_activities. ' +
+      '`sport` and `limit` narrow only the library; `from` and `to` set only the calendar window: today and the next 60 days by default, any range up to 3 years, past or future. ' +
+      'Calendar months not in the cache yet are downloaded on the way. In events `primary` marks the goal race of an active training plan.',
     input: {
       limit: z.number().int().min(1).max(200).default(50).describe('Most saved workouts listed in `workouts`'),
       sport: z.string().optional().describe('Only library workouts of this sport, e.g. running, cycling, strength_training'),
