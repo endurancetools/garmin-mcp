@@ -184,14 +184,16 @@ export const TOOLS: ToolDef[] = [
   }),
   tool({
     name: 'update_activity',
-    title: 'Edit an activity',
+    title: 'Edit or add an activity',
     description:
       'Change an activity in Garmin Connect: name, type, event_type (e.g. race), description (notes), rpe, feel, privacy, ' +
       'or the gear used: add_gear puts shoes or a bike on it, remove_gear takes one off (swap: both in one call). ' +
       'exercise_sets replaces all strength sets (old ones returned); show them to the user and call after they agree. ' +
+      'Without id it adds a manual activity (type, start, duration_min; optional distance_km, name, description, rpe, feel, privacy, default private): ' +
+      'show the user these values and call after they agree. ' +
       'Only call when the user asked for the change. Returns the activity after the edit.',
     input: {
-      id: id.describe('Activity id from get_activities'),
+      id: id.optional().describe('Activity id from get_activities; leave out to add an activity'),
       name: z.string().max(200).optional().describe('New activity name'),
       type: z.string().optional().describe('Garmin type key from garmin://activity-types, e.g. trail_running'),
       event_type: z.string().optional().describe('race, training, recreation, special_event, fitness, touring, transportation, geocaching or uncategorized'),
@@ -203,10 +205,14 @@ export const TOOLS: ToolDef[] = [
       privacy: z.enum(['public', 'followers', 'private']).optional(),
       exercise_sets: z.array(exerciseSetSchema).optional(),
       keep_timing: z.boolean().optional().describe('Keep recorded set times and rests; one entry per set'),
+      start: z.string().optional().describe('New activity: local start, YYYY-MM-DDTHH:MM'),
+      duration_min: z.number().optional(),
+      distance_km: z.number().optional(),
     },
     output: updateActivityOutput,
-    annotations: { ...WRITE, idempotentHint: true },
-    run: (s, { id: activityId, ...patch }) => s.updateActivity(activityId, patch),
+    // Without an id every call adds another activity, so the tool is not idempotent.
+    annotations: WRITE,
+    run: (s, { id: activityId, ...patch }) => (activityId === undefined ? s.addActivity(patch) : s.updateActivity(activityId, patch)),
   }),
   tool({
     name: 'download_activity_file',

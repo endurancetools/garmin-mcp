@@ -1,5 +1,5 @@
 import type { TokenProvider } from 'garmin-mcp-auth';
-import { assertIsoDate, InputError, type GarminConfig, type IsoDate, type Logger } from 'garmin-mcp-config';
+import { assertIsoDate, GarminError, InputError, type GarminConfig, type IsoDate, type Logger } from 'garmin-mcp-config';
 import { NotFoundError } from './errors.js';
 import { HttpCore, type BinaryResponse, type HttpOptions, type Query } from './http.js';
 import * as s from './schemas.js';
@@ -43,6 +43,27 @@ export const ACTIVITY_PRIVACY = {
   followers: { typeId: 3, typeKey: 'subscribers' },
 } as const;
 export type ActivityPrivacy = keyof typeof ACTIVITY_PRIVACY;
+
+function privacyRule(privacy: ActivityPrivacy) {
+  const rule = ACTIVITY_PRIVACY[privacy] as (typeof ACTIVITY_PRIVACY)[ActivityPrivacy] | undefined;
+  if (!rule) throw new InputError(`privacy must be one of ${Object.keys(ACTIVITY_PRIVACY).join(', ')}`);
+  return { ...rule };
+}
+
+/** A manual activity: one entered by hand, without a file from a device. */
+export interface ManualActivity {
+  /** Activity type key; resolved like `ActivityPatch.typeKey`. */
+  typeKey: string;
+  activityType?: s.ActivityType;
+  name: string;
+  /** Local start in `timeZone`, "2026-11-16T18:30:00". */
+  startLocal: string;
+  /** IANA time zone of `startLocal`, e.g. Europe/Warsaw. */
+  timeZone: string;
+  durationS: number;
+  distanceM?: number;
+  privacy: ActivityPrivacy;
+}
 
 export type DownloadFormat = 'fit' | 'gpx' | 'tcx' | 'kml' | 'csv';
 
@@ -233,24 +254,9 @@ export class GarminClient {
     const body: Record<string, unknown> = { activityId: positive(id) };
     if (patch.name !== undefined) body.activityName = patch.name;
     if (patch.description !== undefined) body.description = patch.description;
-    if (patch.activityType !== undefined) {
-      const t = patch.activityType;
-      body.activityTypeDTO = { typeId: t.typeId, typeKey: t.typeKey, parentTypeId: t.parentTypeId };
-    } else if (patch.typeKey !== undefined) {
-      const types = await this.getActivityTypes();
-      const match = types.find((t) => t.typeKey === patch.typeKey);
-      if (!match) {
-        const valid = types.map((t) => t.typeKey).filter(Boolean).toSorted().join(', ');
-        throw new InputError(`Unknown activity type "${patch.typeKey}". Valid keys: ${valid}`);
-      }
-      body.activityTypeDTO = { typeId: match.typeId, typeKey: match.typeKey, parentTypeId: match.parentTypeId };
-    }
+    if (patch.activityType !== undefined || patch.typeKey !== undefined) body.activityTypeDTO = await this.#activityTypeDTO(patch.typeKey, patch.activityType);
     if (patch.eventType !== undefined) body.eventTypeDTO = { typeId: patch.eventType.typeId, typeKey: patch.eventType.typeKey };
-    if (patch.privacy !== undefined) {
-      const rule = ACTIVITY_PRIVACY[patch.privacy] as (typeof ACTIVITY_PRIVACY)[ActivityPrivacy] | undefined;
-      if (!rule) throw new InputError(`privacy must be one of ${Object.keys(ACTIVITY_PRIVACY).join(', ')}`);
-      body.accessControlRuleDTO = { ...rule };
-    }
+    if (patch.privacy !== undefined) body.accessControlRuleDTO = privacyRule(patch.privacy);
     // Only the changed summary fields: sending the full summaryDTO back is rejected (GPS pair).
     const summary: Record<string, number> = {};
     if (patch.rpe !== undefined) {
@@ -263,6 +269,51 @@ export class GarminClient {
     }
     if (Object.keys(summary).length > 0) body.summaryDTO = summary;
     await this.http.request('PUT', `/activity-service/activity/${body.activityId as number}`, { json: body });
+  }
+
+  /** `activityTypeDTO` of a type the caller resolved, else of `typeKey` looked up in the type list. */
+  async #activityTypeDTO(typeKey: string | undefined, resolved: s.ActivityType | undefined) {
+    let t = resolved;
+    if (t === undefined) {
+      const types = await this.getActivityTypes();
+      t = types.find((x) => x.typeKey === typeKey);
+      if (!t) {
+        const valid = types.map((x) => x.typeKey).filter(Boolean).toSorted().join(', ');
+        throw new InputError(`Unknown activity type "${typeKey}". Valid keys: ${valid}`);
+      }
+    }
+    return { typeId: t.typeId, typeKey: t.typeKey, parentTypeId: t.parentTypeId };
+  }
+
+  /**
+   * Adds a manual activity and returns its id. Garmin computes calories from the type, the
+   * duration and the profile (`autoCalcCalories`). Path and body follow the known shape of the
+   * Garmin Connect API; not confirmed by a recording yet (E8-30).
+   */
+  async createManualActivity(a: ManualActivity): Promise<number> {
+    if (!(a.durationS > 0)) throw new InputError('duration must be positive');
+    if (a.distanceM !== undefined && !(a.distanceM > 0)) throw new InputError('distance must be positive');
+    const summary: Record<string, unknown> = { startTimeLocal: `${a.startLocal}.000`, duration: a.durationS };
+    if (a.distanceM !== undefined) summary.distance = a.distanceM;
+    const path = '/activity-service/activity';
+    const created = await this.http.request('POST', path, {
+      json: {
+        activityTypeDTO: await this.#activityTypeDTO(a.typeKey, a.activityType),
+        accessControlRuleDTO: privacyRule(a.privacy),
+        timeZoneUnitDTO: { unitKey: a.timeZone },
+        activityName: a.name,
+        metadataDTO: { autoCalcCalories: true },
+        summaryDTO: summary,
+      },
+    });
+    const id = (created as { activityId?: unknown } | null)?.activityId;
+    // The activity may exist even when its id is missing from the answer, so a retry could add it twice.
+    if (typeof id !== 'number' || !Number.isInteger(id) || id <= 0) {
+      throw new GarminError('VALIDATION', `Unexpected response shape from ${path}: no activityId`, {
+        hint: 'The activity may have been added anyway: check get_activities for its day before adding it again.',
+      });
+    }
+    return id;
   }
 
   /**

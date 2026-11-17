@@ -28,6 +28,7 @@ import { readFitFile, type FitGearChange } from './fit.js';
 import { compact, hms, isFootSport, iso, km, round, speedOrPace } from './format.js';
 import { healthTable, tablesFor, type HealthGranularity, type HealthMetric } from './health.js';
 import { hourlyTable, intradayKinds, isHourlyMetric } from './intraday.js';
+import { activityListRow, activityTypeName, checkEditMode, checkManualActivity } from './manual-activity.js';
 import { decodeCursor, encodeCursor, pageBySize } from './paging.js';
 import { bestEfforts, durationLabel, type BestEffort } from './power-curve.js';
 import { sleepNight, sleepRange, sleepTimeline } from './sleep.js';
@@ -133,7 +134,11 @@ export interface ActivitiesQuery {
   sort?: 'asc' | 'desc';
 }
 
-/** What `update_activity` can change; gear is named by uuid or by (part of) its name. */
+/**
+ * What `update_activity` can change; gear is named by uuid or by (part of) its name. Without an
+ * id it adds a manual activity from `type`, `start`, `duration_min`, `distance_km`, `name`,
+ * `description`, `rpe`, `feel` and `privacy`.
+ */
 export interface ActivityEdit {
   name?: string;
   type?: string;
@@ -148,6 +153,12 @@ export interface ActivityEdit {
   exercise_sets?: ExerciseSetInput[];
   /** With `exercise_sets`: keep the times the watch recorded, change exercise, reps and weight only. */
   keep_timing?: boolean;
+  /** New activity only: local start, "2026-11-16T18:30". */
+  start?: string;
+  /** New activity only. */
+  duration_min?: number;
+  /** New activity only. */
+  distance_km?: number;
 }
 
 /** `update_activity` privacy of Garmin's access control rule: "subscribers" is "followers"; other rules keep Garmin's key. */
@@ -846,7 +857,9 @@ export class GarminService {
     return typeof units === 'string' ? units : undefined;
   }
 
+  /** Edits activity `id`; `update_activity` without an id is `addActivity`. */
   async updateActivity(id: number, patch: ActivityEdit) {
+    checkEditMode(id, patch);
     if (Object.values(patch).every((v) => v === undefined)) {
       throw new InputError('Nothing to update', 'Pass at least one of name, type, event_type, description, rpe, feel, privacy, exercise_sets, add_gear, remove_gear.');
     }
@@ -886,6 +899,38 @@ export class GarminService {
     const previous = sets?.previous;
     return this.getActivity(id, 'summary').then((r) => ({
       data: compact({ updated: true, activity: r.data, gear, privacy, exercise_sets: exerciseSets, previous_exercise_sets: previous }),
+      meta: { source: 'live' as const, fetched_at: iso(at) },
+    }));
+  }
+
+  /**
+   * Adds a manual activity, private unless `privacy` says otherwise, and stores it as the
+   * activity list and the summary of `get_activity` would, so it is in the cache without a sync.
+   * Notes, effort and feel are written by the regular edit right after it.
+   */
+  async addActivity(patch: ActivityEdit) {
+    checkEditMode(undefined, patch);
+    const fields = checkManualActivity(patch, this.#tz, this.#now());
+    const activityType = await this.#cachedActivityType(fields.type);
+    const id = await this.client.createManualActivity({
+      typeKey: fields.type,
+      activityType,
+      name: patch.name ?? activityTypeName(fields.type),
+      startLocal: fields.startLocal,
+      timeZone: this.#tz,
+      durationS: fields.durationS,
+      distanceM: fields.distanceM,
+      privacy: patch.privacy ?? 'private',
+    });
+    const { description, rpe, feel } = patch;
+    if (description !== undefined || rpe !== undefined || feel !== undefined) await this.client.updateActivity(id, { description, rpe, feel });
+    const activity = await this.client.getActivity(id);
+    const at = this.#now();
+    this.store.upsertActivities([activityListRow(activity)], at);
+    this.store.putActivityDetail(id, 'summary', activity, at);
+    const privacy = privacyKey(activity.accessControlRuleDTO) ?? patch.privacy ?? 'private';
+    return this.getActivity(id, 'summary').then((r) => ({
+      data: compact({ created: true, activity: r.data, privacy }),
       meta: { source: 'live' as const, fetched_at: iso(at) },
     }));
   }

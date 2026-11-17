@@ -407,6 +407,37 @@ describe('GarminClient', () => {
     expect(call).toEqual({ id: '42', body: { activityId: 42, exerciseSets: sets } });
   });
 
+  it('adds a manual activity and returns its id', async () => {
+    const bodies: unknown[] = [];
+    let answer: Record<string, unknown> = { activityId: 777, activityName: 'Yoga' };
+    server.use(
+      http.post(`${API}/activity-service/activity`, async ({ request }) => {
+        bodies.push(await request.json());
+        return HttpResponse.json(answer as Record<string, string | number>);
+      }),
+    );
+    const { client } = makeClient();
+    const yoga = { typeKey: 'yoga', activityType: { typeId: 43, typeKey: 'yoga', parentTypeId: 29 }, name: 'Yoga', startLocal: '2026-11-16T18:30:00', timeZone: 'Europe/Warsaw', durationS: 2700, privacy: 'private' as const };
+    expect(await client.createManualActivity(yoga)).toBe(777);
+    await client.createManualActivity({ ...yoga, distanceM: 5000, privacy: 'followers' });
+    expect(bodies).toEqual([
+      {
+        activityTypeDTO: { typeId: 43, typeKey: 'yoga', parentTypeId: 29 },
+        accessControlRuleDTO: { typeId: 2, typeKey: 'private' },
+        timeZoneUnitDTO: { unitKey: 'Europe/Warsaw' },
+        activityName: 'Yoga',
+        metadataDTO: { autoCalcCalories: true },
+        summaryDTO: { startTimeLocal: '2026-11-16T18:30:00.000', duration: 2700 },
+      },
+      expect.objectContaining({ accessControlRuleDTO: { typeId: 3, typeKey: 'subscribers' }, summaryDTO: { startTimeLocal: '2026-11-16T18:30:00.000', duration: 2700, distance: 5000 } }),
+    ]);
+    // Without an id in the answer the activity may still exist: the error says to check before retrying.
+    answer = { activityName: 'Yoga' };
+    await expect(client.createManualActivity(yoga)).rejects.toMatchObject({ code: 'VALIDATION', hint: expect.stringMatching(/check get_activities/) });
+    await expect(client.createManualActivity({ ...yoga, durationS: 0 })).rejects.toMatchObject({ code: 'INVALID_INPUT' });
+    expect(bodies).toHaveLength(3);
+  });
+
   it('puts gear on an activity and takes it off', async () => {
     const calls: string[] = [];
     server.use(

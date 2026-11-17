@@ -58,6 +58,8 @@ export function setup(
   const gearLinks = new Set<string>();
   const privacy = new Map<number, { typeId: number; typeKey: string }>();
   const writtenSets = new Map<number, unknown[]>();
+  // Manual activities added through createManualActivity, answered by getActivity as Garmin would.
+  const created = new Map<number, Record<string, unknown>>();
   const rec = async <T>(method: string, args: unknown[], value: () => T): Promise<T> => {
     calls.push({ method, args });
     if (opts.delayMs) await new Promise((r) => setTimeout(r, opts.delayMs));
@@ -77,6 +79,8 @@ export function setup(
     getActivity: (id: number) =>
       rec('getActivity', [id], () => {
         if (opts.gone?.has(id)) throw notFound(`activity/${id}`);
+        const manual = created.get(id);
+        if (manual) return { ...manual, activityName: names.get(id) ?? manual.activityName, accessControlRuleDTO: privacy.get(id) ?? manual.accessControlRuleDTO };
         return {
           activityId: id,
           activityName: names.get(id) ?? `Run ${id}`,
@@ -142,6 +146,22 @@ export function setup(
         if (patch.name) names.set(id, patch.name);
         if (patch.eventType) eventTypes.set(id, patch.eventType);
         if (patch.privacy) privacy.set(id, { public: { typeId: 1, typeKey: 'public' }, private: { typeId: 2, typeKey: 'private' }, followers: { typeId: 3, typeKey: 'subscribers' } }[patch.privacy]);
+      }),
+    createManualActivity: (a: { typeKey: string; activityType?: { typeId?: number; typeKey?: string; parentTypeId?: number }; name: string; startLocal: string; durationS: number; distanceM?: number; privacy: 'public' | 'followers' | 'private' }) =>
+      rec('createManualActivity', [a], () => {
+        const id = 90_001 + created.size;
+        const rule = { public: { typeId: 1, typeKey: 'public' }, private: { typeId: 2, typeKey: 'private' }, followers: { typeId: 3, typeKey: 'subscribers' } }[a.privacy];
+        // The service runs in UTC, so the GMT start is the local one.
+        const start = `${a.startLocal}.0`;
+        created.set(id, {
+          activityId: id,
+          activityName: a.name,
+          activityTypeDTO: a.activityType ?? { typeKey: a.typeKey },
+          eventTypeDTO: { typeId: 9, typeKey: 'uncategorized' },
+          accessControlRuleDTO: rule,
+          summaryDTO: { startTimeLocal: start, startTimeGMT: start, duration: a.durationS, elapsedDuration: a.durationS, ...(a.distanceM !== undefined && { distance: a.distanceM }), calories: 150 },
+        });
+        return id;
       }),
     updateActivityExerciseSets: (id: number, sets: unknown[]) =>
       rec('updateActivityExerciseSets', [id, sets], () => {

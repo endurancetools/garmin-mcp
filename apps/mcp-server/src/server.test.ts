@@ -16,6 +16,7 @@ import { serveHttp } from './transports.js';
 
 const meta = { source: 'cache' };
 let autoSyncReads = 0;
+const activityWrites: { method: string; args: unknown[] }[] = [];
 const fakeService = {
   withAutoSync: async (read: () => Promise<unknown>) => {
     autoSyncReads++;
@@ -33,6 +34,14 @@ const fakeService = {
   getActivityTypes: async () => ({ data: { activity_types: [{ key: 'trail_running', parent: 'running' }] }, meta }),
   getActivity: async (id: number, detail: string) => ({ data: { id, detail, name: 'Morning Run' }, meta }),
   getWorkout: async (id: number) => ({ data: { workout_id: id, name: 'Easy Z2' }, meta }),
+  updateActivity: async (id: number, patch: unknown) => {
+    activityWrites.push({ method: 'updateActivity', args: [id, patch] });
+    return { data: { updated: true, activity: { id, name: 'Morning Run' } }, meta };
+  },
+  addActivity: async (patch: unknown) => {
+    activityWrites.push({ method: 'addActivity', args: [patch] });
+    return { data: { created: true, activity: { id: 90_001, name: 'Yoga' } }, meta };
+  },
   store: {
     queryActivities: (q: { limit?: number }) => [{ id: 21_001 }, { id: 21_002 }, { id: 3 }].slice(0, q.limit),
     getWorkouts: (q: { limit?: number }) => [{ id: 6_515_728_609 }].slice(0, q.limit),
@@ -95,6 +104,18 @@ describe('MCP server', () => {
     expect(on?.description).toContain('overwrites that saved workout');
   });
 
+  it('update_activity edits with an id and adds an activity without one', async () => {
+    const client = await connect(runtime());
+    activityWrites.length = 0;
+    await client.callTool({ name: 'update_activity', arguments: { id: 21_001, name: 'Tempo' } });
+    const added = await client.callTool({ name: 'update_activity', arguments: { type: 'yoga', start: '2026-10-07T18:30', duration_min: 45 } });
+    expect(added.structuredContent).toMatchObject({ data: { created: true } });
+    expect(activityWrites).toEqual([
+      { method: 'updateActivity', args: [21_001, { name: 'Tempo' }] },
+      { method: 'addActivity', args: [{ type: 'yoga', start: '2026-10-07T18:30', duration_min: 45 }] },
+    ]);
+  });
+
   it('honours allow and deny lists', async () => {
     const tools = (await (await connect(runtime({ enabledTools: ['get_activities', 'query_health'], disabledTools: ['query_health'] }))).listTools()).tools;
     expect(tools.map((t) => t.name)).toEqual(['get_activities']);
@@ -111,6 +132,11 @@ describe('MCP server', () => {
     expect(JSON.stringify(create?.inputSchema)).toContain('strength_circuit');
     const qh = tools.find((t) => t.name === 'query_health');
     expect(qh?.inputSchema.required).toContain('metrics');
+    // Without id update_activity adds an activity: id is optional and a repeated call adds another one.
+    const update = tools.find((t) => t.name === 'update_activity');
+    expect(update?.inputSchema.required ?? []).not.toContain('id');
+    expect(update?.annotations).toEqual({ readOnlyHint: false, destructiveHint: false, openWorldHint: true });
+    expect(update?.description).toContain('show the user these values and call after they agree');
   });
 
   it('tool list stays within the context budget', async () => {
@@ -127,11 +153,11 @@ describe('MCP server', () => {
     const overwrite = all.find((t) => t.name === 'create_workout')?.inputSchema;
     // 2020-12 is MCP's default dialect, so no input schema spends context on naming it.
     expect(all.filter((t) => '$schema' in t.inputSchema)).toEqual([]);
-    expect(context(tools)).toBeLessThanOrEqual(39_600);
+    expect(context(tools)).toBeLessThanOrEqual(39_961);
     expect(size(create)).toBeLessThanOrEqual(11_500);
-    expect(context(all)).toBeLessThanOrEqual(41_011);
-    expect(size(tools)).toBeLessThanOrEqual(88_824);
-    expect(size(all)).toBeLessThanOrEqual(92_376);
+    expect(context(all)).toBeLessThanOrEqual(41_372);
+    expect(size(tools)).toBeLessThanOrEqual(89_199);
+    expect(size(all)).toBeLessThanOrEqual(92_751);
     // Without destructive tools create_workout is a strict object (a stray workout_id fails loudly).
     const { workout_id: _overwrite, ...properties } = overwrite?.properties ?? {};
     expect(create).toEqual({ ...overwrite, properties, additionalProperties: false });

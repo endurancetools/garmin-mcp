@@ -178,7 +178,7 @@ garmin-mcp deliberately has few writes; listed so nothing disappears silently.
 | Activity event type (race, training, recreation...) | `update_activity` `event_type` |
 | Activity privacy | `update_activity` `privacy` (`public`, `followers`, `private`) |
 | Strength exercise sets (exercise, reps, weight) | `update_activity` `exercise_sets` (replaces all sets; `keep_timing: true` keeps the recorded times; the previous sets come back in the answer) |
-| Manual activity | — () |
+| Manual activity | `update_activity` without `id`: `type`, `start` (local time), `duration_min`, optional `distance_km`, `name`, `description`, `rpe`, `feel`, `privacy` (private unless set) |
 | Workout from a preset (run intervals, walk/run, easy Z2, strength circuit) | `create_workout` `preset` (with `dry_run: true` first: steps and estimated duration, nothing saved) |
 | Workout from typed steps (nestable repeats, HR/pace/power/cadence targets, strength exercises with load) | `create_workout` `definition` (`dry_run: true` shows it first) |
 | Workout from raw Garmin JSON | `create_workout` `garmin_json` (one per call; `dry_run: true` shows it first) |

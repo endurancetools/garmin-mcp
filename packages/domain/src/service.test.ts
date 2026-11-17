@@ -1097,6 +1097,66 @@ describe('GarminService', () => {
     expect(calls.find((c) => c.method === 'updateActivity')?.args[1]).toMatchObject({ typeKey: 'trail_running', activityType: undefined });
   });
 
+  it('adds a manual activity, private by default, and caches it without a sync', async () => {
+    const { service, calls, count, store } = setup({ activities: [summary(1, '2026-10-07')] });
+    await service.getActivities({});
+    const before = calls.length;
+    const res = await service.addActivity({ type: 'yoga', start: '2026-10-07T18:30', duration_min: 45 });
+    expect(calls.find((c) => c.method === 'createManualActivity')?.args[0]).toEqual({
+      typeKey: 'yoga',
+      activityType: expect.objectContaining({ typeId: 163, typeKey: 'yoga', parentTypeId: 29 }),
+      name: 'Yoga',
+      startLocal: '2026-10-07T18:30:00',
+      timeZone: 'UTC',
+      durationS: 2700,
+      distanceM: undefined,
+      privacy: 'private',
+    });
+    // No notes, effort or feel: no edit after the add.
+    expect(count('updateActivity')).toBe(0);
+    expect(res.data).toMatchObject({ created: true, privacy: 'private', activity: { id: 90_001, name: 'Yoga', type: 'yoga', date: '2026-10-07' } });
+    expect(res.meta.source).toBe('live');
+    // In the cache at once: the list shows it and nothing else is downloaded for it.
+    expect(store.getActivity(90_001)).toMatchObject({ name: 'Yoga', type: 'yoga', duration_s: 2700 });
+    const list = await service.getActivities({ from: '2026-10-07', to: '2026-10-07' });
+    expect(list.data.activities.map((a) => a.id)).toEqual(expect.arrayContaining([1, 90_001]));
+    expect(calls.slice(before).map((c) => c.method).filter((m) => m !== 'getActivityTypes')).toEqual(['createManualActivity', 'getActivity']);
+  });
+
+  it('writes notes, effort and feel of a new activity with the regular edit', async () => {
+    const { service, calls } = setup();
+    const res = await service.addActivity({ type: 'running', start: '2026-10-08T06:15:30', duration_min: 30.5, distance_km: 5.25, name: 'Easy run', description: 'legs ok', rpe: 4, feel: 75, privacy: 'followers' });
+    const created = calls.find((c) => c.method === 'createManualActivity')?.args[0];
+    expect(created).toMatchObject({ name: 'Easy run', startLocal: '2026-10-08T06:15:30', durationS: 1830, distanceM: 5250, privacy: 'followers' });
+    expect(calls.find((c) => c.method === 'updateActivity')?.args).toEqual([90_001, { description: 'legs ok', rpe: 4, feel: 75 }]);
+    expect(res.data.privacy).toBe('followers');
+  });
+
+  it('refuses fields of the other mode and incomplete new activities before writing', async () => {
+    const { service, count } = setup({ activities: [summary(1, '2026-10-07')] });
+    const invalid = { code: 'INVALID_INPUT' };
+    await expect(service.updateActivity(1, { name: 'Tempo', start: '2026-10-07T07:00', duration_min: 50 })).rejects.toMatchObject({
+      ...invalid,
+      message: 'start, duration_min only go with a new activity, which is added without id',
+      hint: expect.stringMatching(/leave out id/),
+    });
+    await expect(service.addActivity({ type: 'running', start: '2026-10-07T07:00', duration_min: 50, add_gear: 'shoes', event_type: 'race' })).rejects.toMatchObject({
+      ...invalid,
+      message: 'event_type, add_gear only go with an existing activity: pass its id',
+    });
+    await expect(service.addActivity({ type: 'yoga', start: '2026-10-07T07:00' })).rejects.toMatchObject({ ...invalid, message: 'A new activity needs duration_min' });
+    await expect(service.addActivity({ name: 'Tempo' })).rejects.toMatchObject({ ...invalid, message: 'A new activity needs type, start, duration_min', hint: expect.stringMatching(/pass its id/) });
+    await expect(service.addActivity({ type: 'yoga', start: 'yesterday 7pm', duration_min: 45 })).rejects.toMatchObject({ ...invalid, message: expect.stringMatching(/^start must be a local time/) });
+    await expect(service.addActivity({ type: 'yoga', start: '2026-02-30T07:00', duration_min: 45 })).rejects.toMatchObject(invalid);
+    // NOW is 2026-10-08 12:00 UTC.
+    await expect(service.addActivity({ type: 'yoga', start: '2026-10-08T12:01', duration_min: 45 })).rejects.toMatchObject({ ...invalid, message: expect.stringMatching(/is in the future \(now 2026-10-08T12:00 in UTC\)/) });
+    await expect(service.addActivity({ type: 'yoga', start: '2026-10-08T07:00', duration_min: 0 })).rejects.toMatchObject(invalid);
+    await expect(service.addActivity({ type: 'yoga', start: '2026-10-08T07:00', duration_min: 45, distance_km: -1 })).rejects.toMatchObject(invalid);
+    await expect(service.addActivity({ type: 'yogga', start: '2026-10-08T07:00', duration_min: 45 })).rejects.toMatchObject({ ...invalid, message: expect.stringMatching(/Unknown activity type "yogga"/) });
+    expect(count('createManualActivity')).toBe(0);
+    expect(count('updateActivity')).toBe(0);
+  });
+
   it('tags an activity with an event type and lists activities by it', async () => {
     const { service, calls, count, store } = setup({ activities: [summary(1, '2026-10-07'), summary(2, '2026-10-06', { eventType: { typeId: 9, typeKey: 'uncategorized' } })] });
     await service.getActivities({});
@@ -1253,6 +1313,7 @@ describe('GarminService', () => {
     await fits(output.activityOutput, service.getActivity(1, 'splits'));
     await fits(output.updateActivityOutput, service.updateActivity(1, { name: 'Tempo' }));
     await fits(output.updateActivityOutput, service.updateActivity(1, { privacy: 'private', exercise_sets: [{ reps: 9 }, {}, {}], keep_timing: true }));
+    await fits(output.updateActivityOutput, service.addActivity({ type: 'yoga', start: '2026-10-07T18:30', duration_min: 45, description: 'flow' }));
     await fits(output.healthOutput, service.queryHealth(['steps', 'sleep', 'hrv', 'resting_hr', 'calories'], '2026-09-01', '2026-10-08', 'week'));
     await fits(output.healthOutput, service.queryHealth(['calories'], '2026-10-01', '2026-10-08'));
     await fits(output.sleepOutput, service.getSleep({ date: '2026-10-07' }));

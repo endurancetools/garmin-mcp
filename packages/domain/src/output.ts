@@ -197,8 +197,10 @@ export const activitiesOutput = envelope({
 export const activityOutput = envelope(activityDetail);
 
 const gearRef = obj({ uuid: str, name: str });
+/** An edit answers `updated`, a manual activity added without id answers `created`. */
 export const updateActivityOutput = envelope({
   updated: bool,
+  created: bool,
   activity: obj(activityDetail),
   gear: obj({ added: gearRef, removed: gearRef }),
   privacy: str,
