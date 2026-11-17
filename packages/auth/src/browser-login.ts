@@ -15,7 +15,7 @@ export class BrowserUnavailableError extends GarminError {
   }
 }
 
-/** A 403 or 429 that Garmin's sign-in API gave its own page while the person was signing in. */
+/** A 403 or 429 for Garmin's sign-in page itself (a Cloudflare block) or from its sign-in API while the person was signing in. */
 export interface SignInRefusal {
   status: number;
   path: string;
@@ -232,31 +232,35 @@ export async function captureTicket(cdp: CdpConnection, signInUrl: string, servi
   const targetId = page ? page.targetId : ((await cdp.send('Target.createTarget', { url: 'about:blank' })) as { targetId: string }).targetId;
   const { sessionId } = (await cdp.send('Target.attachToTarget', { targetId, flatten: true })) as { sessionId: string };
 
-  const signInHost = new URL(signInUrl).host;
+  const signInPage = new URL(signInUrl);
   return new Promise<string>((resolve, reject) => {
     let settled = false;
-    // The last answer of Garmin's sign-in API to its page, kept only while it is a refusal:
-    // the page then shows an error of its own, and the reason belongs in ours.
-    let refused: SignInRefusal | undefined;
+    // Refusals of the sign-in page and of the sign-in API it calls, per path, until the same
+    // path answers normally (a passed Cloudflare check, a second try). The page then shows an
+    // error of its own, and the reason belongs in ours: the newest refusal still standing.
+    const refusals = new Map<string, SignInRefusal>();
+    const refused = () => [...refusals.values()].at(-1);
     const finish = (fn: () => void) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
       fn();
     };
-    const timer = setTimeout(() => finish(() => reject(new BrowserLoginAbortedError(`no sign-in within ${Math.round(timeoutMs / 60_000)} min`, refused))), timeoutMs);
+    const timer = setTimeout(() => finish(() => reject(new BrowserLoginAbortedError(`no sign-in within ${Math.round(timeoutMs / 60_000)} min`, refused()))), timeoutMs);
     timer.unref();
 
-    cdp.onClose(() => finish(() => reject(new BrowserLoginAbortedError('the browser window was closed', refused))));
+    cdp.onClose(() => finish(() => reject(new BrowserLoginAbortedError('the browser window was closed', refused()))));
     cdp.onEvent((e) => {
       if (e.method === 'Target.targetDestroyed' && e.params.targetId === targetId) {
-        finish(() => reject(new BrowserLoginAbortedError('the browser window was closed', refused)));
+        finish(() => reject(new BrowserLoginAbortedError('the browser window was closed', refused())));
         return;
       }
       if (e.method === 'Network.responseReceived' && e.sessionId === sessionId) {
         const { url = '', status } = (e.params as { response?: { url?: string; status?: number } }).response ?? {};
         const at = URL.canParse(url) ? new URL(url) : undefined;
-        if (at?.host === signInHost && at.pathname.includes('/api/')) refused = status === 403 || status === 429 ? { status, path: at.pathname } : undefined;
+        if (at?.host !== signInPage.host || !(at.pathname === signInPage.pathname || at.pathname.includes('/api/'))) return;
+        refusals.delete(at.pathname);
+        if (status === 403 || status === 429) refusals.set(at.pathname, { status, path: at.pathname });
         return;
       }
       if (e.method !== 'Fetch.requestPaused' || e.sessionId !== sessionId) return;

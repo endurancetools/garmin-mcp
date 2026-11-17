@@ -178,6 +178,29 @@ describe('browser sign-in', () => {
     await expect(closed).rejects.toMatchObject({ refused: undefined, hint: expect.stringMatching(/^Run `garmin login` again/) });
   });
 
+  it('names a block of the sign-in page itself, and keeps a refusal while only other paths answer', async () => {
+    const answer = (status: number, path: string) => ({ response: { url: `https://sso.example${path}`, status } });
+    const page = '/portal/sso/en-US/sign-in';
+    // Cloudflare never lets the page through.
+    const a = fakeCdp();
+    const blocked = captureTicket(a.cdp, `https://sso.example${page}?clientId=GarminConnect`, hosts.portalServiceUrl, 10_000);
+    await tick();
+    a.emit('Network.responseReceived', answer(403, page));
+    a.emit('Target.targetDestroyed', { targetId: 'T1' }, undefined);
+    await expect(blocked).rejects.toMatchObject({ refused: { status: 403, path: page } });
+
+    // The check passes on the second load; the sign-in request is then refused, and the page's other calls do not hide that.
+    const b = fakeCdp();
+    const refused = captureTicket(b.cdp, `https://sso.example${page}`, hosts.portalServiceUrl, 10_000);
+    await tick();
+    b.emit('Network.responseReceived', answer(403, page));
+    b.emit('Network.responseReceived', answer(200, page));
+    b.emit('Network.responseReceived', answer(429, '/portal/api/login'));
+    b.emit('Network.responseReceived', answer(200, '/portal/api/checkLogin'));
+    b.emit('Target.targetDestroyed', { targetId: 'T1' }, undefined);
+    await expect(refused).rejects.toMatchObject({ refused: { status: 429, path: '/portal/api/login' } });
+  });
+
   it('uses a configured browser path only when it exists', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'garmin-browser-'));
     const exe = path.join(dir, 'chrome');
