@@ -3,7 +3,7 @@ title: "Training analytics: CTL, ATL, TSB and HRV readiness"
 description: "Formulas, defaults and limits of Garmin MCP training analytics: TSS, rTSS and hrTSS, CTL/ATL/TSB, ACWR, aerobic decoupling (Pa:HR) and HRV readiness."
 nav_order: 10
 ---
-Four tools compute training metrics on your machine, from the data already in the local database: `get_load`, `get_readiness`, `get_thresholds` and `set_threshold`. The same results are in the CLI as `garmin load`, `garmin readiness` and `garmin thresholds`. Nothing here is sent to Garmin, and every formula, default and limit is on this page, so you can check a number by hand.
+Five tools compute training metrics on your machine, from the data already in the local database: `get_load`, `compare_activities`, `get_readiness`, `get_thresholds` and `set_threshold`; `get_activity` adds the [climbs](#climbs) and the [power curve](#power-curve) of one activity. The results of `get_load`, `get_readiness` and `get_thresholds` are in the CLI as `garmin load`, `garmin readiness` and `garmin thresholds`. Nothing here is sent to Garmin, and every formula, default and limit is on this page, so you can check a number by hand.
 
 The defaults below are starting points taken from the literature, not personal prescriptions. Every flag and rule can be overridden in the call (`flags` of `get_load`, `rules` of `get_readiness`), and every answer returns the values it used (`flags_used`, `rules_used`).
 

@@ -38,7 +38,7 @@ Totals for the 111 reads: 76 full, 14 partial, 21 missing.
 | Training effect of an activity | `get_activity` → `training_effect`, `training_load` | full | |
 | Activity file (FIT, GPX, TCX, KML, CSV) | `download_activity_file` `id`, `format`, `output_dir` | full | FIT is unzipped |
 | FIT file messages | `get_activity` `detail: "power_curve"` | partial | the 1 Hz power records, for the power curve; gear shifts and other messages are not served |
-| FIT data (Di2, power) | — | missing | FIT parsing. |
+| FIT data (Di2, power) | — | missing | power is served as the power curve of `get_activity` `detail: "power_curve"`; gear shifts (Di2, eTap) are read from the FIT file and kept with the curve, but not served until a recording of a file with shift events confirms them |
 | Power-duration curve | `get_activity` `detail: "power_curve"` | full | best power for 1, 5, 15, 30 s and 1, 2, 5, 10, 20, 30, 60 min, W and W/kg, also running power; from the FIT file, downloaded once and kept as the curve |
 
 ### Daily health
@@ -165,8 +165,8 @@ Totals for the 111 reads: 76 full, 14 partial, 21 missing.
 | Available badge challenges | — | missing | not planned: a catalogue of challenges to sign up for, not training data |
 | Badge challenges | `garmin://challenges` → `badges` | partial | a completed challenge shows only as the badge it earned; no list of completed challenges |
 | Non-completed badge challenges | `garmin://challenges` → `challenges` | full | joined challenges in progress: name, start and end date, progress in %, value and target in Garmin's unit (`unit_id`) |
-| Virtual challenges in progress | — | missing | no recording of the response yet |
-| Goals | — | missing | goals. |
+| Virtual challenges in progress | — | missing | the endpoint answers (`garmin record virtual-challenges`), but no recording with a challenge in progress shows the shape of one yet |
+| Goals | — | missing | waits for a recording with a goal set; the recorded account had none |
 
 ## Writes
 
