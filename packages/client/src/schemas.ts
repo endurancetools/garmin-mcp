@@ -613,3 +613,36 @@ export const deviceSettingsSchema = z
   })
   .nullable();
 export type DeviceSettings = z.infer<typeof deviceSettingsSchema>;
+
+// ---------------------------------------------------------------- stage 8 endpoints, not recorded yet
+
+/*
+ * Shapes below are not confirmed by a recording yet (E8-2): paths follow the
+ * known shape of the Garmin Connect API, schemas only name ids we expect, so a
+ * response of another shape is logged and passed through, never rejected.
+ * Replace each with typed fields once its fixture is recorded.
+ */
+
+export const activityTypedSplitsSchema = z.looseObject({ activityId: int });
+export const activitySplitSummariesSchema = z.looseObject({ activityId: int });
+
+export const trainingPlansSchema = z.looseObject({});
+export const trainingPlanSchema = z.looseObject({ trainingPlanId: int });
+
+/** One series per day, for heart rate (bpm) or speed. */
+export const lactateThresholdRangeSchema = z.array(z.looseObject({}));
+export const cyclingFtpSchema = z.looseObject({});
+
+export const bloodPressureRangeSchema = z.looseObject({});
+export const dailyEventsSchema = z.array(z.looseObject({}));
+export const goalsSchema = z.array(z.looseObject({}));
+
+export const coursesSchema = z.looseObject({});
+export const courseSchema = z.looseObject({ courseId: int });
+
+export const deviceSolarSchema = z.looseObject({ deviceId: int });
+export const nutritionDaySchema = z.looseObject({});
+export const menstrualDaySchema = z.looseObject({});
+
+export const earnedBadgesSchema = z.array(z.looseObject({ badgeId: int }));
+export const badgeChallengesSchema = z.array(z.looseObject({}));

@@ -5,6 +5,12 @@ nav_order: 11
 ---
 What changed in each release. All `garmin-mcp-*` packages share one version; the Claude Desktop extension of every version is attached to its [GitHub release](https://github.com/endurancetools/garmin-mcp/releases).
 
+## Unreleased
+
+### CLI
+
+- **`garmin record` knows 19 more endpoints**, the ones the next features read: typed splits and split summaries of an activity, training plans (list, phased, adaptive), lactate threshold history (heart rate and speed), cycling FTP, hydration, blood pressure, the day's events, goals, courses, a device's solar gain, nutrition, the menstrual cycle day, earned badges and badge challenges in progress. `garmin record list` shows them. Their paths follow the known shape of the Garmin Connect API and are not confirmed by a recording yet. Recordings of training plans, courses, goals and daily events replace every name, as plan, race, course point and goal names name places; course coordinates are shifted like activity tracks, and encoded polylines are replaced.
+
 ## 0.6.3 (2026-11-17)
 
 ### Tools

@@ -38,6 +38,9 @@ export interface GarminClientOptions extends Partial<Omit<HttpOptions, 'tokens' 
 
 const MAX_ACTIVITY_PAGE = 1000;
 
+/** Running thresholds per day, the latest value of each day. */
+const LACTATE_QUERY: Query = { sport: 'RUNNING', aggregation: 'daily', aggregationStrategy: 'LATEST' };
+
 /**
  * Typed connectapi client. Returns validated raw objects; no aggregation
  * or trimming happens here.
@@ -189,6 +192,20 @@ export class GarminClient {
     });
   }
 
+  /** Run, walk, idle, ClimbPro climb... segments of an activity. Path not confirmed by a recording yet (E8-2). */
+  async getActivityTypedSplits(id: number): Promise<unknown> {
+    return this.http.request('GET', `/activity-service/activity/${positive(id)}/typedsplits`, {
+      schema: s.activityTypedSplitsSchema,
+    });
+  }
+
+  /** Totals per split type. Path not confirmed by a recording yet (E8-2). */
+  async getActivitySplitSummaries(id: number): Promise<unknown> {
+    return this.http.request('GET', `/activity-service/activity/${positive(id)}/split_summaries`, {
+      schema: s.activitySplitSummariesSchema,
+    });
+  }
+
   async getActivityTypes(): Promise<s.ActivityType[]> {
     return this.http.request('GET', '/activity-service/activity/activityTypes', { schema: s.activityTypesSchema });
   }
@@ -309,6 +326,34 @@ export class GarminClient {
     });
   }
 
+  /** Readings from `from` to `to`. Path not confirmed by a recording yet (E8-2). */
+  async getBloodPressure(from: IsoDate, to: IsoDate = from): Promise<unknown> {
+    return this.http.request('GET', `/bloodpressure-service/bloodpressure/range/${assertIsoDate(from)}/${assertIsoDate(to)}`, {
+      query: { includeAll: true },
+      schema: s.bloodPressureRangeSchema,
+    });
+  }
+
+  /** Events of one day (sleep, naps, activities, stress) as Body Battery shows them. Path not confirmed by a recording yet (E8-2). */
+  async getDailyEvents(date: IsoDate): Promise<unknown> {
+    return this.http.request('GET', '/wellness-service/wellness/dailyEvents', {
+      query: { calendarDate: assertIsoDate(date) },
+      schema: s.dailyEventsSchema,
+    });
+  }
+
+  /** Food log of one day with its calorie and macro totals. Path not confirmed by a recording yet (E8-2). */
+  async getNutritionDay(date: IsoDate): Promise<unknown> {
+    return this.http.request('GET', `/nutrition-service/food/logs/${assertIsoDate(date)}`, { schema: s.nutritionDaySchema });
+  }
+
+  /** Menstrual cycle day view. Path not confirmed by a recording yet (E8-2). */
+  async getMenstrualDay(date: IsoDate): Promise<unknown> {
+    return this.http.request('GET', `/periodichealth-service/menstrualcycle/dayview/${assertIsoDate(date)}`, {
+      schema: s.menstrualDaySchema,
+    });
+  }
+
   // ------------------------------------------------------------ sleep, HRV
 
   async getSleep(date: IsoDate): Promise<s.Sleep> {
@@ -357,6 +402,31 @@ export class GarminClient {
   async getHillScore(from: IsoDate, to: IsoDate): Promise<unknown> {
     return this.http.request('GET', '/metrics-service/metrics/hillscore/stats', {
       query: { startDate: assertIsoDate(from), endDate: assertIsoDate(to), aggregation: 'daily' },
+    });
+  }
+
+  /** Running lactate threshold heart rate per day. Path and query not confirmed by a recording yet (E8-2). */
+  async getLactateThresholdHeartRate(from: IsoDate, to: IsoDate): Promise<unknown> {
+    return this.http.request(
+      'GET',
+      `/biometric-service/stats/lactateThresholdHeartRate/range/${assertIsoDate(from)}/${assertIsoDate(to)}`,
+      { query: LACTATE_QUERY, schema: s.lactateThresholdRangeSchema },
+    );
+  }
+
+  /** Running lactate threshold speed per day. Path and query not confirmed by a recording yet (E8-2). */
+  async getLactateThresholdSpeed(from: IsoDate, to: IsoDate): Promise<unknown> {
+    return this.http.request(
+      'GET',
+      `/biometric-service/stats/lactateThresholdSpeed/range/${assertIsoDate(from)}/${assertIsoDate(to)}`,
+      { query: LACTATE_QUERY, schema: s.lactateThresholdRangeSchema },
+    );
+  }
+
+  /** Latest cycling FTP with the date Garmin set it. Path not confirmed by a recording yet (E8-2). */
+  async getCyclingFtp(): Promise<unknown> {
+    return this.http.request('GET', '/biometric-service/biometric/latestFunctionalThresholdPower/CYCLING', {
+      schema: s.cyclingFtpSchema,
     });
   }
 
@@ -412,6 +482,50 @@ export class GarminClient {
   async getCalendar(year: number, month: number): Promise<s.CalendarMonth> {
     if (month < 1 || month > 12) throw new InputError('month must be 1-12');
     return this.http.request('GET', `/calendar-service/year/${year}/month/${month - 1}`, { schema: s.calendarMonthSchema });
+  }
+
+  // ------------------------------------------------------------ training plans, goals, courses, badges
+  // Paths below are not confirmed by a recording yet (E8-2).
+
+  /** Training plans of the account (Garmin Coach, adaptive, phased). */
+  async listTrainingPlans(): Promise<unknown> {
+    return this.http.request('GET', '/trainingplan-service/trainingplan/plans', { schema: s.trainingPlansSchema });
+  }
+
+  /** A phased training plan with its phases and target event. */
+  async getTrainingPlan(id: number): Promise<unknown> {
+    return this.http.request('GET', `/trainingplan-service/trainingplan/phased/${positive(id)}`, { schema: s.trainingPlanSchema });
+  }
+
+  /** An adaptive (Garmin Coach) training plan. */
+  async getAdaptiveTrainingPlan(id: number): Promise<unknown> {
+    return this.http.request('GET', `/trainingplan-service/trainingplan/fbt-adaptive/${positive(id)}`, {
+      schema: s.trainingPlanSchema,
+    });
+  }
+
+  async getGoals(status: 'active' | 'future' | 'past' = 'active'): Promise<unknown> {
+    return this.http.request('GET', '/goal-service/goal/goals', { query: { status, start: 1, limit: 100 }, schema: s.goalsSchema });
+  }
+
+  async listCourses(): Promise<unknown> {
+    return this.http.request('GET', '/course-service/course', { schema: s.coursesSchema });
+  }
+
+  async getCourse(id: number): Promise<unknown> {
+    return this.http.request('GET', `/course-service/course/${positive(id)}`, { schema: s.courseSchema });
+  }
+
+  async getEarnedBadges(): Promise<unknown> {
+    return this.http.request('GET', '/badge-service/badge/earned', { schema: s.earnedBadgesSchema });
+  }
+
+  /** Badge challenges joined and not completed yet, with progress. */
+  async getBadgeChallengesInProgress(): Promise<unknown> {
+    return this.http.request('GET', '/badgechallenge-service/badgeChallenge/non-completed', {
+      query: { start: 1, limit: 100 },
+      schema: s.badgeChallengesSchema,
+    });
   }
 
   // ------------------------------------------------------------ gear
@@ -500,7 +614,16 @@ export class GarminClient {
   async getLastUsedDevice(): Promise<s.DeviceLastUsed> {
     return this.http.request('GET', '/device-service/deviceservice/mylastused', { schema: s.deviceLastUsedSchema });
   }
+
+  /** Daily solar gain of a solar-charging device. Path not confirmed by a recording yet (E8-2). */
+  async getDeviceSolar(deviceId: number, from: IsoDate, to: IsoDate = from): Promise<unknown> {
+    return this.http.request('GET', `/web-gateway/solar/${positive(deviceId)}/${assertIsoDate(from)}/${assertIsoDate(to)}`, {
+      query: { singleDayView: from === to },
+      schema: s.deviceSolarSchema,
+    });
+  }
 }
+
 
 function positive(id: number): number {
   if (!Number.isSafeInteger(id) || id <= 0) throw new InputError(`id must be a positive integer, got ${id}`);

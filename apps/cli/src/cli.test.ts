@@ -10,7 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { readinessMarkdown } from './analytics.js';
 import { buildProgram, VERSION, type ProgramDeps } from './commands.js';
 import { table } from './io.js';
-import { anonymize, RECORDABLE } from './record.js';
+import { anonymize, RECORDABLE, writeFixture } from './record.js';
 
 const NO_SHIFT = { lat: 0, lon: 0 };
 
@@ -148,9 +148,75 @@ describe('anonymize', () => {
     });
   });
 
-  it('covers every client fixture name', () => {
+  it('hides course coordinates and place names, plan and event names', () => {
+    const shift = { lat: 0.5, lon: 0.25 };
+    const course = {
+      courseId: 4242,
+      courseName: 'Pętla Kampinos',
+      startPoint: { latitude: 52.3311, longitude: 20.7712, elevation: 85 },
+      boundingBox: { lowerLeftLatitude: 52.1, upperRightLongitude: 20.9 },
+      coursePoints: [{ name: 'Bar Pod Lipami', pointType: 'FOOD', lat: 52.3, lon: 20.8 }],
+      encodedPolyline: 'o}|~Hcj`}B??',
+      flat: 1.25,
+    };
+    expect(anonymize(course, shift, { names: true })).toEqual({
+      courseId: 4242,
+      courseName: 'anon-courseName',
+      startPoint: { latitude: 0.8311, longitude: 0.0212, elevation: 85 },
+      boundingBox: { lowerLeftLatitude: 0.6, upperRightLongitude: 0.15 },
+      coursePoints: [{ name: 'anon-name', pointType: 'FOOD', lat: 0.8, lon: 0.05 }],
+      encodedPolyline: 'anon-encodedPolyline',
+      flat: 1.25,
+    });
+    const plan = { trainingPlanId: 7, name: 'Półmaraton Warszawski - plan', targetEvent: { eventName: 'Bieg Niepodległości', location: 'Warszawa' } };
+    expect(anonymize(plan, shift, { names: true })).toEqual({
+      trainingPlanId: 7,
+      name: 'anon-name',
+      targetEvent: { eventName: 'anon-eventName', location: 'anon-location' },
+    });
+    // Without `names`, a bare `name` (exercise, setting) stays.
+    expect(anonymize({ name: 'pl' }, shift)).toEqual({ name: 'pl' });
+  });
+
+  it('writes plan and course recordings with every name hidden', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'record-'));
+    try {
+      const file = writeFixture(dir, 'training-plans', { trainingPlanList: [{ trainingPlanId: 1, name: 'Plan na Kraków' }] });
+      expect(JSON.parse(fs.readFileSync(file, 'utf8'))).toEqual({ trainingPlanList: [{ trainingPlanId: 1, name: 'anon-name' }] });
+      const other = writeFixture(dir, 'earned-badges', [{ badgeId: 3, name: 'Marathon' }]);
+      expect(JSON.parse(fs.readFileSync(other, 'utf8'))).toEqual([{ badgeId: 3, name: 'Marathon' }]);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('covers every client fixture name and the stage 8 endpoints', () => {
     expect(Object.keys(RECORDABLE)).toContain('training-status');
-    expect(Object.keys(RECORDABLE)).toHaveLength(39);
+    expect(Object.keys(RECORDABLE)).toEqual(
+      expect.arrayContaining([
+        'activity-typed-splits', 'activity-split-summaries', 'training-plans', 'training-plan', 'adaptive-plan',
+        'lactate-threshold-range', 'lactate-threshold-speed-range', 'cycling-ftp', 'hydration-day', 'blood-pressure-range',
+        'daily-events', 'goals', 'courses', 'course', 'device-solar', 'nutrition-day', 'menstrual-day', 'earned-badges',
+        'badge-challenges',
+      ]),
+    );
+    expect(Object.keys(RECORDABLE)).toHaveLength(58);
+  });
+
+  it('lists the recordable endpoints with `garmin record list`', async () => {
+    const lines: string[] = [];
+    const spy = vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
+      lines.push(String(chunk));
+      return true;
+    });
+    try {
+      await buildProgram().parseAsync(['node', 'garmin', 'record', 'list']);
+    } finally {
+      spy.mockRestore();
+    }
+    const listed = lines.join('').trim().split('\n');
+    expect(listed).toEqual(Object.keys(RECORDABLE));
+    expect(listed).toContain('earned-badges');
   });
 });
 

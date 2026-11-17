@@ -1,5 +1,5 @@
 import type { GarminClient } from 'garmin-mcp-client';
-import { InputError } from 'garmin-mcp-config';
+import { addDays, InputError } from 'garmin-mcp-config';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -44,7 +44,33 @@ export const RECORDABLE: Record<string, (c: GarminClient, a: { date: string; id?
   devices: (c) => c.listDevices(),
   'device-last-used': (c) => c.getLastUsedDevice(),
   'device-settings': (c, a) => c.getDeviceSettings(need(a.id, '--id')),
+  // Stage 8 endpoints: paths not confirmed until these recordings exist (E8-2).
+  'activity-typed-splits': (c, a) => c.getActivityTypedSplits(need(a.id, '--id')),
+  'activity-split-summaries': (c, a) => c.getActivitySplitSummaries(need(a.id, '--id')),
+  'training-plans': (c) => c.listTrainingPlans(),
+  'training-plan': (c, a) => c.getTrainingPlan(need(a.id, '--id')),
+  'adaptive-plan': (c, a) => c.getAdaptiveTrainingPlan(need(a.id, '--id')),
+  'lactate-threshold-range': (c, a) => c.getLactateThresholdHeartRate(addDays(a.date, -365), a.date),
+  'lactate-threshold-speed-range': (c, a) => c.getLactateThresholdSpeed(addDays(a.date, -365), a.date),
+  'cycling-ftp': (c) => c.getCyclingFtp(),
+  'hydration-day': (c, a) => c.getHydration(a.date),
+  'blood-pressure-range': (c, a) => c.getBloodPressure(addDays(a.date, -29), a.date),
+  'daily-events': (c, a) => c.getDailyEvents(a.date),
+  goals: (c) => c.getGoals(),
+  courses: (c) => c.listCourses(),
+  course: (c, a) => c.getCourse(need(a.id, '--id')),
+  'device-solar': (c, a) => c.getDeviceSolar(need(a.id, '--id'), addDays(a.date, -6), a.date),
+  'nutrition-day': (c, a) => c.getNutritionDay(a.date),
+  'menstrual-day': (c, a) => c.getMenstrualDay(a.date),
+  'earned-badges': (c) => c.getEarnedBadges(),
+  'badge-challenges': (c) => c.getBadgeChallengesInProgress(),
 };
+
+/**
+ * Recordings whose every `name` is something the owner chose or a place: plan
+ * and target race names, course and course point names, goal and event names.
+ */
+const NAMED_BY_OWNER = new Set(['training-plans', 'training-plan', 'adaptive-plan', 'courses', 'course', 'goals', 'daily-events']);
 
 function need<T>(v: T | undefined, flag: string): T {
   if (v === undefined) throw new InputError(`this endpoint needs ${flag}`);
@@ -60,6 +86,8 @@ const PERSONAL_STRINGS = new Set(
     // Free text the owner types: activity and workout names, calendar titles and notes name
     // home towns, races with bib numbers and people.
     'activityName', 'workoutName', 'title', 'description',
+    // Courses, training plans and races are named after places and events.
+    'courseName', 'trainingPlanName', 'planName', 'eventName', 'raceName', 'goalName', 'address', 'city',
   ].map((k) => k.toLowerCase()),
 );
 /**
@@ -79,7 +107,13 @@ const PERSONAL_IDS = new Set([
  * not taken for an SSID.
  */
 const DEVICE_IDENTIFIERS = /^(serialNumber|macAddress|ssid|imei|deviceName|customDeviceName|ownerName|alarmMessage)$|(SerialNumber|MacAddress|Ssid|DeviceName)$/;
-const COORDS = /^(min|max|start|end|direct)?(lat|lon|latitude|longitude)$/i;
+/** `lat`, `startLongitude`, `maxLat`, and camelCase suffixes such as a course's `lowerLeftLatitude`. */
+const COORDS = /^(min|max|start|end|direct)?(lat|lon|lng|latitude|longitude)$/i;
+/** Case-sensitive, so `flat` or `salon` are not taken for coordinates. */
+const COORD_SUFFIX = /[a-z](Lat|Lon|Lng|Latitude|Longitude)$/;
+const isCoordinate = (key: string): boolean => COORDS.test(key) || COORD_SUFFIX.test(key);
+/** An encoded track (string), e.g. a course's polyline; the shape alone shows where it is. */
+const POLYLINE = /polyline/i;
 /** Profile photo URLs and file names (`ownerProfileImageUrlSmall`, `profileImgNameMedium`, ...). */
 const PROFILE_IMAGE = /profileimage|profileimg/i;
 /** Uploaded photos under any key, e.g. a device's `imageUrl`. */
@@ -102,18 +136,36 @@ export interface CoordinateShift {
  * A weather station's id and name (e.g. an airport code) would reveal where the
  * activity took place, so every string inside `weatherStationDTO` is replaced.
  * Device serial numbers, MAC addresses, network and device names are replaced
- * too (see DEVICE_IDENTIFIERS).
+ * too (see DEVICE_IDENTIFIERS). Courses, training plans and races carry place
+ * and event names (`courseName`, `eventName`...) and encoded polylines, which
+ * are replaced; `names` replaces every `name` as well, for recordings where
+ * nothing but the owner names things (see NAMED_BY_OWNER).
  */
-export function anonymize(value: unknown, shift: CoordinateShift = { lat: Math.random(), lon: Math.random() }): unknown {
+export function anonymize(
+  value: unknown,
+  shift: CoordinateShift = { lat: Math.random(), lon: Math.random() },
+  options: AnonymizeOptions = {},
+): unknown {
+  const ctx: Scrub = { shift, names: options.names ?? false };
   if (value && typeof value === 'object' && !Array.isArray(value)) {
-    const out = Object.fromEntries(Object.entries(value).map(([k, v]) => [k, k === 'id' && typeof v === 'number' ? 90001 : scrub(v, k, shift)]));
+    const out = Object.fromEntries(Object.entries(value).map(([k, v]) => [k, k === 'id' && typeof v === 'number' ? 90001 : scrub(v, k, ctx)]));
     return scrubMetricRows(out, shift);
   }
-  return scrub(value, '', shift);
+  return scrub(value, '', ctx);
+}
+
+export interface AnonymizeOptions {
+  /** Replace every `name` string too: plan, course, course point, goal and event names. */
+  names?: boolean;
+}
+
+interface Scrub {
+  shift: CoordinateShift;
+  names: boolean;
 }
 
 function coordinate(value: number, key: string, shift: CoordinateShift): number {
-  const by = /lat/i.test(key) ? shift.lat : shift.lon;
+  const by = /lat(itude)?$/i.test(key) ? shift.lat : shift.lon;
   return Math.round((((value % 1) + by) % 1) * 1e5) / 1e5;
 }
 
@@ -122,7 +174,7 @@ function scrubMetricRows(out: Record<string, unknown>, shift: CoordinateShift): 
   if (!Array.isArray(descriptors) || !Array.isArray(rows)) return out;
   const columns = new Map<number, string>();
   for (const d of descriptors as { metricsIndex?: unknown; key?: unknown }[]) {
-    if (typeof d.metricsIndex === 'number' && typeof d.key === 'string' && COORDS.test(d.key)) columns.set(d.metricsIndex, d.key);
+    if (typeof d.metricsIndex === 'number' && typeof d.key === 'string' && isCoordinate(d.key)) columns.set(d.metricsIndex, d.key);
   }
   return {
     ...out,
@@ -134,28 +186,31 @@ function scrubMetricRows(out: Record<string, unknown>, shift: CoordinateShift): 
   };
 }
 
-function scrub(value: unknown, key: string, shift: CoordinateShift): unknown {
-  if (Array.isArray(value)) return value.map((v) => scrub(v, key, shift));
+function scrub(value: unknown, key: string, ctx: Scrub): unknown {
+  const { shift } = ctx;
+  if (Array.isArray(value)) return value.map((v) => scrub(v, key, ctx));
   if (key === 'weatherStationDTO' && value && typeof value === 'object') {
     return Object.fromEntries(
-      Object.entries(value).map(([k, v]) => [k, typeof v === 'string' ? 'anon-weatherStation' : scrub(v, k, shift)]),
+      Object.entries(value).map(([k, v]) => [k, typeof v === 'string' ? 'anon-weatherStation' : scrub(v, k, ctx)]),
     );
   }
   if (value && typeof value === 'object') {
-    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, scrub(v, k, shift)]));
+    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, scrub(v, k, ctx)]));
   }
+  if (typeof value === 'string' && (POLYLINE.test(key) || (ctx.names && key === 'name'))) return `anon-${key}`;
   if (DEVICE_IDENTIFIERS.test(key) && (typeof value === 'string' || typeof value === 'number')) return typeof value === 'number' ? 90002 : `anon-${key}`;
   if (typeof value === 'string' && PERSONAL_STRINGS.has(key.toLowerCase())) return key === 'birthDate' ? '1990-01-01' : `anon-${key}`;
   if (typeof value === 'string' && (PROFILE_IMAGE.test(key) || UPLOADED_IMAGE.test(value))) return `anon-${key}`;
   if (typeof value === 'string' && /[\w.+-]+@[\w-]+\.[\w.]+/.test(value)) return value.replaceAll(/[\w.+-]+@[\w-]+\.[\w.]+/g, 'anon@example.com');
   if (typeof value === 'number' && PERSONAL_IDS.has(key)) return 90001;
-  if (typeof value === 'number' && COORDS.test(key)) return coordinate(value, key, shift);
+  if (typeof value === 'number' && isCoordinate(key)) return coordinate(value, key, shift);
   return value;
 }
 
 export function writeFixture(dir: string, name: string, data: unknown): string {
   fs.mkdirSync(dir, { recursive: true });
   const file = path.join(dir, `${name}.json`);
-  fs.writeFileSync(file, `${JSON.stringify(anonymize(data), null, 2)}\n`);
+  const shift = { lat: Math.random(), lon: Math.random() };
+  fs.writeFileSync(file, `${JSON.stringify(anonymize(data, shift, { names: NAMED_BY_OWNER.has(name) }), null, 2)}\n`);
   return file;
 }

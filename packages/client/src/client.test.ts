@@ -104,6 +104,69 @@ describe('GarminClient', () => {
     expect(results.every((r) => r !== undefined && r !== null)).toBe(true);
   });
 
+  // Paths of stage 8 endpoints are not confirmed by a recording yet (E8-2); this pins what the client sends.
+  it.each<[string, (c: GarminClient) => Promise<unknown>, string, unknown]>([
+    ['typed splits', (c) => c.getActivityTypedSplits(20000000002), '/activity-service/activity/20000000002/typedsplits', {}],
+    ['split summaries', (c) => c.getActivitySplitSummaries(20000000002), '/activity-service/activity/20000000002/split_summaries', {}],
+    ['training plans', (c) => c.listTrainingPlans(), '/trainingplan-service/trainingplan/plans', {}],
+    ['phased plan', (c) => c.getTrainingPlan(51), '/trainingplan-service/trainingplan/phased/51', {}],
+    ['adaptive plan', (c) => c.getAdaptiveTrainingPlan(52), '/trainingplan-service/trainingplan/fbt-adaptive/52', {}],
+    [
+      'lactate threshold heart rate',
+      (c) => c.getLactateThresholdHeartRate('2025-10-07', '2026-10-07'),
+      '/biometric-service/stats/lactateThresholdHeartRate/range/2025-10-07/2026-10-07?sport=RUNNING&aggregation=daily&aggregationStrategy=LATEST',
+      [],
+    ],
+    [
+      'lactate threshold speed',
+      (c) => c.getLactateThresholdSpeed('2025-10-07', '2026-10-07'),
+      '/biometric-service/stats/lactateThresholdSpeed/range/2025-10-07/2026-10-07?sport=RUNNING&aggregation=daily&aggregationStrategy=LATEST',
+      [],
+    ],
+    ['cycling FTP', (c) => c.getCyclingFtp(), '/biometric-service/biometric/latestFunctionalThresholdPower/CYCLING', {}],
+    ['hydration', (c) => c.getHydration('2026-10-07'), '/usersummary-service/usersummary/hydration/daily/2026-10-07', {}],
+    [
+      'blood pressure',
+      (c) => c.getBloodPressure('2026-09-08', '2026-10-07'),
+      '/bloodpressure-service/bloodpressure/range/2026-09-08/2026-10-07?includeAll=true',
+      {},
+    ],
+    ['daily events', (c) => c.getDailyEvents('2026-10-07'), '/wellness-service/wellness/dailyEvents?calendarDate=2026-10-07', []],
+    ['goals', (c) => c.getGoals(), '/goal-service/goal/goals?status=active&start=1&limit=100', []],
+    ['past goals', (c) => c.getGoals('past'), '/goal-service/goal/goals?status=past&start=1&limit=100', []],
+    ['courses', (c) => c.listCourses(), '/course-service/course', {}],
+    ['course', (c) => c.getCourse(4242), '/course-service/course/4242', {}],
+    [
+      'device solar',
+      (c) => c.getDeviceSolar(3333, '2026-10-01', '2026-10-07'),
+      '/web-gateway/solar/3333/2026-10-01/2026-10-07?singleDayView=false',
+      {},
+    ],
+    ['solar of one day', (c) => c.getDeviceSolar(3333, '2026-10-07'), '/web-gateway/solar/3333/2026-10-07/2026-10-07?singleDayView=true', {}],
+    ['nutrition', (c) => c.getNutritionDay('2026-10-07'), '/nutrition-service/food/logs/2026-10-07', {}],
+    ['menstrual day', (c) => c.getMenstrualDay('2026-10-07'), '/periodichealth-service/menstrualcycle/dayview/2026-10-07', {}],
+    ['earned badges', (c) => c.getEarnedBadges(), '/badge-service/badge/earned', []],
+    ['badge challenges', (c) => c.getBadgeChallengesInProgress(), '/badgechallenge-service/badgeChallenge/non-completed?start=1&limit=100', []],
+  ])('requests %s from the expected path', async (_name, call, expected, body) => {
+    const seen: string[] = [];
+    server.use(
+      http.get(`${API}/*`, ({ request }) => {
+        const url = new URL(request.url);
+        seen.push(url.pathname + url.search);
+        return HttpResponse.json(body as never);
+      }),
+    );
+    await expect(call(makeClient().client)).resolves.toEqual(body);
+    expect(seen).toEqual([expected]);
+  });
+
+  it('checks ids and dates of stage 8 endpoints before any request', async () => {
+    const { client } = makeClient();
+    await expect(client.getCourse(0)).rejects.toBeInstanceOf(InputError);
+    await expect(client.getDeviceSolar(-3, '2026-10-07')).rejects.toBeInstanceOf(InputError);
+    await expect(client.getBloodPressure('2026-13-01')).rejects.toBeInstanceOf(InputError);
+  });
+
   it('pages through all activities', async () => {
     const pages: number[] = [];
     const { client } = makeClient();
