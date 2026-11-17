@@ -11,7 +11,7 @@ import * as output from './output.js';
 import { compileWorkout } from './workouts/index.js';
 
 /** Note of every splits answer from the recorded typed splits (the fake serves them for any activity but 2). */
-const MERGED_NOTE = '5 run, walk or stand splits under 60 s are merged into a neighbour in typed_splits; split_summaries count all.';
+const MERGED_NOTE = '5 run, walk or stand splits under 120 s are merged into a neighbour in typed_splits; split_summaries count all.';
 
 describe('GarminService', () => {
   it('lists activities from cache with cursor paging', async () => {
@@ -331,7 +331,7 @@ describe('GarminService', () => {
     const { service, store, count } = setup({ activities: [summary(1, '2026-10-07'), summary(2, '2026-10-07')] });
     const res = await service.getActivity(1, 'splits');
     // ClimbPro climb sections are left out; the rest follows the start time. Run, walk and stand
-    // splits under a minute are merged: the 7 s stand at the start into the next run, the 11 s runs
+    // splits under two minutes are merged: the 7 s stand at the start into the next run, the 11 s runs
     // and the late stands into the walk before them.
     expect(res.data.typed_splits?.map((t) => [t.type, t.start, t.duration])).toEqual([
       ['interval_active', '09:00:03', '6:33:44'],
@@ -410,15 +410,15 @@ describe('GarminService', () => {
     expect(count('getActivitySplitSummaries')).toBe(2);
   });
 
-  it('leaves typed splits of a minute and more as they are, without a note', async () => {
+  it('leaves typed splits of two minutes and more as they are, without a note', async () => {
     const { service, store } = setup({ activities: [summary(3, '2026-10-07')] });
     const split = (type: string, start: string, duration: number) => ({ type, startTimeLocal: `2026-10-07T${start}.0`, startTimeGMT: `2026-10-07T${start}.0`, duration, distance: duration * 3 });
-    store.putActivityDetail(3, 'typed_splits', { splits: [split('RWD_RUN', '07:00:00', 600), split('RWD_WALK', '07:10:00', 60), split('RWD_STAND', '07:11:00', 90)] }, NOW);
+    store.putActivityDetail(3, 'typed_splits', { splits: [split('RWD_RUN', '07:00:00', 600), split('RWD_WALK', '07:10:00', 120), split('RWD_STAND', '07:12:00', 150)] }, NOW);
     const res = await service.getActivity(3, 'splits');
     expect(res.data.typed_splits?.map((t) => [t.type, t.duration])).toEqual([
       ['run', '10:00'],
-      ['walk', '1:00'],
-      ['stand', '1:30'],
+      ['walk', '2:00'],
+      ['stand', '2:30'],
     ]);
     expect(res.meta.note).toBeUndefined();
   });

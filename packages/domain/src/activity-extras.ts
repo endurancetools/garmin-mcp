@@ -191,7 +191,7 @@ function splitNumbers(s: Obj, type: string | undefined, sport: string | undefine
  * Run, walk and stand splits shorter than this many seconds are merged into a neighbouring one in
  * `typed_splits`: a long trail run has a hundred and more of them, mostly a few seconds each.
  */
-export const MIN_TYPED_SPLIT_S = 60;
+export const MIN_TYPED_SPLIT_S = 120;
 /** The run/walk/stand splits; only these are merged. Climbs and intervals overlap them and stay as they are. */
 const MOTION_SPLITS = new Set(['RWD_RUN', 'RWD_WALK', 'RWD_STAND']);
 

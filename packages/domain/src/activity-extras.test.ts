@@ -11,12 +11,12 @@ const rows = (...splits: ReturnType<typeof split>[]) => typedSplits({ splits }, 
 const shape = (r: ReturnType<typeof rows>) => r.splits.map((s) => [s.type, s.start, s.duration]);
 
 describe('typedSplits', () => {
-  it('merges splits under a minute', () => {
-    expect(MIN_TYPED_SPLIT_S).toBe(60);
-    expect(shape(rows(split('RWD_RUN', 0, 300), split('RWD_WALK', 300, 59)))).toEqual([['run', '07:00:00', '5:59']]);
-    expect(shape(rows(split('RWD_RUN', 0, 300), split('RWD_WALK', 300, 60)))).toEqual([
+  it('merges splits under two minutes', () => {
+    expect(MIN_TYPED_SPLIT_S).toBe(120);
+    expect(shape(rows(split('RWD_RUN', 0, 300), split('RWD_WALK', 300, 119)))).toEqual([['run', '07:00:00', '6:59']]);
+    expect(shape(rows(split('RWD_RUN', 0, 300), split('RWD_WALK', 300, 120)))).toEqual([
       ['run', '07:00:00', '5:00'],
-      ['walk', '07:05:00', '1:00'],
+      ['walk', '07:05:00', '2:00'],
     ]);
   });
 
@@ -57,9 +57,9 @@ describe('typedSplits', () => {
   });
 
   it('keeps the type of a group of short splits at the start when it is the longer one', () => {
-    const r = rows(split('RWD_WALK', 0, 50), split('RWD_RUN', 50, 40), split('RWD_RUN', 90, 70));
+    const r = rows(split('RWD_WALK', 0, 100), split('RWD_RUN', 100, 80), split('RWD_RUN', 180, 140));
     expect(r.merged).toBe(2);
-    expect(shape(r)).toEqual([['walk', '07:00:00', '2:40']]);
+    expect(shape(r)).toEqual([['walk', '07:00:00', '5:20']]);
   });
 
   it('neither merges climbs and intervals nor lets them stop the merging around them', () => {
@@ -83,13 +83,13 @@ describe('typedSplits', () => {
     expect(r.splits[2]).toMatchObject({ avg_grade_pct: 8, max_grade_pct: 12 });
   });
 
-  it('changes nothing when every split is a minute or longer', () => {
-    const splits = [split('RWD_RUN', 0, 600), split('RWD_WALK', 600, 60), split('RWD_STAND', 660, 90, { distance: 0 })];
+  it('changes nothing when every split is two minutes or longer', () => {
+    const splits = [split('RWD_RUN', 0, 600), split('RWD_WALK', 600, 120), split('RWD_STAND', 720, 150, { distance: 0 })];
     const r = rows(...splits);
     expect(r.merged).toBe(0);
     expect(r).toEqual(typedSplits({ splits }, 'running', 0));
     // Standing has no pace.
-    expect(r.splits[2]).toEqual({ type: 'stand', start: '07:11:00', duration: '1:30', distance_km: 0, avg_hr_bpm: 150, max_hr_bpm: 160 });
+    expect(r.splits[2]).toEqual({ type: 'stand', start: '07:12:00', duration: '2:30', distance_km: 0, avg_hr_bpm: 150, max_hr_bpm: 160 });
   });
 
   it('merges the recorded trail run', () => {
