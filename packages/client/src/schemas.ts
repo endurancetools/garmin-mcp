@@ -490,6 +490,11 @@ export const calendarItemSchema = z.looseObject({
   workoutId: int,
   activityTypeId: int,
   sportTypeKey: str,
+  /** Set (not 0) on workouts of a training plan, e.g. `itemType` `fbtAdaptiveWorkout` (Garmin Coach), which have no `workoutId`. */
+  trainingPlanId: int,
+  /** E.g. `FBT_ADAPTIVE` on a Garmin Coach workout. */
+  tpType: str,
+  workoutUuid: str,
 });
 export type CalendarItem = z.infer<typeof calendarItemSchema>;
 export const calendarMonthSchema = z.looseObject({

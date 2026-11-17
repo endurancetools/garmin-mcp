@@ -6,13 +6,14 @@ import {
   endOfMonth,
   GarminError,
   InputError,
+  isIsoDate,
   silentLogger,
   startOfMonth,
   startOfWeek,
   type IsoDate,
   type Logger,
 } from 'garmin-mcp-config';
-import { errInfo, isFresh, SCOPE_DAILY, signInPause, TTL, type DailyKind, type DetailKind, type EnsureResult, type ReferenceKind, type Store, type SyncJobProgress, type SyncJobReport, type SyncJobRunner, type SyncScope, type Syncer } from 'garmin-mcp-store';
+import { errInfo, FATAL_CODES, isFresh, SCOPE_DAILY, signInPause, TTL, type DailyKind, type DetailKind, type EnsureResult, type ReferenceKind, type Store, type SyncJobProgress, type SyncJobReport, type SyncJobRunner, type SyncScope, type Syncer, type TrainingPlanCache } from 'garmin-mcp-store';
 import fs from 'node:fs';
 import path from 'node:path';
 import { activityBrief, activityListItem, eventTypeKey, periodActivitySummary } from './activities.js';
@@ -36,6 +37,7 @@ import { sleepNight, sleepRange, sleepTimeline } from './sleep.js';
 import { filterStream, streamSummary, type StreamBucket, type StreamSummary } from './stream.js';
 import { trend } from './stats.js';
 import { trainingOverview } from './training.js';
+import { planName, planWorkoutLine, trainingPlanBlock } from './training-plan.js';
 import { compileWorkout, describeWorkout, estimateWorkoutDuration, isGarminWorkoutJson, presetDefinition, SPORT_KEYS, workoutStepsByIndex, type WorkoutDefinition, type WorkoutPreset } from './workouts/index.js';
 import { unzip } from './zip.js';
 import { z } from 'zod';
@@ -1380,10 +1382,18 @@ export class GarminService {
     const started = this.#now();
     const ensured = await this.syncer.ensureReference('workouts', this.#budget);
     const calendar = await this.syncer.ensureCalendar(from, to, Math.max(0, this.#budget - (this.#now() - started)));
+    const plan = await this.#activePlan();
     const rows = this.store.getWorkouts({ sport: q.sport, limit: Math.min(q.limit ?? 50, 200) });
     const scheduled = this.store.getSchedule(from, to);
     const events = this.store.getCalendarEvents(from, to);
-    const meta = this.#meta([ensured, calendar], [this.store.referenceFetchedAt('workouts')], this.#calendarGap(from, to));
+    const planOf = (s: (typeof scheduled)[number]) => (plan.cached && plan.cached.id === s.raw.trainingPlanId ? plan.cached.raw : undefined);
+    let meta = this.#meta(
+      [ensured, calendar, ...(plan.result ? [plan.result] : [])],
+      [this.store.referenceFetchedAt('workouts'), plan.result && plan.cached?.fetched_at],
+      this.#calendarGap(from, to),
+    );
+    if (plan.note) meta = withNote(meta, plan.note);
+    if (q.sport !== undefined && rows.length === 0) meta = withNote(meta, workoutSportNote(q.sport));
     return {
       data: compact({
         from,
@@ -1399,11 +1409,68 @@ export class GarminService {
             estimated_distance_km: km(w.raw.estimatedDistanceInMeters),
           }),
         ),
-        upcoming_schedule: scheduled.map((s) => compact({ date: s.date, workout_id: s.workout_id, title: s.raw.title, schedule_id: s.id })),
+        upcoming_schedule: scheduled.map((s) =>
+          s.source === 'plan'
+            ? compact({
+                date: s.date,
+                workout_id: s.workout_id,
+                title: s.raw.title,
+                schedule_id: s.id,
+                source: s.source,
+                plan_name: planName(planOf(s)),
+                sport: s.raw.sportTypeKey,
+                description: planWorkoutLine(planOf(s), s.date, s.raw.workoutUuid),
+              })
+            : compact({ date: s.date, workout_id: s.workout_id, title: s.raw.title, schedule_id: s.id, source: s.source }),
+        ),
         upcoming_events: events.map((e) => compact(calendarEvent(e.raw))),
+        plan:
+          plan.cached?.raw && plan.active
+            ? trainingPlanBlock(plan.cached.raw, plan.active.adaptive, this.today(), this.#planEvents(plan.cached.raw))
+            : undefined,
       }),
-      meta: q.sport !== undefined && rows.length === 0 ? withNote(meta, workoutSportNote(q.sport)) : meta,
+      meta,
     };
+  }
+
+  /**
+   * The training plan with the nearest workout on the calendar from today on: one request (the
+   * adaptive or the phased plan), fetched lazily by `list_workouts` and kept for the reference
+   * TTL (1 h), within the daily request limit; no sync job fetches it. A plan Garmin does not
+   * give is stored as null, so it is not asked for again within the TTL.
+   */
+  async #activePlan(): Promise<{ active?: { id: number; adaptive: boolean }; cached?: TrainingPlanCache; result?: EnsureResult; note?: string }> {
+    const [active] = this.store.plansFrom(this.today());
+    if (!active) return {};
+    const stored = this.store.getTrainingPlan();
+    const cached = stored?.id === active.id ? stored : undefined;
+    if ((cached && isFresh(cached.fetched_at, TTL.reference, this.#now())) || !this.syncer.fetchOnDemand) {
+      return { active, cached, result: cached && { source: 'cache' } };
+    }
+    try {
+      const res = await this.syncer.lazyRequest(`plan:${active.id}`, () =>
+        active.adaptive ? this.client.getAdaptiveTrainingPlan(active.id) : this.client.getTrainingPlan(active.id),
+      );
+      if ('blocked' in res) {
+        const why = res.blocked.reason === 'budget' ? 'The daily Garmin request limit is used up' : 'Syncing with Garmin is paused';
+        return { active, cached, result: cached && { source: 'cache' }, note: `${why}; the training plan downloads after ${iso(res.blocked.resume_at)} when asked again.` };
+      }
+      this.store.setTrainingPlan(active.id, res.value ?? null, this.#now());
+    } catch (err) {
+      const info = errInfo(err);
+      if (!FATAL_CODES.has(info.code)) this.store.setTrainingPlan(active.id, null, this.#now());
+      return { active, cached, result: cached && { source: 'cache' }, note: `The training plan could not be downloaded (${info.code}), so its workouts come without the plan details.` };
+    }
+    return { active, cached: this.store.getTrainingPlan(), result: { source: 'live' } };
+  }
+
+  /** Cached races and events within the plan's dates, for its target event. */
+  #planEvents(raw: unknown) {
+    const p = (raw ?? {}) as { startDate?: unknown; endDate?: unknown };
+    const from = typeof p.startDate === 'string' ? p.startDate.slice(0, 10) : undefined;
+    const to = typeof p.endDate === 'string' ? p.endDate.slice(0, 10) : undefined;
+    if (!from || !to || !isIsoDate(from) || !isIsoDate(to)) return [];
+    return this.store.getCalendarEvents(from, to).map((e) => calendarEvent(e.raw));
   }
 
   /**
@@ -1492,6 +1559,17 @@ export class GarminService {
     }
     const removed = [];
     for (const scheduleId of unschedule) {
+      const entry = this.store.getScheduleItem(scheduleId);
+      if (entry?.source === 'plan') {
+        const plan = this.store.getTrainingPlan();
+        const name = plan && plan.id === entry.raw.trainingPlanId ? planName(plan.raw) : undefined;
+        removed.push({
+          schedule_id: scheduleId,
+          ok: false,
+          error: `This is a workout of the training plan${name ? ` "${name}"` : ''} (${entry.date}), not one scheduled from the library; the plan is not changed here. Move or skip it in Garmin Connect or on the watch.`,
+        });
+        continue;
+      }
       try {
         await this.client.deleteWorkoutSchedule(scheduleId);
         this.store.deleteSchedule(scheduleId);

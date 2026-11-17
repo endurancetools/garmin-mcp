@@ -289,4 +289,11 @@ export const MIGRATIONS: readonly string[] = [
   DROP TABLE activity_details;
   ALTER TABLE activity_details_v9 RENAME TO activity_details;
   `,
+  /* 10 */ `
+  -- Workouts of a training plan (Garmin Coach...) sit on the calendar next to the ones scheduled
+  -- from the library; they have no library workout and cannot be unscheduled here.
+  ALTER TABLE workout_schedule ADD COLUMN source TEXT NOT NULL DEFAULT 'library' CHECK (source IN ('library', 'plan'));
+  -- Months cached before skipped plan workouts: the next read fetches them again.
+  DELETE FROM meta WHERE key = 'calendar:months';
+  `,
 ];

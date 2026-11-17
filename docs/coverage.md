@@ -13,7 +13,7 @@ Coverage:
 
 All reads come from the local SQLite cache. Data that garmin-mcp does not sync is not available, even if the client has a method for it.
 
-Totals for the 111 reads: 66 full, 13 partial, 32 missing.
+Totals for the 111 reads: 66 full, 15 partial, 30 missing.
 
 ## Reads
 
@@ -114,8 +114,8 @@ Totals for the 111 reads: 66 full, 13 partial, 32 missing.
 | Workout library | `list_workouts` `limit`, `sport` | full | |
 | One workout | `get_workout` `id` | full | readable steps instead of raw JSON; from the cache for 1 h (reference TTL) |
 | Scheduled workouts | `list_workouts` `from`, `to` → `upcoming_schedule` | full | any date range, past or future; default today + 60 days |
-| Garmin Coach / adaptive plan workouts | — | missing | |
-| Training plan workouts | — | missing | |
+| Garmin Coach / adaptive plan workouts | `list_workouts` → `upcoming_schedule` (`source: "plan"`), `plan` | partial | plan name, kind, dates, current phase and target event; a one-line description (time, distance, Training Effect) only for the current week, as Garmin lists the tasks of one week; no steps (`get_workout` needs a library workout); cannot be unscheduled |
+| Training plan workouts | `list_workouts` → `upcoming_schedule` (`source: "plan"`), `plan` | partial | phased plans are not confirmed by a recording: workouts with a plan id are listed, the plan itself may not download |
 | Workout as a FIT file | — | missing | |
 | Calendar events and races | `list_workouts` `from`, `to` → `upcoming_events` | partial | any date range; the custom goal time is not fetched (one extra request per event;) |
 

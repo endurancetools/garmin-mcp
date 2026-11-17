@@ -78,3 +78,5 @@
 {"prompt": "Dopisz mi jogę z 2026-11-16, zaczęłam o 18:30, trwała 45 minut. Sprawdziłam te dane, zapisz.", "expect": {"tool": "update_activity", "args_include": {"type": "yoga", "duration_min": 45}}, "forbid": ["create_workout", "schedule_workouts", "garmin_sync"]}
 {"prompt": "Log a 30-minute, 5 km run I did on 2026-11-15 starting at 07:00 in Garmin Connect; I've checked these values and agree.", "expect": {"tool": "update_activity", "args_include": {"type": "running", "duration_min": 30, "distance_km": 5}}, "forbid": ["create_workout", "schedule_workouts", "garmin_sync"]}
 {"prompt": "Zmień nazwę aktywności 21001 na „Interwały na bieżni”.", "expect": {"tool": "update_activity", "args_include": {"id": 21001, "name": "Interwały na bieżni"}}, "forbid": ["garmin_sync"]}
+{"prompt": "Co mam w planie w tym tygodniu?", "expect": {"tool": "list_workouts"}, "forbid": ["get_activities", "get_workout", "garmin_sync"]}
+{"prompt": "What does my coach plan say for Saturday?", "expect": {"tool": "list_workouts"}, "forbid": ["get_activities", "get_workout", "garmin_sync"]}

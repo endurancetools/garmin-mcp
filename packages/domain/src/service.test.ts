@@ -878,7 +878,9 @@ describe('GarminService', () => {
     const { service, calls } = setup();
     const res = await service.listWorkouts({});
     expect(calls.map((c) => c.method).toSorted()).toEqual(['getCalendar', 'getCalendar', 'getCalendar', 'listWorkouts']);
-    expect(res.data.upcoming_schedule).toEqual([{ date: '2026-10-08', workout_id: 3318316454, title: 'anon-title', schedule_id: 3153502322 }]);
+    expect(res.data.upcoming_schedule).toEqual([{ date: '2026-10-08', workout_id: 3318316454, title: 'anon-title', schedule_id: 3153502322, source: 'library' }]);
+    // No training plan on the calendar: no plan request, no plan block.
+    expect(res.data.plan).toBeUndefined();
     expect(res.data.upcoming_events).toEqual([
       {
         id: 30000003,
@@ -893,6 +895,64 @@ describe('GarminService', () => {
         url: 'https://example.com/half',
       },
     ]);
+  });
+
+  it('lists the workouts of a Garmin Coach plan with a line from the plan week and the plan block', async () => {
+    const now = Date.parse('2026-11-17T12:00:00Z');
+    const { service, calls, count } = setup({ plan: true, now });
+    const res = await service.listWorkouts({ from: '2026-11-16', to: '2026-11-30' });
+    expect(calls.filter((c) => c.method === 'getAdaptiveTrainingPlan').map((c) => c.args)).toEqual([[32869447]]);
+    expect(count('getTrainingPlan')).toBe(0);
+    const plan = { source: 'plan', plan_name: 'anon-name', sport: 'running', title: 'anon-title' };
+    expect(res.data.upcoming_schedule).toEqual([
+      { date: '2026-11-17', schedule_id: 9887721846739, ...plan, description: '30 min, 5.5 km, aerobic base' },
+      { date: '2026-11-18', schedule_id: 7708016743965, ...plan, description: '59 min, 10.8 km, aerobic base' },
+      { date: '2026-11-19', schedule_id: 4029156030163, ...plan, description: '30 min, 5.5 km, aerobic base' },
+      { date: '2026-11-21', schedule_id: 8323686352597, ...plan, description: '40 min, 7.3 km, aerobic base' },
+      { date: '2026-11-22', schedule_id: 9173447710960, ...plan, description: '50 min, 9.7 km, tempo, key workout' },
+    ]);
+    // The plan start (itemType "trainingPlan") is not a workout.
+    expect(res.data.upcoming_schedule?.map((s) => s.schedule_id)).not.toContain(32869447);
+    expect(res.data.plan).toEqual({
+      name: 'anon-name',
+      kind: 'adaptive',
+      sport: 'running',
+      from: '2026-11-17',
+      to: '2027-03-09',
+      phase: { name: 'base', from: '2026-11-17', to: '2026-12-27' },
+      target_event: { date: '2027-03-09' },
+    });
+    expect(output.listWorkoutsOutput.safeParse(JSON.parse(JSON.stringify(res))).error).toBeUndefined();
+    // Within the reference TTL the plan comes from the cache; a day beyond the plan week has no line.
+    const later = await service.listWorkouts({ from: '2026-11-16', to: '2026-12-31' });
+    expect(count('getAdaptiveTrainingPlan')).toBe(1);
+    expect(later.data.plan?.name).toBe('anon-name');
+  });
+
+  it('lists plan workouts without the plan details when Garmin does not give the plan, and asks again only after the TTL', async () => {
+    const now = Date.parse('2026-11-17T12:00:00Z');
+    const { service, count } = setup({ plan: true, now });
+    const spy = vi.spyOn(service.client, 'getAdaptiveTrainingPlan').mockRejectedValue(new GarminError('NOT_FOUND', 'Garmin returned 404'));
+    const res = await service.listWorkouts({ from: '2026-11-17', to: '2026-11-17' });
+    expect(res.data.upcoming_schedule).toEqual([{ date: '2026-11-17', title: 'anon-title', schedule_id: 9887721846739, source: 'plan', sport: 'running' }]);
+    expect(res.data.plan).toBeUndefined();
+    expect(res.meta.note).toMatch(/training plan could not be downloaded \(NOT_FOUND\)/);
+    await service.listWorkouts({ from: '2026-11-17', to: '2026-11-17' });
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(count('getAdaptiveTrainingPlan')).toBe(0);
+  });
+
+  it('refuses to unschedule a plan workout and leaves the plan alone', async () => {
+    const now = Date.parse('2026-11-17T12:00:00Z');
+    const { service, store, calls } = setup({ plan: true, now });
+    await service.listWorkouts({ from: '2026-11-17', to: '2026-11-30' });
+    const res = await service.scheduleWorkouts([], [9887721846739]);
+    expect(res.data).toMatchObject({ unscheduled: 0, failed: 1 });
+    expect(res.data.unschedule_results).toEqual([
+      { schedule_id: 9887721846739, ok: false, error: expect.stringMatching(/^This is a workout of the training plan "anon-name" \(2026-11-17\), not one scheduled from the library; the plan is not changed here\./) },
+    ]);
+    expect(calls.filter((c) => c.method === 'deleteWorkoutSchedule')).toEqual([]);
+    expect(store.getSchedule('2026-11-17', '2026-11-17')).toHaveLength(1);
   });
 
   it('reads the calendar in any date range and hints a reference sync for months not synced', async () => {

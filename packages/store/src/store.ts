@@ -68,12 +68,34 @@ export interface WorkoutRow {
   fetched_at: number;
 }
 
+/** `plan`: a workout of a training plan (Garmin Coach...), without a library workout; `library`: scheduled from the library. */
+export type ScheduleSource = 'library' | 'plan';
+
 export interface ScheduleRow {
   id: number;
   workout_id: number | null;
   date: string | null;
+  source: ScheduleSource;
   raw: CalendarItem;
   fetched_at: number;
+}
+
+/** The active training plan as `list_workouts` last fetched it; `raw` is null when Garmin did not give it. */
+export interface TrainingPlanCache {
+  id: number;
+  raw: unknown;
+  fetched_at: number;
+}
+
+/**
+ * Where a calendar item belongs: a library workout (type "workout" without a plan), a plan
+ * workout (type "fbtAdaptiveWorkout" of Garmin Coach, or any workout type carrying a
+ * `trainingPlanId`; library workouts have 0 there), or neither.
+ */
+export function scheduleSource(it: CalendarItem): ScheduleSource | undefined {
+  if (typeof it.itemType !== 'string' || !/workout$/i.test(it.itemType)) return undefined;
+  if (it.itemType === 'fbtAdaptiveWorkout' || (it.trainingPlanId ?? 0) > 0) return 'plan';
+  return it.itemType === 'workout' ? 'library' : undefined;
 }
 
 export interface CalendarEventRow {
@@ -588,17 +610,18 @@ export class Store {
   }
 
   /**
-   * Replace the calendar in [from, to]: items of type "workout" go to `workout_schedule`,
-   * races and events (type "event") to `calendar_events`. Other item types (activities,
-   * weigh-ins, badges, …) duplicate other tables and are skipped, and so are items outside
+   * Replace the calendar in [from, to]: library and training plan workouts (`scheduleSource`)
+   * go to `workout_schedule` with their source, races and events (type "event") to
+   * `calendar_events`. Other item types (activities, weigh-ins, badges, the start of a plan…)
+   * duplicate other tables or say nothing to plan by and are skipped, and so are items outside
    * [from, to]: a month's calendar also shows the last days of the previous month, which only
    * that month's own refresh may replace. Events without a calendar id (races added from Garmin's
    * event catalogue) are kept under their `shareableEventUuid`.
    */
   replaceSchedule(from: IsoDate, to: IsoDate, items: readonly CalendarItem[], fetchedAt: number): void {
     const workout = this.db.prepare(
-      `INSERT INTO workout_schedule (id, workout_id, date, raw, fetched_at) VALUES (?, ?, ?, ?, ?)
-       ON CONFLICT(id) DO UPDATE SET workout_id = excluded.workout_id, date = excluded.date, raw = excluded.raw, fetched_at = excluded.fetched_at`,
+      `INSERT INTO workout_schedule (id, workout_id, date, source, raw, fetched_at) VALUES (?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET workout_id = excluded.workout_id, date = excluded.date, source = excluded.source, raw = excluded.raw, fetched_at = excluded.fetched_at`,
     );
     const event = this.db.prepare(
       `INSERT INTO calendar_events (key, id, date, raw, fetched_at) VALUES (?, ?, ?, ?, ?)
@@ -609,8 +632,10 @@ export class Store {
       this.db.prepare('DELETE FROM calendar_events WHERE date >= ? AND date <= ?').run(from, to);
       for (const it of items) {
         if (!it.date || it.date < from || it.date > to) continue;
-        if (it.itemType === 'workout' && it.id != null) workout.run(it.id, it.workoutId ?? null, it.date, JSON.stringify(it), fetchedAt);
-        else if (it.itemType === 'event') {
+        const source = scheduleSource(it);
+        if (source !== undefined) {
+          if (it.id != null) workout.run(it.id, it.workoutId || null, it.date, source, JSON.stringify(it), fetchedAt);
+        } else if (it.itemType === 'event') {
           const key = calendarEventKey(it);
           if (key !== undefined) event.run(key, it.id ?? null, it.date, JSON.stringify(it), fetchedAt);
         }
@@ -635,6 +660,37 @@ export class Store {
 
   deleteSchedule(id: number): void {
     this.db.prepare('DELETE FROM workout_schedule WHERE id = ?').run(id);
+  }
+
+  getScheduleItem(id: number): ScheduleRow | undefined {
+    return parseRow<ScheduleRow>(this.db.prepare('SELECT * FROM workout_schedule WHERE id = ?').get(id) as RawRow | undefined);
+  }
+
+  /**
+   * Training plans with workouts on the calendar from `from` on, the one with the nearest workout
+   * first; `adaptive` for Garmin Coach (`fbtAdaptiveWorkout` / `tpType` `FBT_ADAPTIVE`).
+   */
+  plansFrom(from: IsoDate): { id: number; adaptive: boolean }[] {
+    const rows = this.db
+      .prepare(
+        `SELECT json_extract(raw, '$.trainingPlanId') AS plan, json_extract(raw, '$.tpType') AS tp_type,
+                json_extract(raw, '$.itemType') AS item_type, min(date) AS first
+         FROM workout_schedule
+         WHERE source = 'plan' AND date >= ? AND json_extract(raw, '$.trainingPlanId') > 0
+         GROUP BY plan ORDER BY first`,
+      )
+      .all(from) as { plan: number; tp_type: string | null; item_type: string | null }[];
+    return rows.map((r) => ({ id: r.plan, adaptive: r.tp_type === 'FBT_ADAPTIVE' || r.item_type === 'fbtAdaptiveWorkout' }));
+  }
+
+  /** The active training plan, kept as one JSON value in `meta` (fetched by `list_workouts`, no sync job). */
+  setTrainingPlan(id: number, raw: unknown, fetchedAt: number): void {
+    this.setMeta('training_plan', JSON.stringify({ id, raw, fetched_at: fetchedAt } satisfies TrainingPlanCache));
+  }
+
+  getTrainingPlan(): TrainingPlanCache | undefined {
+    const v = this.getMeta('training_plan');
+    return v === undefined ? undefined : (JSON.parse(v) as TrainingPlanCache);
   }
 
   getSchedule(from: IsoDate, to: IsoDate): ScheduleRow[] {

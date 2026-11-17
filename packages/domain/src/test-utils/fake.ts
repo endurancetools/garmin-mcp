@@ -47,7 +47,7 @@ export function summary(id: number, day: string, extra: Partial<ActivitySummary>
 }
 
 export function setup(
-  opts: { activities?: ActivitySummary[]; gone?: ReadonlySet<number>; zip?: Uint8Array; budgetMs?: number; delayMs?: number; autoFetch?: boolean; autoSync?: boolean; redact?: boolean; now?: number } = {},
+  opts: { activities?: ActivitySummary[]; plan?: boolean; gone?: ReadonlySet<number>; zip?: Uint8Array; budgetMs?: number; delayMs?: number; autoFetch?: boolean; autoSync?: boolean; redact?: boolean; now?: number } = {},
 ) {
   const now = opts.now ?? NOW;
   const calls: { method: string; args: unknown[] }[] = [];
@@ -253,7 +253,15 @@ export function setup(
     getCalendar: (year: number, month: number) =>
       rec('getCalendar', [year, month], () => {
         const recorded = fixture('calendar-month') as { calendarItems: unknown[] };
-        return { ...recorded, calendarItems: [...recorded.calendarItems, RACE] };
+        // With `plan`, the recorded Garmin Coach workouts (2026-11-17..22) and the plan start.
+        const plan = opts.plan ? (fixture('calendar-month-plan') as { calendarItems: unknown[] }).calendarItems : [];
+        return { ...recorded, calendarItems: [...recorded.calendarItems, RACE, ...plan] };
+      }),
+    getAdaptiveTrainingPlan: (id: number) => rec('getAdaptiveTrainingPlan', [id], () => fixture('adaptive-plan')),
+    // The phased plan path is not confirmed by a recording.
+    getTrainingPlan: (id: number) =>
+      rec('getTrainingPlan', [id], () => {
+        throw notFound(`trainingplan/phased/${id}`);
       }),
     getWorkout: (id: number) =>
       rec('getWorkout', [id], () => {

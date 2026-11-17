@@ -340,10 +340,21 @@ export const listWorkoutsOutput = envelope({
   from: str,
   to: str,
   workouts: list(z.looseObject({ id: num, name: str, sport: str, updated: str, description: str, estimated_duration: str, estimated_distance_km: num })),
-  upcoming_schedule: list(z.looseObject({ date: str, workout_id: num, title: str, schedule_id: num })),
+  upcoming_schedule: list(
+    z.looseObject({ date: str, workout_id: num, title: str, schedule_id: num, source: z.enum(['library', 'plan']).optional(), plan_name: str, sport: str, description: str }),
+  ),
   upcoming_events: list(
     z.looseObject({ id: num, date: str, title: str, race: bool, primary: bool, distance_km: num, start_time: str, time_zone: str, location: str, url: str }),
   ),
+  plan: obj({
+    name: str,
+    kind: z.enum(['adaptive', 'phased']).optional(),
+    sport: str,
+    from: str,
+    to: str,
+    phase: obj({ name: str, from: str, to: str }),
+    target_event: obj({ date: str, title: str, race: bool, distance_km: num }),
+  }),
 });
 
 export const workoutOutput = envelope({ id: z.union([z.number(), z.string()]).optional(), ...readableWorkout, estimated_duration_s: num });

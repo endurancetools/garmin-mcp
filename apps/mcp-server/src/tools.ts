@@ -333,11 +333,11 @@ export const TOOLS: ToolDef[] = [
     name: 'list_workouts',
     title: 'Workouts and calendar',
     description:
-      'List the saved workout library (`workouts`), the scheduled workouts (`upcoming_schedule`) and the races or events the user added or subscribed to (`upcoming_events`). ' +
-      'Use it for "my next race", "what is planned this week" or "which workouts do I have", and to find a workout id or schedule_id. ' +
+      'List the saved workout library (`workouts`), the scheduled workouts (`upcoming_schedule`; Garmin Coach or other training plan ones have `source: "plan"`) and the races or events the user added or subscribed to (`upcoming_events`). ' +
+      'Use it for "my next race", "what is planned this week", "what does my plan say for Saturday" or "which workouts do I have", and to find a workout id or schedule_id. ' +
       'For the steps of one workout use get_workout, to put a workout on the calendar or take it off schedule_workouts, for sessions already done get_activities. ' +
       '`sport` and `limit` narrow only the library; `from` and `to` set only the calendar window: today and the next 60 days by default, any range up to 3 years, past or future. ' +
-      'Calendar months not in the cache yet are downloaded on the way. In events `primary` marks the goal race of an active training plan.',
+      'Calendar months not in the cache yet are downloaded on the way. In events `primary` marks the goal race of an active training plan; `plan` gives its phase and target event.',
     input: {
       limit: z.number().int().min(1).max(200).default(50).describe('Most saved workouts listed in `workouts`'),
       sport: z.string().optional().describe('Only library workouts of this sport, e.g. running, cycling, strength_training'),

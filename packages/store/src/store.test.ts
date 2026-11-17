@@ -11,8 +11,8 @@ const T = 1_791_400_000_000;
 describe('Store', () => {
   it('migrates a fresh database', () => {
     const store = Store.open(':memory:');
-    expect(schemaVersion(store.db)).toBe(9);
-    expect(store.getMeta('schema_version')).toBe('9');
+    expect(schemaVersion(store.db)).toBe(10);
+    expect(store.getMeta('schema_version')).toBe('10');
   });
 
   it('keeps cached activity details when migration 3 widens the detail kinds', () => {
@@ -136,6 +136,36 @@ describe('Store', () => {
     expect(store.getCalendarEvents('2026-10-01', '2026-10-31')).toEqual([]);
   });
 
+  it('keeps training plan workouts with source "plan" and finds the plan ahead', () => {
+    const store = Store.open(':memory:');
+    const items = [
+      { id: 1, itemType: 'workout', workoutId: 5, trainingPlanId: 0, date: '2026-11-16', title: 'Z2' },
+      { id: 2, itemType: 'fbtAdaptiveWorkout', workoutId: null, trainingPlanId: 48, tpType: 'FBT_ADAPTIVE', date: '2026-11-17', title: 'Base' },
+      // The start of a plan is not a workout.
+      { id: 48, itemType: 'trainingPlan', trainingPlanId: 48, isStart: true, date: '2026-11-17', title: 'Plan' },
+      // A workout of a phased plan (shape not recorded): a workout type carrying a plan id.
+      { id: 3, itemType: 'workout', workoutId: 9, trainingPlanId: 77, date: '2026-11-20', title: 'Tempo' },
+    ];
+    store.replaceSchedule('2026-11-01', '2026-11-30', items, T);
+    expect(store.getSchedule('2026-11-01', '2026-11-30').map((r) => [r.id, r.source, r.workout_id])).toEqual([
+      [1, 'library', 5],
+      [2, 'plan', null],
+      [3, 'plan', 9],
+    ]);
+    expect(store.getScheduleItem(2)?.source).toBe('plan');
+    expect(store.getScheduleItem(48)).toBeUndefined();
+    expect(store.plansFrom('2026-11-17')).toEqual([
+      { id: 48, adaptive: true },
+      { id: 77, adaptive: false },
+    ]);
+    expect(store.plansFrom('2026-11-18')).toEqual([{ id: 77, adaptive: false }]);
+    store.addSchedule(4, 5, '2026-11-18', { id: 4, title: 'Z2' }, T);
+    expect(store.getScheduleItem(4)?.source).toBe('library');
+    expect(store.getTrainingPlan()).toBeUndefined();
+    store.setTrainingPlan(48, { name: 'Half' }, T);
+    expect(store.getTrainingPlan()).toEqual({ id: 48, raw: { name: 'Half' }, fetched_at: T });
+  });
+
   it('adds the analytics tables in migration 6 and keeps the cached data', () => {
     const db = new Database(':memory:');
     for (const sql of MIGRATIONS.slice(0, 5)) db.exec(sql);
@@ -181,6 +211,20 @@ describe('Store', () => {
     expect(store.getMeta('sync:requests:2026-10-08')).toBe('12');
     expect(store.getIntraday('2026-10-07')).toEqual([]);
     expect(store.tableStats().find((t) => t.table === 'intraday')).toEqual({ table: 'intraday', rows: 0, from: null, to: null });
+  });
+
+  it('marks cached calendar workouts as library ones in migration 10 and refetches the cached months', () => {
+    const db = new Database(':memory:');
+    for (const sql of MIGRATIONS.slice(0, 9)) db.exec(sql);
+    db.pragma('user_version = 9');
+    db.prepare(`INSERT INTO workout_schedule (id, workout_id, date, raw, fetched_at) VALUES (1, 5, '2026-10-10', '{"id":1}', ?)`).run(T);
+    db.prepare(`INSERT INTO meta (key, value) VALUES ('calendar:months', '{"2026-10":1}')`).run();
+    migrate(db);
+    expect(schemaVersion(db)).toBe(MIGRATIONS.length);
+    const store = new Store(db);
+    expect(store.getSchedule('2026-10-01', '2026-10-31')).toEqual([{ id: 1, workout_id: 5, date: '2026-10-10', source: 'library', raw: { id: 1 }, fetched_at: T }]);
+    expect(store.getMeta('calendar:months')).toBeUndefined();
+    expect(() => db.prepare(`UPDATE workout_schedule SET source = 'other' WHERE id = 1`).run()).toThrow(/CHECK constraint/);
   });
 
   it('keeps cached activity details when migration 9 adds the power curve kind', () => {
