@@ -1,14 +1,19 @@
 import { describe, expect, it } from 'vitest';
-import { Store } from './store.js';
-import { MAX_GONE_ACTIVITIES, Syncer, withBudget } from './sync.js';
-import { activity, fakeClient } from './test-utils/fake-client.js';
+import { INTRADAY_KINDS, Store } from './store.js';
+import { MAX_GONE_ACTIVITIES, SCOPE_DAILY, Syncer, requestCounterKey, withBudget } from './sync.js';
+import { activity, fakeClient, fixture } from './test-utils/fake-client.js';
 
 const NOW = Date.parse('2026-10-08T12:00:00Z');
 
-function setup(opts: Parameters<typeof fakeClient>[0] & { fetchOnDemand?: boolean } = {}, now = () => NOW) {
+function setup(opts: Parameters<typeof fakeClient>[0] & { fetchOnDemand?: boolean; maxRequestsPerDay?: number } = {}, now = () => NOW) {
   const store = Store.open(':memory:');
   const fake = fakeClient(opts);
-  const syncer = new Syncer(fake.client, store, { timeZone: 'UTC', now, fetchOnDemand: opts.fetchOnDemand ?? false });
+  const syncer = new Syncer(fake.client, store, {
+    timeZone: 'UTC',
+    now,
+    fetchOnDemand: opts.fetchOnDemand ?? false,
+    ...(opts.maxRequestsPerDay !== undefined && { maxRequestsPerDay: opts.maxRequestsPerDay }),
+  });
   return { store, syncer, ...fake };
 }
 
@@ -264,5 +269,103 @@ describe('Syncer', () => {
   it('withBudget reports whether work finished in time', async () => {
     expect(await withBudget(Promise.resolve(), 10)).toBe(true);
     expect(await withBudget(new Promise((r) => setTimeout(r, 50)), 5)).toBe(false);
+  });
+});
+
+const INTRADAY_METHODS = ['getHeartRate', 'getStress', 'getRespiration', 'getSpo2', 'getSteps', 'getBodyBattery', 'getDailyEvents'];
+const intradayCalls = (calls: Record<string, number>) => Object.fromEntries(Object.entries(calls).filter(([m]) => INTRADAY_METHODS.includes(m)));
+const MIN = 60_000;
+
+describe('Syncer.ensureIntraday', () => {
+  it('fetches nothing unless asked to (default: fetchOnDemand) and reports what is missing', async () => {
+    const { syncer, calls } = setup();
+    expect(await syncer.ensureIntraday('2026-10-07', ['heart_rate', 'stress'], 1000)).toEqual({ source: 'cache', missing: ['heart_rate', 'stress'] });
+    expect(syncer.staleIntraday('2026-10-07', ['heart_rate', 'stress'])).toEqual(['heart_rate', 'stress']);
+    expect(calls).toEqual({});
+  });
+
+  it('fetches only the missing kinds, one request each, and counts them against the day', async () => {
+    const { syncer, store, calls } = setup();
+    expect(await syncer.ensureIntraday('2026-10-07', ['heart_rate', 'stress'], 1000, { fetch: true })).toEqual({ source: 'live', missing: [] });
+    expect(await syncer.ensureIntraday('2026-10-07', ['heart_rate', 'stress', 'steps'], 1000, { fetch: true })).toEqual({ source: 'live', missing: [] });
+    expect(await syncer.ensureIntraday('2026-10-07', ['heart_rate', 'stress', 'steps'], 1000, { fetch: true })).toEqual({ source: 'cache', missing: [] });
+    expect(intradayCalls(calls)).toEqual({ getHeartRate: 1, getStress: 1, getSteps: 1 });
+    expect(store.getMeta(requestCounterKey('2026-10-08'))).toBe('3');
+    expect(store.getIntraday('2026-10-07', ['stress', 'heart_rate'])).toEqual([
+      { kind: 'stress', raw: fixture('stress-day'), fetched_at: NOW },
+      { kind: 'heart_rate', raw: fixture('heart-rate-day'), fetched_at: NOW },
+    ]);
+  });
+
+  it('maps every kind to its client method', async () => {
+    const { syncer, store, calls } = setup({ fetchOnDemand: true });
+    await syncer.ensureIntraday('2026-10-07', INTRADAY_KINDS, 1000);
+    expect(intradayCalls(calls)).toEqual(Object.fromEntries(INTRADAY_METHODS.map((m) => [m, 1])));
+    expect(store.getIntraday('2026-10-07').map((r) => r.kind)).toEqual([...INTRADAY_KINDS]);
+    expect(store.getIntraday('2026-10-07', ['body_battery_events'])[0]?.raw).toEqual(fixture('body-battery'));
+  });
+
+  it('refreshes today after 15 min and never refetches a day fetched after it ended', async () => {
+    let now = NOW;
+    const { syncer, calls } = setup({ fetchOnDemand: true }, () => now);
+    await syncer.ensureIntraday('2026-10-08', ['heart_rate'], 1000);
+    await syncer.ensureIntraday('2026-10-07', ['heart_rate'], 1000);
+    now += 10 * MIN;
+    expect((await syncer.ensureIntraday('2026-10-08', ['heart_rate'], 1000)).source).toBe('cache');
+    now += 10 * MIN;
+    expect((await syncer.ensureIntraday('2026-10-08', ['heart_rate'], 1000)).source).toBe('live');
+    expect(calls.getHeartRate).toBe(3);
+    // Next day: the series fetched while 2026-10-08 was today gets one final refresh, 2026-10-07 none.
+    now = Date.parse('2026-10-09T08:00:00Z');
+    expect(syncer.staleIntraday('2026-10-08', ['heart_rate'])).toEqual(['heart_rate']);
+    expect(syncer.staleIntraday('2026-10-07', ['heart_rate'])).toEqual([]);
+    await syncer.ensureIntraday('2026-10-08', ['heart_rate'], 1000);
+    now = Date.parse('2026-12-01T08:00:00Z');
+    expect(syncer.staleIntraday('2026-10-08', ['heart_rate'])).toEqual([]);
+    expect(calls.getHeartRate).toBe(4);
+    // A future day has nothing to fetch.
+    expect(await syncer.ensureIntraday('2026-12-02', ['heart_rate'], 1000)).toEqual({ source: 'cache', missing: ['heart_rate'] });
+  });
+
+  it('stores a 404 as null for good and keeps other failures out of the store', async () => {
+    const notFound = Object.assign(new Error('404'), { code: 'NOT_FOUND' });
+    const boom = Object.assign(new Error('500'), { code: 'SERVER_ERROR' });
+    const { syncer, store, calls } = setup({ fetchOnDemand: true, failWith: (m) => (m === 'getSpo2' ? notFound : m === 'getRespiration' ? boom : undefined) });
+    expect(await syncer.ensureIntraday('2026-10-07', ['spo2', 'respiration', 'steps'], 1000)).toEqual({ source: 'partial', missing: ['respiration'] });
+    expect(store.getIntraday('2026-10-07', ['spo2'])).toEqual([{ kind: 'spo2', raw: null, fetched_at: NOW }]);
+    await syncer.ensureIntraday('2026-10-07', ['spo2', 'respiration', 'steps'], 1000);
+    expect(intradayCalls(calls)).toEqual({ getSpo2: 1, getRespiration: 2, getSteps: 1 });
+    expect(store.getMeta(requestCounterKey('2026-10-08'))).toBe('4');
+  });
+
+  it('does not start a fetch that would pass the daily request cap shared with the jobs', async () => {
+    const { syncer, store, calls } = setup({ fetchOnDemand: true, maxRequestsPerDay: 10 });
+    store.setMeta(requestCounterKey('2026-10-08'), '8');
+    expect(await syncer.ensureIntraday('2026-10-07', ['heart_rate', 'stress', 'steps'], 1000)).toEqual({
+      source: 'cache',
+      missing: ['heart_rate', 'stress', 'steps'],
+      blocked: { reason: 'budget', resume_at: Date.parse('2026-10-09T00:00:00Z') },
+    });
+    expect(intradayCalls(calls)).toEqual({});
+    expect((await syncer.ensureIntraday('2026-10-07', ['heart_rate', 'stress'], 1000)).source).toBe('live');
+    expect(store.getMeta(requestCounterKey('2026-10-08'))).toBe('10');
+  });
+
+  it('waits out a sync pause and pauses all syncing after a fatal error', async () => {
+    const limited = Object.assign(new Error('429'), { code: 'RATE_LIMITED' });
+    const { syncer, store, calls } = setup({ fetchOnDemand: true, failWith: (m) => (m === 'getStress' ? limited : undefined) });
+    await expect(syncer.ensureIntraday('2026-10-07', ['stress'], 1000)).rejects.toThrow('429');
+    const until = NOW + 6 * 60 * MIN;
+    expect(store.getMeta('sync:paused_until')).toBe(String(until));
+    expect(store.getMeta('sync:pause_reason')).toBe('RATE_LIMITED: 429');
+    expect(await syncer.ensureIntraday('2026-10-07', ['heart_rate'], 1000)).toEqual({ source: 'cache', missing: ['heart_rate'], blocked: { reason: 'paused', resume_at: until } });
+    expect(intradayCalls(calls)).toEqual({ getStress: 1 });
+  });
+
+  it('is left out of every sync scope', async () => {
+    const { syncer, calls } = setup();
+    await syncer.syncDaily(SCOPE_DAILY.all, '2026-10-01', '2026-10-08');
+    await syncer.syncReference();
+    expect(intradayCalls(calls)).toEqual({});
   });
 });

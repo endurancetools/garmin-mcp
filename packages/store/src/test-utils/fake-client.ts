@@ -1,4 +1,11 @@
 import type { ActivitySummary, GarminClient } from 'garmin-mcp-client';
+import fs from 'node:fs';
+import path from 'node:path';
+
+/** Response fixtures of garmin-mcp-client (`packages/client/fixtures`). */
+export function fixture(name: string): unknown {
+  return JSON.parse(fs.readFileSync(path.resolve(import.meta.dirname, '../../../client/fixtures', `${name}.json`), 'utf8')) as unknown;
+}
 
 export interface FakeClientOptions {
   activities?: ActivitySummary[];
@@ -89,6 +96,14 @@ export function fakeClient(opts: FakeClientOptions = {}) {
         { typeId: 7, typeKey: 'trail_running', parentTypeId: 1 },
       ]),
     listWorkouts: () => call('listWorkouts', undefined, () => [{ workoutId: 5, workoutName: 'Z2', sportType: { sportTypeKey: 'running' } }]),
+    getHeartRate: (date: string) => call('getHeartRate', date, () => fixture('heart-rate-day')),
+    getStress: (date: string) => call('getStress', date, () => fixture('stress-day')),
+    getRespiration: (date: string) => call('getRespiration', date, () => fixture('respiration-day')),
+    getSpo2: (date: string) => call('getSpo2', date, () => fixture('spo2-day')),
+    getSteps: (date: string) => call('getSteps', date, () => fixture('steps-chart')),
+    getBodyBattery: (from: string, to: string) => call('getBodyBattery', { from, to }, () => fixture('body-battery')),
+    // No recorded fixture yet (E8-2); the store keeps the response as it comes.
+    getDailyEvents: (date: string) => call('getDailyEvents', date, () => ({ calendarDate: date })),
     getCalendar: (year: number, month: number) =>
       call('getCalendar', { year, month }, () => ({
         calendarItems: [

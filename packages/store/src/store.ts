@@ -32,6 +32,15 @@ export type DailyKind = 'daily_summary' | 'sleep' | 'hrv' | 'training_status';
 export const DAILY_KINDS: readonly DailyKind[] = ['daily_summary', 'sleep', 'hrv', 'training_status'];
 export type DetailKind = 'summary' | 'splits' | 'hr_zones' | 'details' | 'weather' | 'power_zones' | 'exercise_sets';
 export type ReferenceKind = 'profile' | 'gear' | 'devices' | 'workouts' | 'activity_types';
+/** Intraday series kept per day in the `intraday` table; `stress` also carries the Body Battery curve. */
+export const INTRADAY_KINDS = ['heart_rate', 'stress', 'respiration', 'spo2', 'steps', 'body_battery_events', 'daily_events'] as const;
+export type IntradayKind = (typeof INTRADAY_KINDS)[number];
+export interface IntradayRow {
+  kind: IntradayKind;
+  /** Garmin's response; null when Garmin has no such data for the day (404). */
+  raw: unknown;
+  fetched_at: number;
+}
 
 export interface ActivityRow extends ActivityColumns {
   date: string | null;
@@ -463,6 +472,30 @@ export class Store {
     return new Map(rows.map((r) => [r.date, r.fetched_at]));
   }
 
+  // ------------------------------------------------------------ intraday
+
+  putIntraday(date: IsoDate, kind: IntradayKind, raw: unknown, fetchedAt: number): void {
+    this.db
+      .prepare(
+        `INSERT INTO intraday (date, kind, raw, fetched_at) VALUES (?, ?, ?, ?)
+         ON CONFLICT(date, kind) DO UPDATE SET raw = excluded.raw, fetched_at = excluded.fetched_at`,
+      )
+      .run(date, kind, JSON.stringify(raw ?? null), fetchedAt);
+  }
+
+  /** Stored series of `date`, in the order of `kinds` (all kinds by default); kinds never fetched are left out. */
+  getIntraday(date: IsoDate, kinds: readonly IntradayKind[] = INTRADAY_KINDS): IntradayRow[] {
+    const rows = this.db.prepare('SELECT kind, raw, fetched_at FROM intraday WHERE date = ?').all(date) as RawRow[];
+    const byKind = new Map(rows.map((r) => [r.kind as IntradayKind, parseRow<IntradayRow>(r) as IntradayRow]));
+    return kinds.flatMap((k) => byKind.get(k) ?? []);
+  }
+
+  /** kind → fetched_at for the series of `date` already stored. */
+  intradayFetchedAt(date: IsoDate): Map<IntradayKind, number> {
+    const rows = this.db.prepare('SELECT kind, fetched_at FROM intraday WHERE date = ?').all(date) as { kind: IntradayKind; fetched_at: number }[];
+    return new Map(rows.map((r) => [r.kind, r.fetched_at]));
+  }
+
   // ------------------------------------------------------------ training metrics
 
   putTrainingMetrics(date: IsoDate, raw: TrainingMetricsData, fetchedAt: number): void {
@@ -828,6 +861,7 @@ export class Store {
       ['calendar_events', 'date'],
       ['thresholds', 'date'],
       ['imported_activities', 'date'],
+      ['intraday', 'date'],
     ];
     const out = dated.map(([table, col]) => {
       const r = this.db.prepare(`SELECT count(*) AS n, min(${col}) AS a, max(${col}) AS b FROM ${table}`).get() as {

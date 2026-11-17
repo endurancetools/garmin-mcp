@@ -263,4 +263,16 @@ export const MIGRATIONS: readonly string[] = [
   -- Months cached before skipped those races: the next read fetches them again.
   DELETE FROM meta WHERE key = 'calendar:months';
   `,
+  /* 8 */ `
+  -- Intraday series of one day (heart rate, stress with Body Battery, respiration, SpO2,
+  -- steps, Body Battery events, daily events), one raw response per day and kind.
+  -- Fetched lazily by the question that needs them, never by a sync job.
+  CREATE TABLE intraday (
+    date TEXT NOT NULL,
+    kind TEXT NOT NULL CHECK (kind IN ('heart_rate', 'stress', 'respiration', 'spo2', 'steps', 'body_battery_events', 'daily_events')),
+    raw TEXT NOT NULL,
+    fetched_at INTEGER NOT NULL,
+    PRIMARY KEY (date, kind)
+  );
+  `,
 ];

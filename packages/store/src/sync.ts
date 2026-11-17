@@ -1,9 +1,9 @@
 import type { DeviceSettings, GarminClient, WeightEntry } from 'garmin-mcp-client';
 import { addDays, dateIn, eachDay, endOfMonth, silentLogger, type IsoDate, type Logger } from 'garmin-mcp-config';
 import { hrvColumns, dailySummaryColumns, sleepColumns, trainingColumns } from './extract.js';
-import { isDayFresh, isFresh, TTL } from './freshness.js';
+import { isDayFresh, isFresh, isIntradayFresh, TTL } from './freshness.js';
 import { addRange, gaps, parseRangeSet, type RangeSet } from './ranges.js';
-import type { DailyKind, ReferenceKind, Store, TrainingMetricsData } from './store.js';
+import type { DailyKind, IntradayKind, ReferenceKind, Store, TrainingMetricsData } from './store.js';
 
 export const SYNC_SCOPES = ['all', 'activities', 'health', 'training', 'reference'] as const;
 export type SyncScope = (typeof SYNC_SCOPES)[number];
@@ -57,7 +57,43 @@ export interface SyncerOptions {
    * contacted by explicit sync jobs.
    */
   fetchOnDemand?: boolean;
+  /**
+   * Daily request cap shared with the sync jobs (GARMIN_SYNC_MAX_REQUESTS_PER_DAY). Lazy
+   * fetches outside the jobs (ensureIntraday) count against it and stop at it; unset: no cap.
+   */
+  maxRequestsPerDay?: number;
 }
+
+export interface IntradayResult {
+  /** cache: nothing fetched; live: fetched now; partial: time budget ran out, fetching continues. */
+  source: 'cache' | 'live' | 'partial';
+  /** Requested kinds with nothing stored for the day yet (stale series of today are not listed). */
+  missing: IntradayKind[];
+  /** Set when stale or missing series were not fetched: daily request cap used up, or syncing paused. */
+  blocked?: { reason: 'budget' | 'paused'; resume_at: number };
+}
+
+/** Meta key of the request counter of a local day, shared by sync jobs and lazy fetches. */
+export const requestCounterKey = (date: IsoDate) => `sync:requests:${date}`;
+
+const HOUR = 3_600_000;
+/** How long all syncing pauses after Garmin pushes back; long enough for rate limits to reset. */
+export const SYNC_PAUSE_MS = { rateLimit: 6 * HOUR, auth: HOUR, errors: HOUR } as const;
+
+/**
+ * Pause every sync (jobs and lazy fetches) after Garmin refused work. `code` is the fatal error
+ * code; without one the pause is for many failed requests. Returns when the pause ends.
+ */
+export function pauseSyncing(store: Store, reason: string, code: string | undefined, now: number): number {
+  const pause = code === undefined ? SYNC_PAUSE_MS.errors : /RATE_LIMITED|CLOUDFLARE/.test(code) ? SYNC_PAUSE_MS.rateLimit : SYNC_PAUSE_MS.auth;
+  const until = now + pause;
+  store.setMeta('sync:paused_until', String(until));
+  store.setMeta('sync:pause_reason', reason);
+  return until;
+}
+
+/** Requests of one intraday series: one each. */
+const INTRADAY_REQUESTS = 1;
 
 export const errInfo = (err: unknown) => ({
   code: typeof err === 'object' && err !== null && 'code' in err ? String((err as { code: unknown }).code) : 'ERROR',
@@ -104,6 +140,7 @@ export class Syncer {
   readonly #tz: string;
   readonly #concurrency: number;
   readonly fetchOnDemand: boolean;
+  readonly #maxRequestsPerDay: number | undefined;
   readonly #inflight = new Map<string, Promise<unknown>>();
 
   constructor(client: GarminClient, store: Store, options: SyncerOptions) {
@@ -114,6 +151,7 @@ export class Syncer {
     this.#tz = options.timeZone;
     this.#concurrency = options.concurrency ?? 4;
     this.fetchOnDemand = options.fetchOnDemand ?? false;
+    this.#maxRequestsPerDay = options.maxRequestsPerDay;
   }
 
   today(): IsoDate {
@@ -309,6 +347,52 @@ export class Syncer {
     return { source: (await withBudget(work, budgetMs)) ? 'live' : 'partial' };
   }
 
+  /**
+   * Make sure the intraday series `kinds` of `date` are stored. Fetches only kinds never stored
+   * or stale (today's after 15 min, a closed day never), one request each, counted against the
+   * daily request cap shared with the sync jobs; a 404 is stored as null. Nothing is fetched while
+   * syncing is paused, when the fetch would pass the cap, or with `fetch` off (default:
+   * `fetchOnDemand`). No sync scope includes these series: only a question that needs them
+   * calls this. Waits at most `budgetMs`; whatever is left keeps running.
+   */
+  async ensureIntraday(date: IsoDate, kinds: readonly IntradayKind[], budgetMs: number, opts: { fetch?: boolean } = {}): Promise<IntradayResult> {
+    const missingNow = () => {
+      const have = this.#store.intradayFetchedAt(date);
+      return kinds.filter((k) => !have.has(k));
+    };
+    const stale = this.staleIntraday(date, kinds);
+    if (stale.length === 0 || !(opts.fetch ?? this.fetchOnDemand)) return { source: 'cache', missing: missingNow() };
+    const blocked = this.#lazyFetchBlocked(stale.length * INTRADAY_REQUESTS);
+    if (blocked) return { source: 'cache', missing: missingNow(), blocked };
+    let fatalError: unknown;
+    const work = pool(stale, this.#concurrency, () => fatalError !== undefined, async (kind) => {
+      try {
+        await this.#fetchIntraday(kind, date);
+      } catch (err) {
+        const info = errInfo(err);
+        if (!FATAL_CODES.has(info.code)) {
+          this.#log.warn({ kind, date, err: info }, 'intraday fetch failed');
+          return;
+        }
+        if (fatalError === undefined) pauseSyncing(this.#store, `${info.code}: ${info.message}`, info.code, this.#now());
+        fatalError ??= err;
+      }
+    });
+    const finished = await withBudget(work, budgetMs);
+    const missing = missingNow();
+    if (!finished) return { source: 'partial', missing };
+    // Expired auth or a Cloudflare wall must reach the model instead of an empty answer.
+    if (fatalError !== undefined && missing.length > 0) throw fatalError;
+    return { source: missing.length > 0 ? 'partial' : 'live', missing };
+  }
+
+  /** Intraday kinds of `date` that a fetch would download now: never stored, or today's older than 15 min. */
+  staleIntraday(date: IsoDate, kinds: readonly IntradayKind[]): IntradayKind[] {
+    const fetched = this.#store.intradayFetchedAt(date);
+    const now = this.#now();
+    return kinds.filter((k) => !isIntradayFresh(date, fetched.get(k), now, this.#tz));
+  }
+
   coverage(kinds: readonly DailyKind[], from: IsoDate, to: IsoDate): Coverage {
     const end = to > this.today() ? this.today() : to;
     const days = from <= end ? eachDay(from, end).length : 0;
@@ -343,6 +427,51 @@ export class Syncer {
   }
 
   // ------------------------------------------------------------ internals
+
+  #requestsToday(): number {
+    return Number(this.#store.getMeta(requestCounterKey(this.today())) ?? 0);
+  }
+
+  #spend(n: number): void {
+    if (n > 0) this.#store.setMeta(requestCounterKey(this.today()), String(this.#requestsToday() + n));
+  }
+
+  /** Why a lazy fetch of `cost` requests must not run now: syncing paused, or the daily cap would be passed. */
+  #lazyFetchBlocked(cost: number): IntradayResult['blocked'] {
+    const now = this.#now();
+    const paused = Number(this.#store.getMeta('sync:paused_until') ?? 0);
+    if (paused > now) return { reason: 'paused', resume_at: paused };
+    if (this.#maxRequestsPerDay !== undefined && this.#requestsToday() + cost > this.#maxRequestsPerDay) {
+      return { reason: 'budget', resume_at: nextLocalMidnight(this.#tz, now) };
+    }
+    return undefined;
+  }
+
+  /** One intraday series of `date`, stored with its fetch time; the request is counted before it is sent. */
+  #fetchIntraday(kind: IntradayKind, date: IsoDate): Promise<void> {
+    return this.#dedupe(`intraday:${kind}:${date}`, async () => {
+      this.#spend(INTRADAY_REQUESTS);
+      const c = this.#client;
+      const calls: Record<IntradayKind, () => Promise<unknown>> = {
+        heart_rate: () => c.getHeartRate(date),
+        stress: () => c.getStress(date),
+        respiration: () => c.getRespiration(date),
+        spo2: () => c.getSpo2(date),
+        steps: () => c.getSteps(date),
+        body_battery_events: () => c.getBodyBattery(date, date),
+        daily_events: () => c.getDailyEvents(date),
+      };
+      let raw: unknown;
+      try {
+        raw = await calls[kind]();
+      } catch (err) {
+        // 404: Garmin has no such series for the day (no Pulse Ox on the device, for example).
+        if (errInfo(err).code !== 'NOT_FOUND') throw err;
+        raw = null;
+      }
+      this.#store.putIntraday(date, kind, raw, this.#now());
+    });
+  }
 
   /** Month (YYYY-MM) → when its calendar was fetched. */
   #calendarMonths(): Record<string, number> {
@@ -673,6 +802,14 @@ export class Syncer {
     this.#store.markReferenceFetched(kind, now);
     return true;
   }
+}
+
+/** First instant (to 15 min) at which the local date in `timeZone` changes after `now`. */
+export function nextLocalMidnight(timeZone: string, now: number): number {
+  const today = dateIn(timeZone, new Date(now));
+  let t = now;
+  while (dateIn(timeZone, new Date(t)) === today) t += 15 * 60_000;
+  return t;
 }
 
 /** Months (YYYY-MM) touching [from, to], oldest first. */

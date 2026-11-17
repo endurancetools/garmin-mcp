@@ -37,6 +37,19 @@ export function isDayFresh(
   return dateIn(timeZone, new Date(fetchedAt)) > date;
 }
 
+/**
+ * Is a stored intraday series of `date` still good? Today's goes stale after 15 min; a past
+ * day fetched after it had ended is final and never fetched again (one fetched while it was
+ * still today gets that one final refresh). A future day has nothing to fetch.
+ */
+export function isIntradayFresh(date: IsoDate, fetchedAt: number | undefined, now: number, timeZone: string): boolean {
+  const today = dateIn(timeZone, new Date(now));
+  if (date > today) return true;
+  if (fetchedAt === undefined) return false;
+  if (date === today) return now - fetchedAt < TTL.recentDay;
+  return dateIn(timeZone, new Date(fetchedAt)) > date;
+}
+
 export function isFresh(fetchedAt: number | undefined, ttl: number, now: number): boolean {
   return fetchedAt !== undefined && now - fetchedAt < ttl;
 }

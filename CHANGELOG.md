@@ -12,6 +12,10 @@ All notable changes to Garmin MCP. All `garmin-mcp-*` packages share one version
 
 - **`garmin record` knows 19 more endpoints**, the ones the next features read: typed splits and split summaries of an activity, training plans (list, phased, adaptive), lactate threshold history (heart rate and speed), cycling FTP, hydration, blood pressure, the day's events, goals, courses, a device's solar gain, nutrition, the menstrual cycle day, earned badges and badge challenges in progress. `garmin record list` shows them. Their paths follow the known shape of the Garmin Connect API and are not confirmed by a recording yet. Recordings of training plans, courses, goals and daily events replace every name, as plan, race, course point and goal names name places; course coordinates are shifted like activity tracks, and encoded polylines are replaced. As nobody has seen these responses yet, their recordings replace every text value except enum-like constants (`RUNNING`), dates, timestamps and type and unit names, so notes, foods or symptoms under unknown keys stay out of fixtures. Notes, comments and food, meal and brand names are replaced in every recording. After writing the file, `garmin record` lists the keys where text is left, to review before committing.
 
+### Local cache
+
+- **Room for intraday data.** The local database (schema version 8) gets an `intraday` table for one day's heart rate, stress with the Body Battery curve, respiration, SpO2, steps, Body Battery events and the day's events. Nothing fills it yet: these series will be downloaded only by the question that needs them (hourly `query_health` is next), never by `garmin_sync`. Today's series are refreshed after 15 minutes and a past day is kept for good; every request counts against the daily request limit (`GARMIN_SYNC_MAX_REQUESTS_PER_DAY`) shared with syncing, and no download starts while syncing is paused after Garmin refused requests. The upgrade only adds the table; the data you have stays.
+
 ## 0.6.3 (2026-11-17)
 
 ### Tools

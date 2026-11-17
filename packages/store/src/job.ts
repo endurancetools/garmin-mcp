@@ -1,6 +1,9 @@
 import { addDays, dateIn, InputError, silentLogger, type IsoDate, type Logger, type PauseRange } from 'garmin-mcp-config';
 import type { Store } from './store.js';
 import {
+  nextLocalMidnight,
+  pauseSyncing,
+  requestCounterKey,
   SCOPE_DAILY,
   scopeHasActivities,
   scopeHasReference,
@@ -76,10 +79,6 @@ export interface SyncLimitsState {
 }
 
 const HOUR = 3_600_000;
-/** Pause after Garmin pushes back; long enough for rate limits to reset. */
-const PAUSE_ON_RATE_LIMIT = 6 * HOUR;
-const PAUSE_ON_AUTH = HOUR;
-const PAUSE_ON_ERRORS = HOUR;
 
 const abortableSleep = (ms: number, signal?: AbortSignal) =>
   new Promise<void>((resolve) => {
@@ -146,11 +145,11 @@ export class SyncJobRunner {
   }
 
   #requestsToday(): number {
-    return Number(this.#store.getMeta(`sync:requests:${this.#today()}`) ?? 0);
+    return Number(this.#store.getMeta(requestCounterKey(this.#today())) ?? 0);
   }
 
   #spend(n: number): void {
-    if (n > 0) this.#store.setMeta(`sync:requests:${this.#today()}`, String(this.#requestsToday() + n));
+    if (n > 0) this.#store.setMeta(requestCounterKey(this.#today()), String(this.#requestsToday() + n));
   }
 
   #pausedUntil(): number {
@@ -273,12 +272,9 @@ export class SyncJobRunner {
       const failedShare = res.requests > 0 ? res.errors.length / res.requests : 0;
       if (!res.fatal && !(res.requests >= 4 && failedShare > 0.5)) return undefined;
       const reason = res.fatal ? `${res.fatal.code}: ${res.fatal.message}` : `${res.errors.length} of ${res.requests} requests failed`;
-      const code = res.fatal?.code ?? '';
-      const pause = !res.fatal ? PAUSE_ON_ERRORS : /RATE_LIMITED|CLOUDFLARE/.test(code) ? PAUSE_ON_RATE_LIMIT : PAUSE_ON_AUTH;
-      const until = this.#opts.now() + pause;
-      this.#store.setMeta('sync:paused_until', String(until));
-      this.#store.setMeta('sync:pause_reason', reason);
-      this.#log.warn({ reason, pausedHours: pause / HOUR }, 'sync paused');
+      const now = this.#opts.now();
+      const until = pauseSyncing(this.#store, reason, res.fatal?.code, now);
+      this.#log.warn({ reason, pausedHours: (until - now) / HOUR }, 'sync paused');
       return finish('paused', { resume_at: until, reason });
     };
 
@@ -334,9 +330,6 @@ export class SyncJobRunner {
 
   /** First instant (to 15 min) at which the local date changes. */
   #nextLocalMidnight(): number {
-    const today = this.#today();
-    let t = this.#opts.now();
-    while (dateIn(this.#opts.timeZone, new Date(t)) === today) t += 15 * 60_000;
-    return t;
+    return nextLocalMidnight(this.#opts.timeZone, this.#opts.now());
   }
 }

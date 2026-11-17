@@ -11,8 +11,8 @@ const T = 1_791_400_000_000;
 describe('Store', () => {
   it('migrates a fresh database', () => {
     const store = Store.open(':memory:');
-    expect(schemaVersion(store.db)).toBe(7);
-    expect(store.getMeta('schema_version')).toBe('7');
+    expect(schemaVersion(store.db)).toBe(8);
+    expect(store.getMeta('schema_version')).toBe('8');
   });
 
   it('keeps cached activity details when migration 3 widens the detail kinds', () => {
@@ -164,6 +164,37 @@ describe('Store', () => {
     const store = new Store(db);
     expect(store.getCalendarEvents('2026-10-01', '2026-10-31')).toEqual([{ key: '2', id: 2, date: '2026-10-25', raw: { id: 2 }, fetched_at: T }]);
     expect(store.getMeta('calendar:months')).toBeUndefined();
+  });
+
+  it('adds the intraday table in migration 8 and keeps the cached data', () => {
+    const db = new Database(':memory:');
+    for (const sql of MIGRATIONS.slice(0, 7)) db.exec(sql);
+    db.pragma('user_version = 7');
+    db.prepare(`INSERT INTO daily_summary (date, steps, raw, fetched_at) VALUES ('2026-10-07', 9000, '{}', ?)`).run(T);
+    db.prepare(`INSERT INTO meta (key, value) VALUES ('sync:requests:2026-10-08', '12')`).run();
+    migrate(db);
+    expect(schemaVersion(db)).toBe(8);
+    const store = new Store(db);
+    expect(store.getDaily('daily_summary', '2026-10-07', '2026-10-07')[0]?.steps).toBe(9000);
+    expect(store.getMeta('sync:requests:2026-10-08')).toBe('12');
+    expect(store.getIntraday('2026-10-07')).toEqual([]);
+    expect(store.tableStats().find((t) => t.table === 'intraday')).toEqual({ table: 'intraday', rows: 0, from: null, to: null });
+  });
+
+  it('keeps one intraday series per day and kind', () => {
+    const store = Store.open(':memory:');
+    store.putIntraday('2026-10-07', 'heart_rate', { heartRateValues: [[1, 50]] }, T);
+    store.putIntraday('2026-10-07', 'spo2', null, T);
+    store.putIntraday('2026-10-07', 'heart_rate', { heartRateValues: [[1, 52]] }, T + 1);
+    store.putIntraday('2026-10-09', 'steps', [], T + 2);
+    expect(store.getIntraday('2026-10-07')).toEqual([
+      { kind: 'heart_rate', raw: { heartRateValues: [[1, 52]] }, fetched_at: T + 1 },
+      { kind: 'spo2', raw: null, fetched_at: T },
+    ]);
+    expect(store.getIntraday('2026-10-07', ['spo2', 'stress'])).toEqual([{ kind: 'spo2', raw: null, fetched_at: T }]);
+    expect(store.intradayFetchedAt('2026-10-07')).toEqual(new Map([['heart_rate', T + 1], ['spo2', T]]));
+    expect(() => store.putIntraday('2026-10-07', 'calories' as never, {}, T)).toThrow(/CHECK constraint/);
+    expect(store.tableStats().find((t) => t.table === 'intraday')).toEqual({ table: 'intraday', rows: 3, from: '2026-10-07', to: '2026-10-09' });
   });
 
   it('keeps threshold history and ignores a duplicate (date, param, source)', () => {

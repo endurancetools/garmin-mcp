@@ -72,6 +72,8 @@ export function createRuntime(config: GarminConfig, options: RuntimeOptions = {}
           concurrency: config.concurrency,
           // Reads never fetch past the job runner's limits; auto sync goes through jobs (withAutoSync).
           fetchOnDemand: false,
+          // Lazy intraday fetches run outside the jobs but share their daily request cap.
+          maxRequestsPerDay: config.syncMaxRequestsPerDay,
           logger: logger.child({ layer: 'sync' }),
         });
         const jobs = new SyncJobRunner(syncer, store, {
