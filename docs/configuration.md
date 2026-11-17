@@ -58,3 +58,48 @@ The same settings, in camelCase, for example:
   "timezone": "Europe/Warsaw"
 }
 ```
+
+## Several Garmin accounts
+
+One server serves one Garmin account. For two people on one computer, add two servers with a different `GARMIN_DATA_DIR` each. Everything that belongs to an account lives in its data directory: tokens, the database, `config.json`, downloaded activity files, the daily request count and a rate-limit pause. Two servers share nothing else, so they can run at the same time. In Claude Desktop's `claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "garmin-anna": {
+      "command": "npx",
+      "args": ["-y", "garmin-mcp-server"],
+      "env": { "GARMIN_DATA_DIR": "~/.garmin-mcp-anna" }
+    },
+    "garmin-jan": {
+      "command": "npx",
+      "args": ["-y", "garmin-mcp-server"],
+      "env": { "GARMIN_DATA_DIR": "~/.garmin-mcp-jan" }
+    }
+  }
+}
+```
+
+In Claude Code:
+
+```bash
+claude mcp add garmin-anna --scope user --env GARMIN_DATA_DIR=~/.garmin-mcp-anna -- npx -y garmin-mcp-server
+claude mcp add garmin-jan --scope user --env GARMIN_DATA_DIR=~/.garmin-mcp-jan -- npx -y garmin-mcp-server
+```
+
+Sign each one in with the CLI and the same directory:
+
+```bash
+npx -y garmin-mcp-cli login --data-dir ~/.garmin-mcp-anna
+npx -y garmin-mcp-cli login --data-dir ~/.garmin-mcp-jan
+```
+
+Or let each server open the sign-in page on its first question. The sign-in window starts with an empty browser profile every time, so it never remembers the other person's Garmin session; sign in there as the person the server belongs to. Every CLI command takes `--data-dir`, for example `npx -y garmin-mcp-cli status --data-dir ~/.garmin-mcp-jan`.
+
+Keep in mind:
+
+- Set `GARMIN_TOKENS_FILE` and `GARMIN_FIT_DOWNLOAD_DIR` per server, or not at all. Set once for both (for example in your shell profile), they point both servers at the same file or folder.
+- Two network servers (`GARMIN_MCP_TRANSPORT=streamable-http`) need different `GARMIN_MCP_PORT` values; the second one on a taken port stops with `EADDRINUSE`.
+- The daily request budget counts per account. Both accounts reach Garmin from the same internet address, so a heavy first sync is better done for one account at a time.
+- The Claude Desktop extension installs once, with one data directory. Add the second account as a `claude_desktop_config.json` entry like the one above.
+- With Docker, give each account its own volume, for example `-v garmin-anna:/data` and `-v garmin-jan:/data`.

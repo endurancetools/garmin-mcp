@@ -33,6 +33,21 @@ Nothing. Garmin MCP is free and open source under the MIT licence. You need a Ga
 
 The [getting started guides](getting-started.md) cover Claude Code, Claude Desktop (including a one-click extension), Codex, Antigravity CLI and opencode. Any other MCP client that can start a local command over stdio, or connect over streamable HTTP, uses the same settings ([Other clients](getting-started/other-clients.md)), but only the clients above have a guide. You also need Node.js 22 or newer on the computer that runs the server.
 
+## Can I use two Garmin accounts, for example mine and my partner's?
+
+Yes, as two servers with their own data directory each. Every account keeps its tokens, database and settings in its own folder, and the two servers share nothing else, so they can run side by side. In `claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "garmin-anna": { "command": "npx", "args": ["-y", "garmin-mcp-server"], "env": { "GARMIN_DATA_DIR": "~/.garmin-mcp-anna" } },
+    "garmin-jan": { "command": "npx", "args": ["-y", "garmin-mcp-server"], "env": { "GARMIN_DATA_DIR": "~/.garmin-mcp-jan" } }
+  }
+}
+```
+
+Then sign each one in with its folder, `npx -y garmin-mcp-cli login --data-dir ~/.garmin-mcp-anna` and the same with `~/.garmin-mcp-jan`, or let each server open the sign-in page on its first question. The client lists each server's tools under its name, so say whose data you mean in the question. Claude Code commands and what to watch out for are in [Configuration](configuration.md#several-garmin-accounts).
+
 ## Can it change or delete things in my Garmin account?
 
 It can rename and edit activities, create workouts and put them on your calendar. A new workout is shown to you first and saved only after you agree. Deleting activities, workouts and weigh-ins ({{ site.data.facts.tools_destructive }} tools) and overwriting a saved workout are off unless you set `GARMIN_ENABLE_DESTRUCTIVE=true` yourself ([Tools reference](tools.md)). An activity you delete in Garmin Connect yourself also goes from the local cache: the next sync of its day removes it once Garmin confirms it is gone. That only follows your account, so it needs no setting.

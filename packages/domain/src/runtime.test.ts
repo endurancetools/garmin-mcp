@@ -103,3 +103,53 @@ describe('runtime sign-in', () => {
     runtime.close();
   });
 });
+
+describe('several accounts', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('keeps tokens, account, database, settings and sync pauses of each data directory apart', async () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'garmin-accounts-'));
+    const dirs = { anna: path.join(home, 'anna'), jan: path.join(home, 'jan') };
+    const zones = { anna: 'Europe/Warsaw', jan: 'America/New_York' };
+    for (const name of ['anna', 'jan'] as const) {
+      fs.mkdirSync(dirs[name], { mode: 0o700 });
+      fs.writeFileSync(path.join(dirs[name], 'config.json'), JSON.stringify({ timezone: zones[name] }), { mode: 0o600 });
+    }
+    // Garmin answers with the profile of whoever's token the request carries.
+    vi.stubGlobal('fetch', async (url: string | URL, init?: RequestInit) => {
+      if (!String(url).endsWith('/userprofile-service/socialProfile')) return new Response('not found', { status: 404 });
+      const who = new Headers(init?.headers).get('authorization')?.replace('Bearer ', '');
+      return Response.json({ ...(fixture('social-profile') as object), garminGUID: `guid-${who}`, displayName: who });
+    });
+    // Two processes of one user: the same HOME, a different GARMIN_DATA_DIR.
+    const open = (name: 'anna' | 'jan') => {
+      const config = loadConfig({ env: { HOME: home, GARMIN_DATA_DIR: dirs[name], GARMIN_MIN_REQUEST_INTERVAL_MS: '0' } });
+      const auth = { getAccessToken: async () => name, invalidate: async () => undefined } as unknown as AuthService;
+      return { config, runtime: createRuntime(config, { logger: silentLogger, auth }) };
+    };
+    const anna = open('anna');
+    const jan = open('jan');
+
+    expect(anna.config.tokensFile).toBe(path.join(dirs.anna, 'tokens.json'));
+    expect(jan.config.tokensFile).toBe(path.join(dirs.jan, 'tokens.json'));
+    expect([anna.config.timezone, jan.config.timezone]).toEqual([zones.anna, zones.jan]);
+
+    const [annaService, janService] = await Promise.all([anna.runtime.service(), jan.runtime.service()]);
+    const annaAccount = readAccount(dirs.anna);
+    const janAccount = readAccount(dirs.jan);
+    expect([annaAccount?.displayName, janAccount?.displayName]).toEqual(['anna', 'jan']);
+    expect(fs.readdirSync(dirs.anna).filter((f) => f.endsWith('.db'))).toEqual([`garmin-${annaAccount?.hash}.db`]);
+    expect(fs.readdirSync(dirs.jan).filter((f) => f.endsWith('.db'))).toEqual([`garmin-${janAccount?.hash}.db`]);
+
+    // A rate-limit pause and the request count live in the account's own database.
+    annaService.store.setMeta('sync:paused_until', String(Date.now() + 3_600_000));
+    annaService.store.setMeta('sync:pause_reason', 'RATE_LIMITED: Garmin rate limited /x');
+    expect(annaService.jobs.limits().pause_reason).toBe('RATE_LIMITED: Garmin rate limited /x');
+    expect(janService.jobs.limits().paused_until).toBeUndefined();
+
+    // Nothing was written outside the two data directories.
+    expect(fs.readdirSync(home).toSorted()).toEqual(['anna', 'jan']);
+    anna.runtime.close();
+    jan.runtime.close();
+  });
+});
