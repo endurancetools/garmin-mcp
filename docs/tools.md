@@ -52,7 +52,7 @@ Every argument is optional. Resources and prompts are not part of the tool list,
 
 ## Training analytics
 
-How the four analytics tools compute their numbers, their defaults and their limits: [Training analytics](analytics.md).
+How the five analytics tools, and the climbs and power curve of `get_activity`, compute their numbers, their defaults and their limits: [Training analytics](analytics.md).
 
 ## Which Garmin data is covered
 
