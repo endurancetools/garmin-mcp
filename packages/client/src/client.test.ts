@@ -298,6 +298,18 @@ describe('GarminClient', () => {
     expect(typeListRequests).toBe(0);
   });
 
+  it('sends the event type as eventTypeDTO with id and key only', async () => {
+    let body: unknown;
+    server.use(
+      http.put(`${API}/activity-service/activity/:id`, async ({ request }) => {
+        body = await request.json();
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+    await makeClient().client.updateActivity(42, { eventType: { typeId: 1, typeKey: 'race', sortOrder: 1 } });
+    expect(body).toEqual({ activityId: 42, eventTypeDTO: { typeId: 1, typeKey: 'race' } });
+  });
+
   it('overwrites a workout with PUT carrying its id', async () => {
     let put: { id?: unknown; body?: unknown } = {};
     server.use(

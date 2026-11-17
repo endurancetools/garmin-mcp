@@ -18,6 +18,7 @@ export const RECORDABLE: Record<string, (c: GarminClient, a: { date: string; id?
   'activity-exercise-sets': (c, a) => c.getActivityExerciseSets(need(a.id, '--id')),
   'activity-details': (c, a) => c.getActivityDetails(need(a.id, '--id'), 50, 50),
   'activity-types': (c) => c.getActivityTypes(),
+  'event-types': (c) => c.getEventTypes(),
   'daily-summary': (c, a) => c.getDailySummary(a.date),
   'steps-chart': (c, a) => c.getSteps(a.date),
   'heart-rate-day': (c, a) => c.getHeartRate(a.date),

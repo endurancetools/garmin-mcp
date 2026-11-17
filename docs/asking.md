@@ -21,7 +21,8 @@ Ask in your own words. The assistant picks the right tool; you do not need to kn
 - "How much time did I spend in each heart rate zone last week?"
 - "Review my training week." / "Summarise my September." / "Summarise my block from 2026-08-04 to 2026-09-28."
 - "How many kilometres do my running shoes have?" / "Which firmware is on my watch?"
-- "Rename activity 21001 to Parkrun PB." / "Mark yesterday's run as a trail run."
+- "Rename activity 21001 to Parkrun PB." / "Mark yesterday's run as a trail run." / "Mark Saturday's run as a race."
+- "Show all my races this year."
 - "Download the GPX of activity 21001."
 
 ## Plan workouts with AI and put them on your Garmin calendar {#workouts-and-calendar}

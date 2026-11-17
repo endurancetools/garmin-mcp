@@ -51,6 +51,7 @@ export function setup(opts: { activities?: ActivitySummary[]; gone?: ReadonlySet
   const activities = opts.activities ?? [];
   const names = new Map<number, string>();
   const updated = new Map<number, Record<string, unknown>>();
+  const eventTypes = new Map<number, { typeId?: number; typeKey?: string }>();
   const rec = async <T>(method: string, args: unknown[], value: () => T): Promise<T> => {
     calls.push({ method, args });
     if (opts.delayMs) await new Promise((r) => setTimeout(r, opts.delayMs));
@@ -75,6 +76,7 @@ export function setup(opts: { activities?: ActivitySummary[]; gone?: ReadonlySet
           activityName: names.get(id) ?? `Run ${id}`,
           description: 'desc',
           activityTypeDTO: { typeKey: 'running' },
+          eventTypeDTO: eventTypes.get(id) ?? { typeId: 9, typeKey: 'uncategorized' },
           summaryDTO: { startTimeLocal: '2026-10-07T07:00:00.0', movingDuration: 2950, directWorkoutRpe: 60 },
         };
       }),
@@ -126,10 +128,12 @@ export function setup(opts: { activities?: ActivitySummary[]; gone?: ReadonlySet
         metricDescriptors: [{ metricsIndex: 0, key: 'directTimestamp' }, { metricsIndex: 1, key: 'directHeartRate' }],
         activityDetailMetrics: Array.from({ length: 3000 }, (_, i) => ({ metrics: [1_791_000_000_000 + i * 1000, 120 + (i % 30)] })),
       })),
-    updateActivity: (id: number, patch: { name?: string }) =>
+    updateActivity: (id: number, patch: { name?: string; eventType?: { typeId?: number; typeKey?: string } }) =>
       rec('updateActivity', [id, patch], () => {
         if (patch.name) names.set(id, patch.name);
+        if (patch.eventType) eventTypes.set(id, patch.eventType);
       }),
+    getEventTypes: () => rec('getEventTypes', [], () => fixture('event-types')),
     // Food is logged (linked nutrition app) on days ending in 7 only; other days carry Garmin's "nothing logged" shape.
     getDailySummary: (date: string) =>
       rec('getDailySummary', [date], () => {

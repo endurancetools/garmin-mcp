@@ -64,7 +64,7 @@
     { "name": "garmin_sync", "description": "Download a scope and date range from Garmin Connect into the local cache" },
     { "name": "get_activities", "description": "List activities as dense summaries by date and type" },
     { "name": "get_activity", "description": "One activity: summary, splits, HR or power zones, weather, strength sets or raw stream" },
-    { "name": "update_activity", "description": "Rename, retype, describe or rate an activity" },
+    { "name": "update_activity", "description": "Rename, retype, tag as a race, describe or rate an activity" },
     { "name": "download_activity_file", "description": "Save an activity as FIT, GPX, TCX, KML or CSV" },
     { "name": "query_health", "description": "Daily health metrics over a range with trends" },
     { "name": "get_sleep", "description": "Sleep stages, score, SpO2 and respiration" },

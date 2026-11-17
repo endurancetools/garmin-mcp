@@ -786,6 +786,29 @@ describe('GarminService', () => {
     expect(calls.find((c) => c.method === 'updateActivity')?.args[1]).toMatchObject({ typeKey: 'trail_running', activityType: undefined });
   });
 
+  it('tags an activity with an event type and lists activities by it', async () => {
+    const { service, calls, count, store } = setup({ activities: [summary(1, '2026-10-07'), summary(2, '2026-10-06', { eventType: { typeId: 9, typeKey: 'uncategorized' } })] });
+    await service.getActivities({});
+    const res = await service.updateActivity(1, { event_type: 'Race' });
+    expect(calls.find((c) => c.method === 'updateActivity')?.args[1]).toMatchObject({ eventType: { typeId: 1, typeKey: 'race' } });
+    expect(res.data.activity).toMatchObject({ id: 1, event_type: 'race' });
+    expect(store.getActivity(1)?.raw.eventType).toMatchObject({ typeKey: 'race' });
+    const races = await service.getActivities({ event_type: 'race' });
+    expect(races.data.activities?.map((a) => [a.id, a.event_type])).toEqual([[1, 'race']]);
+    // "uncategorized" is what every activity starts as, so the list leaves it out.
+    expect((await service.getActivities({})).data.activities?.find((a) => a.id === 2)).not.toHaveProperty('event_type');
+    // The list is fetched once and kept; separators and case do not matter.
+    await service.updateActivity(1, { event_type: 'special_event' });
+    expect(count('getEventTypes')).toBe(1);
+    expect(calls.findLast((c) => c.method === 'updateActivity')?.args[1]).toMatchObject({ eventType: { typeKey: 'specialEvent' } });
+    expect((await service.getActivities({ event_type: 'Special Event' })).data.activities?.map((a) => a.id)).toEqual([1]);
+    await expect(service.updateActivity(1, { event_type: 'marathon' })).rejects.toMatchObject({
+      code: 'INVALID_INPUT',
+      message: 'Unknown event type "marathon". Valid keys: race, recreation, specialEvent, training, transportation, touring, geocaching, fitness, uncategorized',
+    });
+    expect(count('updateActivity')).toBe(2);
+  });
+
   it('explains an empty activity type filter: unknown key, keys not stored, or no such activities', async () => {
     const { service } = setup({ activities: [summary(1, '2026-10-07')] });
     const unstored = await service.getActivities({ type: 'trial_running' });

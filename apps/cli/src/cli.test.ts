@@ -150,7 +150,7 @@ describe('anonymize', () => {
 
   it('covers every client fixture name', () => {
     expect(Object.keys(RECORDABLE)).toContain('training-status');
-    expect(Object.keys(RECORDABLE)).toHaveLength(38);
+    expect(Object.keys(RECORDABLE)).toHaveLength(39);
   });
 });
 

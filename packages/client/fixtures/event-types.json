@@ -1,0 +1,47 @@
+[
+  {
+    "typeId": 1,
+    "typeKey": "race",
+    "sortOrder": 5
+  },
+  {
+    "typeId": 2,
+    "typeKey": "recreation",
+    "sortOrder": 4
+  },
+  {
+    "typeId": 3,
+    "typeKey": "specialEvent",
+    "sortOrder": 6
+  },
+  {
+    "typeId": 4,
+    "typeKey": "training",
+    "sortOrder": 7
+  },
+  {
+    "typeId": 5,
+    "typeKey": "transportation",
+    "sortOrder": 8
+  },
+  {
+    "typeId": 6,
+    "typeKey": "touring",
+    "sortOrder": 9
+  },
+  {
+    "typeId": 7,
+    "typeKey": "geocaching",
+    "sortOrder": 2
+  },
+  {
+    "typeId": 8,
+    "typeKey": "fitness",
+    "sortOrder": 3
+  },
+  {
+    "typeId": 9,
+    "typeKey": "uncategorized",
+    "sortOrder": 10
+  }
+]

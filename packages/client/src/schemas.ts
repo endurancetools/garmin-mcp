@@ -246,6 +246,10 @@ export type ActivityDetails = z.infer<typeof activityDetailsSchema>;
 export const activityTypesSchema = z.array(typeRef);
 export type ActivityType = z.infer<typeof typeRef>;
 
+/** Event types (race, training, uncategorized...): `typeId` and `typeKey`, no parent. */
+export const eventTypesSchema = z.array(typeRef);
+export type EventType = z.infer<typeof typeRef>;
+
 // ---------------------------------------------------------------- daily health
 
 export const dailySummarySchema = z.looseObject({

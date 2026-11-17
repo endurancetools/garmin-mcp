@@ -1,4 +1,4 @@
-import type { ActivityType, DownloadFormat, GarminClient } from 'garmin-mcp-client';
+import type { ActivityType, DownloadFormat, EventType, GarminClient } from 'garmin-mcp-client';
 import {
   addDays,
   assertIsoDate,
@@ -14,7 +14,7 @@ import {
 import { errInfo, isFresh, SCOPE_DAILY, signInPause, TTL, type DailyKind, type DetailKind, type EnsureResult, type ReferenceKind, type Store, type SyncJobProgress, type SyncJobReport, type SyncJobRunner, type SyncScope, type Syncer } from 'garmin-mcp-store';
 import fs from 'node:fs';
 import path from 'node:path';
-import { activityBrief, activityListItem, periodActivitySummary } from './activities.js';
+import { activityBrief, activityListItem, eventTypeKey, periodActivitySummary } from './activities.js';
 import { activityWeather, strengthSets, zoneTimes, type ActivityWeather, type StrengthSets, type ZoneTime } from './activity-extras.js';
 import { gapPace, GPS_STREAM_METRICS, hrSource, motionTime, redactActivityRaw, respiration, runningDynamics, stamina, trainingEffectText, type RunningDynamics } from './activity-metrics.js';
 import { bodyComposition } from './body.js';
@@ -114,6 +114,8 @@ export interface ActivitiesQuery {
   from?: string;
   to?: string;
   type?: string;
+  /** Garmin event type key, e.g. race. */
+  event_type?: string;
   name?: string;
   min_duration_min?: number;
   max_duration_min?: number;
@@ -122,6 +124,19 @@ export interface ActivitiesQuery {
   cursor?: string;
   sort?: 'asc' | 'desc';
 }
+
+/** What `update_activity` can change. */
+export interface ActivityEdit {
+  name?: string;
+  type?: string;
+  event_type?: string;
+  description?: string;
+  rpe?: number;
+  feel?: 0 | 25 | 50 | 75 | 100;
+}
+
+/** Keys compared without case, spaces or separators: "Special Event", special_event and specialEvent are one key. */
+const looseKey = (key: string) => key.toLowerCase().replaceAll(/[^a-z0-9]/g, '');
 
 const PACE = /^\s*(\d{1,2}):([0-5]\d)\s*$/;
 
@@ -455,6 +470,7 @@ export class GarminService {
       from,
       to,
       type: q.type,
+      eventType: q.event_type === undefined ? undefined : looseKey(q.event_type),
       name: q.name,
       minDurationS: q.min_duration_min === undefined ? undefined : q.min_duration_min * 60,
       maxDurationS: q.max_duration_min === undefined ? undefined : q.max_duration_min * 60,
@@ -567,6 +583,8 @@ export class GarminService {
       ...hrSource(summary.raw.metadataDTO, (s.averageHR ?? row?.avg_hr ?? 0) > 0),
       workout_id: summary.raw.metadataDTO?.associatedWorkoutId ?? undefined,
       workout_compliance_pct: round(s.directWorkoutComplianceScore, 0),
+      // The list entry follows later edits in Garmin Connect; the stored summary only stands in without one.
+      event_type: row ? activityBrief(row).event_type : eventTypeKey(summary.raw.eventTypeDTO),
       rpe: typeof s.directWorkoutRpe === 'number' ? s.directWorkoutRpe / 10 : undefined,
       feel: typeof s.directWorkoutFeel === 'number' ? s.directWorkoutFeel : undefined,
       gear_uuid: row?.gear_uuid ?? undefined,
@@ -697,14 +715,37 @@ export class GarminService {
     return typeof units === 'string' ? units : undefined;
   }
 
-  async updateActivity(id: number, patch: { name?: string; type?: string; description?: string; rpe?: number; feel?: 0 | 25 | 50 | 75 | 100 }) {
-    if (Object.values(patch).every((v) => v === undefined)) throw new InputError('Nothing to update', 'Pass at least one of name, type, description, rpe, feel.');
+  async updateActivity(id: number, patch: ActivityEdit) {
+    if (Object.values(patch).every((v) => v === undefined)) {
+      throw new InputError('Nothing to update', 'Pass at least one of name, type, event_type, description, rpe, feel.');
+    }
+    // Both keys are resolved before the write, so a wrong one changes nothing.
     const activityType = patch.type === undefined ? undefined : await this.#cachedActivityType(patch.type);
-    await this.client.updateActivity(id, { name: patch.name, typeKey: patch.type, activityType, description: patch.description, rpe: patch.rpe, feel: patch.feel });
+    const eventType = patch.event_type === undefined ? undefined : await this.#eventType(patch.event_type);
+    const { event_type: _event, type, ...fields } = patch;
+    await this.client.updateActivity(id, { ...fields, typeKey: type, activityType, eventType });
     const after = await this.client.getActivity(id);
     const at = this.#now();
     this.store.applyActivityEdit(after, at);
     return this.getActivity(id, 'summary').then((r) => ({ data: { updated: true, activity: r.data }, meta: { source: 'live' as const, fetched_at: iso(at) } }));
+  }
+
+  /**
+   * Garmin's event type for `key` (race, training...). The list is fetched with the first edit
+   * that needs it and kept: it does not change, and a key missing from the stored list is looked
+   * up once more before it is refused.
+   */
+  async #eventType(key: string): Promise<EventType> {
+    const find = (types: readonly EventType[]) => types.find((t) => typeof t.typeKey === 'string' && looseKey(t.typeKey) === looseKey(key));
+    let types = this.store.getEventTypes();
+    if (!find(types)) {
+      types = await this.client.getEventTypes();
+      this.store.setEventTypes(types);
+    }
+    const match = find(types);
+    if (match) return match;
+    const valid = types.map((t) => t.typeKey).filter(Boolean).join(', ');
+    throw new InputError(`Unknown event type "${key}". Valid keys: ${valid}`);
   }
 
   /**

@@ -137,13 +137,14 @@ export const TOOLS: ToolDef[] = [
     title: 'List activities',
     description:
       'List workouts/activities (runs, rides, swims, strength...) as dense summaries: id, date, type, name, duration, distance, pace or speed, GAP, HR, power, NP, cadence, ' +
-      'training load and Training Effect, temperature (if weather downloaded). ' +
+      'training load and Training Effect, temperature (if weather downloaded), event_type when tagged (e.g. race). ' +
       'Use for "what did I do last week", finding an activity id, or comparing sessions. For one activity in depth use get_activity; ' +
       'for weekly/monthly totals use get_period_summary. Example: {"from":"2026-10-01","type":"running","limit":10}.',
     input: {
       from: date.optional(),
       to: date.optional(),
       type: z.string().optional().describe('Garmin type key, e.g. running, trail_running, cycling, lap_swimming, strength_training; partial match. All keys: resource garmin://activity-types'),
+      event_type: z.string().optional().describe('Only activities tagged with this event type, e.g. race'),
       name: z.string().optional().describe('Part of the activity name, any case, e.g. a route'),
       min_duration_min: z.number().positive().optional(),
       max_duration_min: z.number().positive().optional(),
@@ -183,12 +184,13 @@ export const TOOLS: ToolDef[] = [
     name: 'update_activity',
     title: 'Edit an activity',
     description:
-      'Change an activity in Garmin Connect: name, type (Garmin type key such as "trail_running"; valid keys in resource garmin://activity-types), description (notes), rpe (0-10 perceived effort) ' +
+      'Change an activity in Garmin Connect: name, type (Garmin type key such as "trail_running"; valid keys in resource garmin://activity-types), event_type (e.g. race), description (notes), rpe (0-10 perceived effort) ' +
       'or feel (0 very weak, 25 weak, 50 normal, 75 strong, 100 very strong). Only call when the user asked for the change. Returns the activity after the edit.',
     input: {
       id,
       name: z.string().max(200).optional(),
       type: z.string().optional().describe('Garmin type key from garmin://activity-types, e.g. trail_running'),
+      event_type: z.string().optional().describe('race, training, recreation, special_event, fitness, touring, transportation, geocaching or uncategorized'),
       description: z.string().max(2000).optional(),
       rpe: z.number().min(0).max(10).optional(),
       feel: z.union([z.literal(0), z.literal(25), z.literal(50), z.literal(75), z.literal(100)]).optional(),

@@ -49,7 +49,7 @@ npx -y garmin-mcp-cli login
 - "Am I fatigued? What is my form right now?"
 - "When is my next race?" or "What is planned this week?"
 - "Build me 6×400 m with 90 s rest for Thursday" (you see the steps first, nothing is saved until you agree)
-- "Rename activity 21001 to Parkrun PB"
+- "Rename activity 21001 to Parkrun PB" or "Mark Saturday's trail run as a race"
 
 Optional: pre-load a range so the first questions answer instantly.
 
@@ -71,9 +71,9 @@ Measured on a real account after a 90-day sync (433 requests in about an hour): 
 
 | Tool | Purpose |
 | --- | --- |
-| `get_activities` | dense activity list with cursor paging (GAP, cadence, NP, Training Effect label, temperature when downloaded); `type` takes a Garmin type key (all keys in `garmin://activity-types`), plus `name`, `min_duration_min`/`max_duration_min` and a `pace` range |
+| `get_activities` | dense activity list with cursor paging (GAP, cadence, NP, Training Effect label, temperature when downloaded); `type` takes a Garmin type key (all keys in `garmin://activity-types`), plus `event_type` (e.g. `race`), `name`, `min_duration_min`/`max_duration_min` and a `pace` range |
 | `get_activity` | one activity: `summary` (with running dynamics, breathing, stamina, HR source), `splits` (laps with dynamics and workout steps), `hr_zones`, `power_zones`, `weather`, `exercise_sets` (strength sets), `stream_summary` (stream per km, 5 min, half or quarter), or `full` (all sections plus the raw stream, 50 KB pages, optional `metrics` and `downsample_s`) |
-| `update_activity` | name, type, description, RPE, feel |
+| `update_activity` | name, type, event type (race, training...), description, RPE, feel |
 | `download_activity_file` | FIT (unzipped), GPX, TCX, KML, CSV to the download directory (`GARMIN_FIT_DOWNLOAD_DIR`) |
 | `query_health` | steps (with daily distance), resting HR (with daily min/max HR), HRV (with status and baseline), sleep, stress, body battery, respiration, SpO2, intensity minutes, calories (burned, and eaten when a food log is linked), floors; per day or week, with 7/28-day trends |
 | `get_sleep` | one night with stages, or a range with averages |

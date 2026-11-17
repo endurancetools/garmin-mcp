@@ -219,6 +219,8 @@ export interface ActivityQuery {
   from?: IsoDate;
   to?: IsoDate;
   type?: string;
+  /** Garmin event type key of the activity, e.g. race: lower case, letters and digits only. */
+  eventType?: string;
   gearUuid?: string;
   /** Duration bounds in seconds, both inclusive. */
   minDurationS?: number;
@@ -320,6 +322,7 @@ export class Store {
         raw.activityName = activity.activityName;
         raw.description = activity.description;
         if (activity.activityTypeDTO) raw.activityType = activity.activityTypeDTO;
+        if (activity.eventTypeDTO) raw.eventType = activity.eventTypeDTO;
         this.db
           .prepare('UPDATE activities SET name = ?, type = COALESCE(?, type), raw = ?, fetched_at = ? WHERE id = ?')
           .run(cols.name ?? null, cols.type ?? null, JSON.stringify(raw), fetchedAt, cols.id);
@@ -353,6 +356,11 @@ export class Store {
     if (q.type) {
       where.push('(type = ? OR type LIKE ?)');
       params.push(q.type, `%${q.type}%`);
+    }
+    if (q.eventType) {
+      // Compared without case and separators, as the service passes it (specialEvent = special_event).
+      where.push("replace(lower(json_extract(raw, '$.eventType.typeKey')), '_', '') = ?");
+      params.push(q.eventType);
     }
     if (q.minDurationS !== undefined) {
       where.push('duration_s >= ?');
@@ -656,6 +664,16 @@ export class Store {
 
   getActivityTypes(): ActivityType[] {
     const v = this.getMeta('activity_types');
+    return v === undefined ? [] : (JSON.parse(v) as ActivityType[]);
+  }
+
+  /** Garmin's event type list (race, training...), fetched with the first edit that needs it; it does not change. */
+  setEventTypes(types: readonly ActivityType[]): void {
+    this.setMeta('event_types', JSON.stringify(types));
+  }
+
+  getEventTypes(): ActivityType[] {
+    const v = this.getMeta('event_types');
     return v === undefined ? [] : (JSON.parse(v) as ActivityType[]);
   }
 

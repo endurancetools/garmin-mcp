@@ -46,3 +46,5 @@
 {"prompt": "Compare activities 21001, 21002 and 21003 side by side.", "expect": {"tool": "compare_activities", "args_include": {"ids": [21001, 21002, 21003]}}, "forbid": ["get_activity", "garmin_sync"]}
 {"prompt": "List my runs of at least an hour at 5:30-6:00 per km.", "expect": {"tool": "get_activities", "args_include": {"min_duration_min": 60, "pace": "5:30-6:00"}}, "forbid": ["garmin_sync"]}
 {"prompt": "Czy mój czas kontaktu z podłożem poprawia się z miesiąca na miesiąc przy tym samym tempie?", "expect": {"tool": "get_load", "args_include": {"include_dynamics": true}}, "forbid": ["garmin_sync"]}
+{"prompt": "Mark activity 21001 as a race.", "expect": {"tool": "update_activity", "args_include": {"id": 21001, "event_type": "race"}}, "forbid": ["garmin_sync", "get_activity"]}
+{"prompt": "Pokaż wszystkie aktywności z tego roku, które oznaczyłem jako zawody.", "expect": {"tool": "get_activities", "args_include": {"event_type": "race"}}, "forbid": ["garmin_sync"]}

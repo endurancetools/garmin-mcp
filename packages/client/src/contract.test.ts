@@ -18,6 +18,7 @@ const contracts: Record<string, z.ZodType> = {
   'activity-exercise-sets': s.activityExerciseSetsSchema,
   'activity-details': s.activityDetailsSchema,
   'activity-types': s.activityTypesSchema,
+  'event-types': s.eventTypesSchema,
   'daily-summary': s.dailySummarySchema,
   'steps-chart': s.stepsChartSchema,
   'heart-rate-day': s.heartRateDaySchema,

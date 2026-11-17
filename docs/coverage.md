@@ -22,7 +22,7 @@ Totals for the 111 reads: 55 full, 16 partial, 40 missing.
 | Garmin Connect data | garmin-mcp | Coverage | Note |
 | --- | --- | --- | --- |
 | Activity list, newest first | `get_activities` `limit`, `cursor` | full | |
-| Activities in a date range, by type | `get_activities` `from`, `to`, `type`, `limit`, `cursor` | full | `type` matches the Garmin type key partially |
+| Activities in a date range, by type | `get_activities` `from`, `to`, `type`, `event_type`, `limit`, `cursor` | full | `type` matches the Garmin type key partially; `event_type` (e.g. `race`) the whole key |
 | Activities on one day | `get_activities` `from` = `to` = date | full | |
 | Activity count | `garmin://sync-status` → `tables` | partial | counts activities in the local cache, not on the account |
 | Activity summary | `get_activity` `id`, `detail: "summary"` | full | |
@@ -175,7 +175,7 @@ garmin-mcp deliberately has few writes; listed so nothing disappears silently.
 | Garmin Connect write | garmin-mcp |
 | --- | --- |
 | Activity name, type, description, perceived effort, feel | `update_activity` `name`, `type`, `description`, `rpe`, `feel` |
-| Activity event type | — () |
+| Activity event type (race, training, recreation...) | `update_activity` `event_type` |
 | Manual activity | — () |
 | Workout from a preset (run intervals, walk/run, easy Z2, strength circuit) | `create_workout` `preset` (with `dry_run: true` first: steps and estimated duration, nothing saved) |
 | Workout from typed steps (nestable repeats, HR/pace/power/cadence targets, strength exercises with load) | `create_workout` `definition` (`dry_run: true` shows it first) |

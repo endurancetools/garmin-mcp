@@ -13,6 +13,10 @@ What changed in each release. All `garmin-mcp-*` packages share one version; the
 - **A sign-in that Garmin refuses says so.** When Garmin's sign-in API answers its own page with 403 or 429, the page shows an error whatever the password. The failed sign-in now names that status and says to wait or to change the network, instead of only "the browser window was closed".
 - **Syncing goes on right after a new sign-in.** A sync that found nobody signed in pauses all syncing for an hour, and signing in again did not end that pause. `garmin login`, `garmin import-tokens` and the sign-in from the assistant now end it; a pause for a rate limit or a Cloudflare block stays.
 
+### Activities
+
+- **Tag an activity as a race.** `update_activity` takes `event_type`: `race`, `training`, `recreation`, `special_event`, `fitness`, `touring`, `transportation`, `geocaching` or `uncategorized`. `get_activities` and `get_activity` show `event_type` when an activity has one other than `uncategorized`, and `get_activities` filters by it, so "show all my races this year" is one call. ([#3](https://github.com/endurancetools/garmin-mcp/issues/3))
+
 ## 0.5.0 (2026-10-30)
 
 ### Activities

@@ -21,6 +21,14 @@ export interface ActivityBrief {
   training_load?: number;
   training_effect?: { aerobic?: number; anaerobic?: number };
   calories_kcal?: number;
+  /** Garmin event type when the activity has one: race, training, recreation... */
+  event_type?: string;
+}
+
+/** The key of Garmin's event type; `uncategorized`, what every activity starts as, is left out. */
+export function eventTypeKey(eventType: unknown): string | undefined {
+  const key = (eventType as { typeKey?: unknown } | null | undefined)?.typeKey;
+  return typeof key === 'string' && key !== '' && key !== 'uncategorized' ? key : undefined;
 }
 
 /** Dense one-line-per-activity shape for lists (`get_activities`). */
@@ -41,6 +49,7 @@ export function activityBrief(a: ActivityRow): ActivityBrief {
     training_load: round(a.training_load, 0),
     training_effect: { aerobic: round(a.training_effect_aerobic, 1), anaerobic: round(a.training_effect_anaerobic, 1) },
     calories_kcal: round(a.calories, 0),
+    event_type: eventTypeKey(a.raw.eventType),
   };
 }
 

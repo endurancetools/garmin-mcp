@@ -22,6 +22,8 @@ export interface ActivityPatch {
   typeKey?: string;
   /** The type already resolved by the caller (e.g. from the cached type list); skips the type list request. */
   activityType?: s.ActivityType;
+  /** Event type (race, training...) as Garmin lists it in getEventTypes(). */
+  eventType?: s.EventType;
   /** 0–10, stored by Garmin as 0–100. */
   rpe?: number;
   /** One of 0, 25, 50, 75, 100 ("very weak" .. "very strong"). */
@@ -191,6 +193,11 @@ export class GarminClient {
     return this.http.request('GET', '/activity-service/activity/activityTypes', { schema: s.activityTypesSchema });
   }
 
+  /** Event types an activity can be tagged with: race, training, recreation... */
+  async getEventTypes(): Promise<s.EventType[]> {
+    return this.http.request('GET', '/activity-service/activity/eventTypes', { schema: s.eventTypesSchema });
+  }
+
   async updateActivity(id: number, patch: ActivityPatch): Promise<void> {
     const body: Record<string, unknown> = { activityId: positive(id) };
     if (patch.name !== undefined) body.activityName = patch.name;
@@ -207,6 +214,7 @@ export class GarminClient {
       }
       body.activityTypeDTO = { typeId: match.typeId, typeKey: match.typeKey, parentTypeId: match.parentTypeId };
     }
+    if (patch.eventType !== undefined) body.eventTypeDTO = { typeId: patch.eventType.typeId, typeKey: patch.eventType.typeKey };
     // Only the changed summary fields: sending the full summaryDTO back is rejected (GPS pair).
     const summary: Record<string, number> = {};
     if (patch.rpe !== undefined) {

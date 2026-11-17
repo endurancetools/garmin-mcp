@@ -39,6 +39,7 @@ const activityBrief = {
   training_load: num,
   training_effect: any,
   calories_kcal: num,
+  event_type: str,
 };
 
 const zoneTime = z.looseObject({ zone: num, from_bpm: num, from_w: num, time: str, pct: num });
