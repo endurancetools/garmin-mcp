@@ -30,6 +30,8 @@ const DEFAULT_MIN_PASS = 0.9;
  * blank lines and lines starting with `//` skipped. `expect.tool` null means no tool call fits; a
  * list of names means any of them fits. With a list, `args_include` keyed only by listed tool names
  * is per tool (checked only for a tool that has an entry), any other object applies to every tool.
+ * `args_exclude` (same matching as `args_include`, shared by every tool) fails a call whose input
+ * contains it, e.g. `{"granularity": "hour"}` for a question about a week.
  * @param {string} text
  */
 export function parseScenarios(text) {
@@ -51,7 +53,9 @@ export function parseScenarios(text) {
     if (s.forbid !== undefined && !(Array.isArray(s.forbid) && s.forbid.every((t) => typeof t === 'string'))) throw new Error(`line ${i + 1}: "forbid" must be a list of tool names`);
     const clash = expectedTools({ expect: { tool } }).find((t) => s.forbid?.includes(t));
     if (clash) throw new Error(`line ${i + 1}: ${clash} is both expected and forbidden`);
-    scenarios.push({ line: i + 1, prompt: s.prompt, expect: { tool: s.expect.tool, args_include: s.expect.args_include }, forbid: s.forbid ?? [] });
+    const exclude = s.expect.args_exclude;
+    if (exclude !== undefined && (exclude === null || typeof exclude !== 'object' || Array.isArray(exclude))) throw new Error(`line ${i + 1}: "expect.args_exclude" must be an object`);
+    scenarios.push({ line: i + 1, prompt: s.prompt, expect: { tool: s.expect.tool, args_include: s.expect.args_include, ...(exclude && { args_exclude: exclude }) }, forbid: s.forbid ?? [] });
   });
   return scenarios;
 }
@@ -116,6 +120,8 @@ export function judge(scenario, call) {
   if (call && args !== undefined && !includes(call.input, args)) {
     return { pass: false, reason: `args lack ${JSON.stringify(args)}` };
   }
+  const exclude = scenario.expect.args_exclude;
+  if (call && exclude !== undefined && includes(call.input, exclude)) return { pass: false, reason: `args have ${JSON.stringify(exclude)}` };
   return { pass: true, reason: '' };
 }
 

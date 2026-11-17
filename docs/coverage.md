@@ -13,7 +13,7 @@ Coverage:
 
 All reads come from the local SQLite cache. Data that garmin-mcp does not sync is not available, even if the client has a method for it.
 
-Totals for the 111 reads: 57 full, 14 partial, 40 missing.
+Totals for the 111 reads: 65 full, 12 partial, 34 missing.
 
 ## Reads
 
@@ -52,19 +52,19 @@ Totals for the 111 reads: 57 full, 14 partial, 40 missing.
 | Energy balance | `get_period_summary` → `energy`; `query_health` `metrics: [calories]` | partial | `energy`: burned vs resting, week, month or range; calories eaten per day or week in `query_health` (`calories_consumed_kcal`), from a food log linked to Garmin Connect (e.g. MyFitnessPal). |
 | Daily steps | `query_health` `metrics: [steps]` | full | |
 | Weekly steps | `query_health` `metrics: [steps]`, `granularity: "week"` | full | |
-| Steps in 15-minute intervals | — | missing | 15-minute series. |
+| Steps in 15-minute intervals | `query_health` `granularity: "hour"`, `metrics: [steps]` | full | hourly totals with the busiest hour, up to 3 days per call; the 15-minute series is downloaded only by this question |
 | Resting heart rate | `query_health` `metrics: [resting_hr]` | full | |
 | Daily heart rate summary (min, max, resting) | `query_health` `metrics: [resting_hr]` → `hr_min_bpm`, `hr_max_bpm` | full | |
-| Intraday heart rate | — | missing | intraday series. |
+| Intraday heart rate | `query_health` `granularity: "hour"`, `metrics: [resting_hr]` | full | average, lowest and highest heart rate per hour, up to 3 days per call |
 | Daily stress | `query_health` `metrics: [stress]` | full | daily average |
 | Weekly stress | `query_health` `metrics: [stress]`, `granularity: "week"` | full | |
-| Intraday stress | — | missing | intraday series. |
-| All-day stress with Body Battery values | — | missing | intraday series. |
-| Body Battery | `query_health` `metrics: [body_battery]` | partial | daily high/low; no events. |
-| Body Battery events | — | missing | |
+| Intraday stress | `query_health` `granularity: "hour"`, `metrics: [stress]` | full | average and highest stress per hour, the most and least stressful hour |
+| All-day stress with Body Battery values | `query_health` `granularity: "hour"`, `metrics: [stress, body_battery]` | full | one series for both, per hour |
+| Body Battery | `query_health` `metrics: [body_battery]` | full | daily high/low; per hour with `granularity: "hour"`: level at the start and end of each hour, highest and lowest level with the hour, and the events |
+| Body Battery events | `query_health` `granularity: "hour"`, `metrics: [body_battery]` or `[stress]` → `events` | full | sleep, nap, activity and stress events with local start, duration, impact and Garmin's feedback |
 | Daily respiration | `query_health` `metrics: [respiration]` | full | |
-| Intraday respiration | — | missing | intraday series. |
-| Pulse Ox (SpO2) | `query_health` `metrics: [spo2]`, `get_sleep` → `avg_spo2_pct` | partial | averages only; intraday readings |
+| Intraday respiration | `query_health` `granularity: "hour"`, `metrics: [respiration]` | full | average breaths per minute per hour |
+| Pulse Ox (SpO2) | `query_health` `metrics: [spo2]`, `get_sleep` → `avg_spo2_pct` | full | daily averages; per hour with `granularity: "hour"` (the shape of the intraday readings is not confirmed by a recording yet) |
 | Weekly intensity minutes | `query_health` `metrics: [intensity_minutes]`, `granularity: "week"` | full | |
 | Floors | `query_health` `metrics: [floors]` | full | floors climbed per day; no descended floors or 15-minute series |
 | Training readiness | `get_training_status` `to` = date → `readiness` | full | |
@@ -73,7 +73,7 @@ Totals for the 111 reads: 57 full, 14 partial, 40 missing.
 | Body composition | `get_body_composition` `from`, `to` | full | |
 | Blood pressure | — | missing | not planned yet. |
 | Hydration | — | missing | client has `getHydration`, not synced. |
-| All-day events | — | missing | |
+| All-day events | — | missing | waits for a recording of its shape. |
 | Lifestyle logging | — | missing | |
 
 ### Sleep

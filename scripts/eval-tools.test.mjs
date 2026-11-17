@@ -72,6 +72,14 @@ describe('eval-tools', () => {
     expect(() => parseScenarios('{"prompt":"x","expect":{"tool":["create_workout",null]}}')).toThrow('line 1: "expect.tool" must be');
   });
 
+  it('fails a call whose input contains args_exclude', () => {
+    const [week] = parseScenarios('{"prompt":"Jaki miałem stres w tym tygodniu?","expect":{"tool":"query_health","args_include":{"metrics":["stress"]},"args_exclude":{"granularity":"hour"}}}');
+    expect(judge(week, { name: 'query_health', input: { metrics: ['stress'] } }).pass).toBe(true);
+    expect(judge(week, { name: 'query_health', input: { metrics: ['stress'], granularity: 'day' } }).pass).toBe(true);
+    expect(judge(week, { name: 'query_health', input: { metrics: ['stress'], granularity: 'hour' } })).toEqual({ pass: false, reason: 'args have {"granularity":"hour"}' });
+    expect(() => parseScenarios('{"prompt":"x","expect":{"tool":"query_health","args_exclude":["hour"]}}')).toThrow('line 1: "expect.args_exclude" must be an object');
+  });
+
   it('fails a forbidden first call when expect.tool is a list, and rejects a tool both listed and forbidden', () => {
     const [workout] = parseScenarios('{"prompt":"Zrób mi 6x400 m","expect":{"tool":["create_workout","list_workouts"]},"forbid":["schedule_workouts"]}');
     expect(judge(workout, { name: 'schedule_workouts', input: {} })).toEqual({ pass: false, reason: 'forbidden schedule_workouts' });

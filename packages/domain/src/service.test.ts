@@ -107,6 +107,85 @@ describe('GarminService', () => {
     expect(res.meta.note).toMatch(/background/);
   });
 
+  describe('query_health per hour', () => {
+    // The day after the recorded intraday day (2026-10-10), so that day is closed.
+    const AFTER = Date.parse('2026-10-11T12:00:00Z');
+
+    it('downloads the series of the asked day once and answers hours, events and the peak hour', async () => {
+      const { service, calls, count } = setup({ now: AFTER });
+      const first = await service.queryHealth(['stress', 'body_battery', 'sleep'], '2026-10-10', '2026-10-10', 'hour');
+      expect(output.healthOutput.safeParse(JSON.parse(JSON.stringify(first))).error).toBeUndefined();
+      expect(first.meta.source).toBe('live');
+      expect(calls.map((c) => c.method).filter((m) => m !== 'getSleep' && m !== 'getDailySummary' && m !== 'getHrv').toSorted()).toEqual(['getBodyBattery', 'getStress']);
+      const data = first.data as unknown as { granularity: string; rows: Record<string, unknown>[]; daily?: Record<string, unknown>[]; events?: { type: string }[]; summary: Record<string, Record<string, unknown>>; note?: string };
+      expect(data.granularity).toBe('hour');
+      // setup() runs in UTC: the recorded day covers 00:00-21:59 of the 10th.
+      expect(data.rows).toHaveLength(22);
+      expect(data.rows[0]).toMatchObject({ date: '2026-10-10', hour: '00:00', body_battery_start: 40 });
+      expect(data.summary.stress).toMatchObject({ max_at: '2026-10-10 06:00', hours_with_data: 15 });
+      expect(data.events?.map((e) => e.type)).toEqual(['sleep', 'activity']);
+      // Sleep has no hourly values: one daily row and its daily summary.
+      expect(data.daily).toEqual([{ date: '2026-10-10', sleep_h: 8, sleep_score: 81 }]);
+      expect(data.summary.sleep).toMatchObject({ days_with_data: 1 });
+      expect(data.note).toMatch(/^sleep has no hourly values/);
+
+      const before = calls.length;
+      const second = await service.queryHealth(['stress', 'body_battery'], '2026-10-10', '2026-10-10', 'hour');
+      expect(calls.length).toBe(before);
+      expect(second.meta.source).toBe('cache');
+      expect(count('getHeartRate')).toBe(0);
+    });
+
+    it('rejects more than 3 days and points to "day"', async () => {
+      const { service, calls } = setup({ now: AFTER });
+      await expect(service.queryHealth(['stress'], '2026-10-07', '2026-10-10', 'hour')).rejects.toMatchObject({ code: 'INVALID_INPUT', hint: expect.stringContaining('"day"') });
+      expect(calls).toEqual([]);
+      const three = await service.queryHealth(['steps'], '2026-10-08', '2026-10-10', 'hour');
+      expect(three.data.rows?.length).toBeGreaterThan(0);
+    });
+
+    it('defaults to today and leaves future days alone', async () => {
+      const { service, count } = setup({ now: AFTER });
+      const res = await service.queryHealth(['resting_hr'], undefined, undefined, 'hour');
+      expect(res.data).toMatchObject({ from: '2026-10-11', to: '2026-10-11' });
+      expect(count('getHeartRate')).toBe(1);
+      await service.queryHealth(['resting_hr'], '2026-10-11', '2026-10-12', 'hour');
+      expect(count('getHeartRate')).toBe(1);
+    });
+
+    it('without auto fetch says what is missing instead of a sync hint garmin_sync could not fill', async () => {
+      const { service, calls } = setup({ now: AFTER, autoFetch: false });
+      const res = await service.queryHealth(['stress'], '2026-10-10', '2026-10-10', 'hour');
+      expect(calls).toEqual([]);
+      expect(res.data.rows).toBeUndefined();
+      expect(res.meta.sync_hint).toBeUndefined();
+      expect(res.meta.note).toMatch(/Hourly data of 2026-10-10 is not downloaded yet.*GARMIN_AUTO_FETCH/);
+    });
+
+    it('downloads with auto fetch (GARMIN_AUTO_FETCH) although reads do not fetch on their own', async () => {
+      const { service, count } = setup({ now: AFTER, autoFetch: false, autoSync: true });
+      const res = await service.queryHealth(['steps'], '2026-10-10', '2026-10-10', 'hour');
+      expect(count('getSteps')).toBe(1);
+      expect(res.meta.source).toBe('live');
+      expect(res.data.summary?.steps).toMatchObject({ total: expect.any(Number) });
+    });
+
+    it('waits for a sync pause and says when the hourly data comes', async () => {
+      const { service, store, calls } = setup({ now: AFTER });
+      store.setMeta('sync:paused_until', String(AFTER + 3_600_000));
+      const res = await service.queryHealth(['stress'], '2026-10-10', '2026-10-10', 'hour');
+      expect(calls).toEqual([]);
+      expect(res.meta.note).toContain('Syncing with Garmin is paused; hourly data that is missing or older than 15 min downloads after 2026-10-11T13:00:00.000Z');
+    });
+
+    it('returns partial data while Garmin is slow', async () => {
+      const { service } = setup({ now: AFTER, budgetMs: 30, delayMs: 50 });
+      const res = await service.queryHealth(['resting_hr'], '2026-10-10', '2026-10-10', 'hour');
+      expect(res.meta.source).toBe('partial');
+      expect(res.meta.note).toMatch(/background/);
+    });
+  });
+
   it('adds recovery, load focus, race predictions, scores, fitness age, records and acclimation to the training status', async () => {
     const { service, count } = setup({ activities: [summary(1, '2026-10-07')] });
     const res = await service.getTrainingStatus({});

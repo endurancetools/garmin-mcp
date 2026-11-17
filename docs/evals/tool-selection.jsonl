@@ -61,3 +61,7 @@
 {"prompt": "Which running workouts do I have saved in my Garmin library?", "expect": {"tool": "list_workouts", "args_include": {"sport": "running"}}, "forbid": ["get_activities", "get_workout", "garmin_sync"]}
 {"prompt": "O której się budziłem dziś w nocy?", "expect": {"tool": "get_sleep"}, "forbid": ["query_health", "garmin_sync"]}
 {"prompt": "When did I wake up during last night's sleep, and when was my heart rate lowest?", "expect": {"tool": "get_sleep"}, "forbid": ["query_health", "garmin_sync"]}
+{"prompt": "Kiedy wczoraj miałem największy stres?", "expect": {"tool": "query_health", "args_include": {"metrics": ["stress"], "granularity": "hour"}}, "forbid": ["garmin_sync", "get_sleep"]}
+{"prompt": "What drained my Body Battery yesterday?", "expect": {"tool": "query_health", "args_include": {"metrics": ["body_battery"], "granularity": "hour"}}, "forbid": ["garmin_sync"]}
+{"prompt": "Jaki miałem średni stres w poszczególne dni tego tygodnia?", "expect": {"tool": "query_health", "args_include": {"metrics": ["stress"]}, "args_exclude": {"granularity": "hour"}}, "forbid": ["garmin_sync"]}
+{"prompt": "How did my stress and Body Battery look day by day this week?", "expect": {"tool": "query_health", "args_include": {"metrics": ["stress", "body_battery"]}, "args_exclude": {"granularity": "hour"}}, "forbid": ["garmin_sync"]}

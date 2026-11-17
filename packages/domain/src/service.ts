@@ -2,6 +2,7 @@ import type { ActivityType, DownloadFormat, EventType, GarminClient } from 'garm
 import {
   addDays,
   assertIsoDate,
+  eachDay,
   endOfMonth,
   GarminError,
   InputError,
@@ -22,7 +23,8 @@ import { calendarEvent } from './calendar.js';
 import { deviceSettings } from './devices.js';
 import { energyBalance } from './energy.js';
 import { compact, hms, isFootSport, iso, km, round, speedOrPace } from './format.js';
-import { healthTable, tablesFor, type HealthMetric } from './health.js';
+import { healthTable, tablesFor, type HealthGranularity, type HealthMetric } from './health.js';
+import { hourlyTable, intradayKinds, isHourlyMetric } from './intraday.js';
 import { decodeCursor, encodeCursor, pageBySize } from './paging.js';
 import { sleepNight, sleepRange, sleepTimeline } from './sleep.js';
 import { filterStream, streamSummary, type StreamBucket, type StreamSummary } from './stream.js';
@@ -99,6 +101,8 @@ export interface GarminServiceOptions {
 }
 
 const MAX_RANGE_DAYS = 366 * 3;
+/** Longest `query_health` range per hour, in days including both ends. */
+const MAX_HOURLY_DAYS = 3;
 /** Longest `get_period_summary` range, in days including both ends. */
 const MAX_PERIOD_DAYS = 366;
 
@@ -856,9 +860,15 @@ export class GarminService {
 
   // ------------------------------------------------------------ health
 
-  async queryHealth(metrics: readonly HealthMetric[], fromArg: string | undefined, toArg: string | undefined, granularity: 'day' | 'week' = 'day') {
+  async queryHealth(metrics: readonly HealthMetric[], fromArg: string | undefined, toArg: string | undefined, granularity: HealthGranularity = 'day') {
     if (metrics.length === 0) throw new InputError('metrics must not be empty');
+    if (granularity === 'hour') return this.#hourlyHealth(metrics, fromArg, toArg);
     const { from, to } = this.range(fromArg, toArg, 7);
+    const daily = await this.#dailyHealth(metrics, from, to, granularity);
+    return { data: compact({ from, to, ...daily.table }), meta: daily.meta };
+  }
+
+  async #dailyHealth(metrics: readonly HealthMetric[], from: IsoDate, to: IsoDate, granularity: 'day' | 'week') {
     const historyFrom = addDays(to, -27) < from ? addDays(to, -27) : from;
     const tables = tablesFor(metrics);
     const ensured = await this.syncer.ensureDaily(tables, historyFrom, to, this.#budget);
@@ -872,7 +882,65 @@ export class GarminService {
     const table = healthTable(metrics, inRange, from, to, granularity, history);
     const times = [...inRange.daily, ...inRange.sleep, ...inRange.hrv].map((r) => r.fetched_at);
     const cov = this.syncer.coverage(tables, from, to);
-    return { data: compact({ from, to, ...table }), meta: this.#meta([{ ...ensured, coverage: cov }], times, this.#dailyGap('health', tables, from, to)) };
+    const result = { ...ensured, coverage: cov };
+    const gap = this.#dailyGap('health', tables, from, to);
+    return { table, result, times, gap, meta: this.#meta([result], times, gap) };
+  }
+
+  /**
+   * `query_health` per hour for up to 3 days: the intraday series are downloaded only here, on the
+   * question that needs them (with auto fetch, within the daily request limit), and kept; metrics
+   * without hourly values come per day in `daily`.
+   */
+  async #hourlyHealth(metrics: readonly HealthMetric[], fromArg: string | undefined, toArg: string | undefined) {
+    const { from, to } = this.range(fromArg, toArg, 1);
+    const days = eachDay(from, to);
+    if (days.length > MAX_HOURLY_DAYS) {
+      throw new InputError(`granularity "hour" covers at most ${MAX_HOURLY_DAYS} days; ${from}..${to} has ${days.length}`, 'Use granularity "day" (or "week") for longer ranges, or ask about up to 3 days.');
+    }
+    const hourly = metrics.filter(isHourlyMetric);
+    const perDay = metrics.filter((m) => !isHourlyMetric(m));
+    const kinds = intradayKinds(hourly);
+    const today = this.today();
+    const fetchDays = kinds.length > 0 ? days.filter((d) => d <= today) : [];
+    const fetch = this.#autoSync || this.syncer.fetchOnDemand;
+    const [daily, ensured] = await Promise.all([
+      perDay.length > 0 ? this.#dailyHealth(perDay, from, to, 'day') : undefined,
+      Promise.all(fetchDays.map((d) => this.syncer.ensureIntraday(d, kinds, this.#budget, { fetch }))),
+    ]);
+    const series = fetchDays.map((date) => ({ date, series: this.store.getIntraday(date, kinds) }));
+    const table = hourlyTable(hourly, series, from, to, this.#tz);
+
+    const results: EnsureResult[] = [...(daily ? [daily.result] : []), ...ensured.map((r) => ({ source: r.source }))];
+    const times = [...(daily?.times ?? []), ...series.flatMap((s) => s.series.map((r) => r.fetched_at))];
+    let meta = this.#meta(results, times, daily?.gap);
+    const notFetched = fetchDays.filter((_, i) => (ensured[i]?.missing.length ?? 0) > 0 && !ensured[i]?.blocked);
+    if (!fetch && notFetched.length > 0) {
+      meta = withNote(meta, `Hourly data of ${notFetched.join(', ')} is not downloaded yet: it is fetched only by an hourly question with auto fetch on (GARMIN_AUTO_FETCH), never by garmin_sync.`);
+    }
+    const blocked = ensured.find((r) => r.blocked)?.blocked;
+    if (blocked) {
+      const why = blocked.reason === 'budget' ? 'The daily Garmin request limit is used up' : 'Syncing with Garmin is paused';
+      meta = withNote(meta, `${why}; hourly data that is missing or older than 15 min downloads after ${iso(blocked.resume_at)} when asked again.`);
+    }
+    const empty = hourly.filter((m) => !table.summary[m]?.hours_with_data);
+    const notes = [
+      perDay.length > 0 ? `${perDay.join(', ')} ${perDay.length > 1 ? 'have' : 'has'} no hourly values; ${perDay.length > 1 ? 'their' : 'its'} daily values are in daily.` : undefined,
+      empty.length > 0 && fetchDays.length > 0 && notFetched.length === 0 && !blocked ? `Garmin has no hourly ${empty.join(', ')} for these days.` : undefined,
+    ].filter((n): n is string => n !== undefined);
+    return {
+      data: compact({
+        from,
+        to,
+        granularity: 'hour' as const,
+        rows: table.rows,
+        daily: daily?.table.rows,
+        events: table.events,
+        summary: { ...table.summary, ...daily?.table.summary },
+        note: notes.length > 0 ? notes.join(' ') : undefined,
+      }),
+      meta,
+    };
   }
 
   async getSleep(q: { date?: string; from?: string; to?: string }) {

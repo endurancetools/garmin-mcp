@@ -17,6 +17,9 @@ export const HEALTH_METRICS = [
   'floors',
 ] as const;
 export type HealthMetric = (typeof HEALTH_METRICS)[number];
+/** `query_health` rows: per day, per ISO week, or per hour (up to 3 days, from the intraday series). */
+export const HEALTH_GRANULARITIES = ['day', 'week', 'hour'] as const;
+export type HealthGranularity = (typeof HEALTH_GRANULARITIES)[number];
 
 export interface HealthRows {
   daily: DailyRows['daily_summary'][];

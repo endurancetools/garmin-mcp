@@ -6,6 +6,7 @@ export * from './calendar.js';
 export * from './energy.js';
 export * from './format.js';
 export * from './health.js';
+export * from './intraday.js';
 export * from './load.js';
 export * from './output.js';
 export * from './paging.js';

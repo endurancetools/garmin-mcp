@@ -21,6 +21,7 @@ import {
   devicesOutput,
   downloadOutput,
   gearOutput,
+  HEALTH_GRANULARITIES,
   HEALTH_METRICS,
   healthOutput,
   listWorkoutsOutput,
@@ -229,12 +230,13 @@ export const TOOLS: ToolDef[] = [
       'a table per day or per ISO week plus summary with averages, totals, min/max and 7/28-day trend.' +
       ' steps also returns the daily distance in km, resting_hr the daily min/max HR, hrv the Garmin HRV status and baseline range, calories the kcal burned (total, active) and eaten (calories_consumed_kcal, absent without food log entries).' +
       ' Ask for several metrics in one call (e.g. calories and intensity_minutes together). ' +
-      'Use get_sleep for sleep stages of particular nights. Example: {"metrics":["hrv","resting_hr","sleep"],"from":"2026-07-01","to":"2026-09-30","granularity":"week"}.',
+      'Use get_sleep for sleep stages of particular nights. Example: {"metrics":["hrv","resting_hr","sleep"],"from":"2026-07-01","to":"2026-09-30","granularity":"week"}.' +
+      ' "hour" gives hourly HR, stress, Body Battery, steps, respiration and SpO2 with peak and lowest hour and Body Battery events (sleep, activity, stress), for "when was I most stressed yesterday": {"metrics":["stress","body_battery"],"from":"2026-10-09","to":"2026-10-09","granularity":"hour"}.',
     input: {
       metrics: z.array(z.enum(HEALTH_METRICS)).min(1),
       from: date.optional().describe('Default: 7 days before `to`'),
       to: date.optional().describe('Default: today'),
-      granularity: z.enum(['day', 'week']).default('day').describe('"week" for ranges longer than ~3 weeks'),
+      granularity: z.enum(HEALTH_GRANULARITIES).default('day').describe('"week" for ranges longer than ~3 weeks, "hour" for up to 3 days'),
     },
     output: healthOutput,
     annotations: READ,

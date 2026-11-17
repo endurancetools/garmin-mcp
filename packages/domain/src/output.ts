@@ -194,7 +194,13 @@ export const healthOutput = envelope({
   to: str,
   granularity: str,
   rows: list(z.record(z.string(), z.union([z.string(), z.number()]))),
-  summary: z.record(z.string(), z.looseObject({ avg: num, min: num, max: num, total: num, days_with_data: num, trend: any })).optional(),
+  /** `granularity: "hour"`: metrics without hourly values, per day. */
+  daily: list(z.record(z.string(), z.union([z.string(), z.number()]))),
+  events: list(z.looseObject({ type: str, start: str, duration: str, body_battery_impact: num, feedback: str })),
+  summary: z
+    .record(z.string(), z.looseObject({ avg: num, min: num, min_at: str, max: num, max_at: str, total: num, days_with_data: num, hours_with_data: num, trend: any }))
+    .optional(),
+  note: str,
 });
 
 /** One night (`date`), a night without sleep (`sleep: null`), or a range (`from`, `to`, `summary`, `nights`). */

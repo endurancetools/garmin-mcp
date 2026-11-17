@@ -46,7 +46,10 @@ export function summary(id: number, day: string, extra: Partial<ActivitySummary>
   };
 }
 
-export function setup(opts: { activities?: ActivitySummary[]; gone?: ReadonlySet<number>; zip?: Uint8Array; budgetMs?: number; delayMs?: number; autoFetch?: boolean; autoSync?: boolean; redact?: boolean } = {}) {
+export function setup(
+  opts: { activities?: ActivitySummary[]; gone?: ReadonlySet<number>; zip?: Uint8Array; budgetMs?: number; delayMs?: number; autoFetch?: boolean; autoSync?: boolean; redact?: boolean; now?: number } = {},
+) {
+  const now = opts.now ?? NOW;
   const calls: { method: string; args: unknown[] }[] = [];
   const activities = opts.activities ?? [];
   const names = new Map<number, string>();
@@ -243,11 +246,19 @@ export function setup(opts: { activities?: ActivitySummary[]; gone?: ReadonlySet
         if (id === 666) throw new Error('Schedule not found');
         return undefined;
       }),
+    // Intraday series: the recorded day (2026-10-10) whatever date is asked.
+    getHeartRate: (date: string) => rec('getHeartRate', [date], () => fixture('heart-rate-day')),
+    getStress: (date: string) => rec('getStress', [date], () => fixture('stress-day')),
+    getRespiration: (date: string) => rec('getRespiration', [date], () => fixture('respiration-day')),
+    getSpo2: (date: string) => rec('getSpo2', [date], () => fixture('spo2-day')),
+    getSteps: (date: string) => rec('getSteps', [date], () => fixture('steps-chart')),
+    getBodyBattery: (from: string, to: string) => rec('getBodyBattery', [from, to], () => fixture('body-battery')),
+    getDailyEvents: (date: string) => rec('getDailyEvents', [date], () => ({ calendarDate: date })),
     downloadActivity: (id: number, format: string) => rec('downloadActivity', [id, format], () => ({ data: opts.zip ?? new Uint8Array([1, 2, 3]), contentType: 'application/zip', filename: undefined })),
   };
   const store = Store.open(':memory:');
-  const syncer = new Syncer(client as unknown as GarminClient, store, { timeZone: 'UTC', now: () => NOW, fetchOnDemand: opts.autoFetch ?? true });
-  const jobs = new SyncJobRunner(syncer, store, { chunkDays: 7, pause: { minMs: 0, maxMs: 0 }, maxRequestsPerDay: 10_000, timeZone: 'UTC', now: () => NOW });
+  const syncer = new Syncer(client as unknown as GarminClient, store, { timeZone: 'UTC', now: () => now, fetchOnDemand: opts.autoFetch ?? true });
+  const jobs = new SyncJobRunner(syncer, store, { chunkDays: 7, pause: { minMs: 0, maxMs: 0 }, maxRequestsPerDay: 10_000, timeZone: 'UTC', now: () => now });
   const downloadDir = fs.mkdtempSync(path.join(os.tmpdir(), 'garmin-dl-'));
   const service = new GarminService({
     client: client as unknown as GarminClient,
@@ -259,7 +270,7 @@ export function setup(opts: { activities?: ActivitySummary[]; gone?: ReadonlySet
     budgetMs: opts.budgetMs ?? 2000,
     autoSync: opts.autoSync ?? false,
     redact: opts.redact,
-    now: () => NOW,
+    now: () => now,
   });
   const count = (method: string) => calls.filter((c) => c.method === method).length;
   return { service, store, calls, count, downloadDir };

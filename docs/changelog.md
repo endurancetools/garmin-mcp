@@ -9,6 +9,7 @@ What changed in each release. All `garmin-mcp-*` packages share one version; the
 
 ### Tools
 
+- **`query_health` answers per hour.** With `granularity: "hour"` (up to 3 days) it gives a row per hour: heart rate (average, lowest, highest), stress (average, highest), Body Battery at the start and end of the hour, steps, respiration and SpO2, and per metric the average, the peak and the lowest hour, so "when was I most stressed yesterday" has an answer. Asked about stress or Body Battery, it also lists the Body Battery events (sleep, nap, activity, stress) with start, duration and impact, for "what drained my Body Battery". Sleep, HRV, calories, intensity minutes and floors have no hourly values and come per day next to the hours. These series are downloaded only by an hourly question, one request per series and day within the daily request limit, and need auto fetch (`GARMIN_AUTO_FETCH`, on by default); `garmin_sync` does not download them. A past day is kept for good, today's is refreshed after 15 minutes.
 - **`get_sleep` shows how one night went.** For a single night (`date`) the answer has a `timeline`: the sleep stages as segments with start and end (at most 60, short ones merged into their neighbours), awakenings (how many, the longest and when each began), restless moments, the lowest heart rate, the lowest and highest HRV reading and the lowest SpO2 with their times, and Body Battery at the start and end of the night. Clock times are in your time zone. It is read from the sleep and HRV data already downloaded for that night, so it costs no extra requests to Garmin; ranges of nights are unchanged.
 
 ### CLI
@@ -17,7 +18,7 @@ What changed in each release. All `garmin-mcp-*` packages share one version; the
 
 ### Local cache
 
-- **Room for intraday data.** The local database (schema version 8) gets an `intraday` table for one day's heart rate, stress with the Body Battery curve, respiration, SpO2, steps, Body Battery events and the day's events. Nothing fills it yet: these series will be downloaded only by the question that needs them (hourly `query_health` is next), never by `garmin_sync`. Today's series are refreshed after 15 minutes and a past day is kept for good; every request counts against the daily request limit (`GARMIN_SYNC_MAX_REQUESTS_PER_DAY`) shared with syncing, and no download starts while syncing is paused after Garmin refused requests. The upgrade only adds the table; the data you have stays.
+- **Room for intraday data.** The local database (schema version 8) gets an `intraday` table for one day's heart rate, stress with the Body Battery curve, respiration, SpO2, steps, Body Battery events and the day's events. Hourly `query_health` fills it: these series are downloaded only by the question that needs them, never by `garmin_sync`. Today's series are refreshed after 15 minutes and a past day is kept for good; every request counts against the daily request limit (`GARMIN_SYNC_MAX_REQUESTS_PER_DAY`) shared with syncing, and no download starts while syncing is paused after Garmin refused requests. The upgrade only adds the table; the data you have stays.
 
 ## 0.6.3 (2026-11-17)
 
