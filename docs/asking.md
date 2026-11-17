@@ -44,4 +44,4 @@ If you would rather be asked before anything is downloaded, set `GARMIN_AUTO_FET
 
 ## Deleting things
 
-Deleting activities, workouts or weigh-ins, and overwriting a saved workout, are off by default. Turn them on with `GARMIN_ENABLE_DESTRUCTIVE=true` when you want them.
+Deleting activities, workouts or weigh-ins, overwriting a saved workout and replacing the strength sets of an activity (`update_activity` with `exercise_sets`), are off by default. Turn them on with `GARMIN_ENABLE_DESTRUCTIVE=true` when you want them.

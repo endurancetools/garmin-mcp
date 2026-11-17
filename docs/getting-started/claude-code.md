@@ -39,7 +39,7 @@ Claude Code passes environment variables to the server with `--env`:
 claude mcp add garmin --scope user --env GARMIN_ENABLE_DESTRUCTIVE=true -- npx -y garmin-mcp-server
 ```
 
-- `GARMIN_ENABLE_DESTRUCTIVE=true` turns on deleting activities, workouts and weigh-ins and overwriting saved workouts. Off by default.
+- `GARMIN_ENABLE_DESTRUCTIVE=true` turns on deleting activities, workouts and weigh-ins, overwriting saved workouts and replacing the strength sets of an activity (`update_activity` with `exercise_sets`). Off by default.
 - `GARMIN_AUTO_FETCH=false` stops the server from downloading on its own; Claude then asks you before fetching missing days.
 
 All options: [Configuration](../configuration.md).
