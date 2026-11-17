@@ -6,6 +6,8 @@
 
 **Ask your AI assistant how your training is really going.** Garmin MCP is an unofficial, open-source MCP server for your Garmin Connect data: training load, form and morning readiness computed on your machine with methods from published sports-science literature, with citations; 21 tools designed around the questions athletes ask, not a mirror of Garmin's API; a local SQLite cache that downloads only what a question needs; and structured workouts that go from the answer to your Garmin calendar and watch. It also reads activities, health, sleep, training status, body composition, gear, devices and the workout library.
 
+![Terminal recording of Claude Code with Garmin MCP. Asked "Can I train hard today?", it advises a modified session, citing resting heart rate, sleep and training load. Asked to build 6x400 m with 90 s rest for Thursday, it shows the workout steps and asks before saving anything.](https://endurancetools.github.io/garmin-mcp/assets/images/demo.gif)
+
 Works with Claude Code, Claude Desktop, Codex, Antigravity CLI, opencode and any other MCP client (stdio or streamable HTTP).
 
 **Documentation: [endurancetools.github.io/garmin-mcp](https://endurancetools.github.io/garmin-mcp/)** (getting started per client, what to ask, configuration, troubleshooting). Contributing and development: [DEVELOPMENT.md](DEVELOPMENT.md).

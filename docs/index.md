@@ -41,7 +41,7 @@ feature_row:
 {% include feature_row %}
 </div>
 
-<!-- Screenshot or GIF of a conversation goes here (E7-8, E7-3a). -->
+![Terminal recording of Claude Code with Garmin MCP. Asked "Can I train hard today?", it advises a modified session, citing resting heart rate, sleep and training load. Asked to build 6x400 m with 90 s rest for Thursday, it shows the workout steps and asks before saving anything.]({{ '/assets/images/demo.gif' | relative_url }})
 
 ## Can I train hard today? Ask Claude, with your Garmin data
 
