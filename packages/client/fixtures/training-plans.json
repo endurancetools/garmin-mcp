@@ -1,0 +1,74 @@
+{
+  "trainingPlanList": [
+    {
+      "trainingPlanId": 32869447,
+      "trainingPlanCategory": "FBT_ADAPTIVE",
+      "trainingType": {
+        "typeId": 2,
+        "typeKey": "Running"
+      },
+      "trainingSubType": {
+        "subTypeId": 26,
+        "subTypeKey": "anon-subTypeKey"
+      },
+      "trainingLevel": {
+        "levelId": 3,
+        "levelKey": "anon-levelKey"
+      },
+      "trainingVersion": {
+        "versionId": 3,
+        "versionName": "anon-versionName"
+      },
+      "formatLocale": {
+        "id": 1,
+        "key": "anon-key",
+        "isSupported": true
+      },
+      "ownerId": 90001,
+      "ownerDisplayName": null,
+      "trainingStatus": {
+        "statusId": 1,
+        "statusKey": "anon-statusKey"
+      },
+      "privacyRule": {
+        "typeId": 2,
+        "typeKey": "private"
+      },
+      "name": "anon-name",
+      "description": "anon-description",
+      "durationInWeeks": 16,
+      "avgWeeklyWorkouts": 5,
+      "parentPlanId": 92504257,
+      "createDate": "2026-11-17T00:00:00.0",
+      "publishDate": null,
+      "expireDate": null,
+      "startDate": "2026-11-17T00:00:00.0",
+      "pausedDate": null,
+      "resumedDate": null,
+      "endDate": "2027-03-09T00:00:00.0",
+      "taskList": null,
+      "adaptivePlanPhases": null,
+      "planPhases": null,
+      "nameI18nKey": "anon-nameI18nKey",
+      "descriptionI18nKey": "anon-descriptionI18nKey",
+      "planKey": "anon-planKey",
+      "seriesIndex": null,
+      "daysInLastWeek": null,
+      "supplementalSports": []
+    }
+  ],
+  "searchFilter": {
+    "ownerId": 90001,
+    "ownerDisplayName": null,
+    "trainingLevels": null,
+    "trainingStatusList": [],
+    "trainingTypes": null,
+    "trainingSubTypes": null,
+    "trainingVersions": null,
+    "allowedPrivacyList": null,
+    "locale": null,
+    "start": 1,
+    "limit": 20,
+    "planKey": false
+  }
+}

@@ -233,16 +233,22 @@ describe('anonymize', () => {
     expect(anonymize({ symptom: 'zawroty głowy', timeFormat: 'time_twenty_four_hr' })).toEqual({ symptom: 'zawroty głowy', timeFormat: 'time_twenty_four_hr' });
   });
 
-  it('leaves the existing client fixtures out of the new rules', () => {
+  it('keeps no free text in the stage 8 fixtures and leaves the older ones out of the new rules', () => {
+    // A stage 8 recording (UNKNOWN_SHAPE) hides all text: anonymizing it again
+    // changes nothing. A zero shift keeps the already shifted coordinates.
     // Re-recording an older endpoint gives the same fixture as before: none of
-    // the keys added for notes and food logs occurs in it, and no fixture is a
-    // stage 8 recording, which hides all text.
+    // the keys added for notes and food logs occurs in it.
     const fixtures = fileURLToPath(new URL('../../../packages/client/fixtures/', import.meta.url));
     const files = fs.readdirSync(fixtures).filter((f) => f.endsWith('.json'));
     expect(files.length).toBeGreaterThan(30);
+    const recorded = files.filter((f) => UNKNOWN_SHAPE.has(f.replace(/\.json$/, '')));
+    expect(recorded.length).toBeGreaterThan(10);
+    for (const f of recorded) {
+      const data: unknown = JSON.parse(fs.readFileSync(path.join(fixtures, f), 'utf8'));
+      expect({ f, data: anonymize(data, { lat: 0, lon: 0 }, { unknownShape: true }) }).toEqual({ f, data });
+    }
     const added = ['note', 'notes', 'comment', 'foodname', 'mealname', 'brandname'];
-    for (const f of files) {
-      expect(UNKNOWN_SHAPE.has(f.replace(/\.json$/, ''))).toBe(false);
+    for (const f of files.filter((name) => !recorded.includes(name))) {
       const keys = new Set<string>();
       const walk = (v: unknown): void => {
         if (Array.isArray(v)) v.forEach(walk);

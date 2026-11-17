@@ -45,6 +45,23 @@ const contracts: Record<string, z.ZodType> = {
   devices: s.deviceListSchema,
   'device-last-used': s.deviceLastUsedSchema,
   'device-settings': s.deviceSettingsSchema,
+  // Stage 8 (E8-2a): trimmed copies of the E8-2 recordings.
+  'activity-typed-splits': s.activityTypedSplitsSchema,
+  'activity-split-summaries': s.activitySplitSummariesSchema,
+  'lactate-threshold-range': s.lactateThresholdRangeSchema,
+  'lactate-threshold-speed-range': s.lactateThresholdRangeSchema,
+  'cycling-ftp': s.cyclingFtpSchema,
+  'hydration-day': s.hydrationDaySchema,
+  'badge-challenges': s.badgeChallengesSchema,
+  'training-plans': s.trainingPlansSchema,
+  'adaptive-plan': s.trainingPlanSchema,
+  'blood-pressure-range': s.bloodPressureRangeSchema,
+  'nutrition-day': s.nutritionDaySchema,
+  /** Plan items of the calendar month only: `fbtAdaptiveWorkout` and `trainingPlan`. */
+  'calendar-month-plan': s.calendarMonthSchema,
+  courses: s.coursesSchema,
+  course: s.courseSchema,
+  'earned-badges': s.earnedBadgesSchema,
 };
 
 describe('schema contracts', () => {

@@ -1,8 +1,9 @@
-import { DEFAULT_APP_IDENTITY, hostsForRegion, InputError } from 'garmin-mcp-config';
+import { DEFAULT_APP_IDENTITY, hostsForRegion, InputError, silentLogger } from 'garmin-mcp-config';
 import { http, HttpResponse } from 'msw';
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { GarminClient } from './client.js';
 import { ForbiddenError, NotFoundError, RateLimitedError, UnauthorizedError, ValidationError, ClientNetworkError } from './errors.js';
+import { fixture } from './test-utils/fixtures.js';
 import { API, createServer, fakeTokens } from './test-utils/server.js';
 
 const server = createServer();
@@ -104,7 +105,7 @@ describe('GarminClient', () => {
     expect(results.every((r) => r !== undefined && r !== null)).toBe(true);
   });
 
-  // Paths of stage 8 endpoints are not confirmed by a recording yet (E8-2); this pins what the client sends.
+  // Recorded in E8-2 (all but the phased plan); this pins what the client sends.
   it.each<[string, (c: GarminClient) => Promise<unknown>, string, unknown]>([
     ['typed splits', (c) => c.getActivityTypedSplits(20000000002), '/activity-service/activity/20000000002/typedsplits', {}],
     ['split summaries', (c) => c.getActivitySplitSummaries(20000000002), '/activity-service/activity/20000000002/split_summaries', {}],
@@ -134,7 +135,7 @@ describe('GarminClient', () => {
     ['daily events', (c) => c.getDailyEvents('2026-10-07'), '/wellness-service/wellness/dailyEvents?calendarDate=2026-10-07', []],
     ['goals', (c) => c.getGoals(), '/goal-service/goal/goals?status=active&start=1&limit=100', []],
     ['past goals', (c) => c.getGoals('past'), '/goal-service/goal/goals?status=past&start=1&limit=100', []],
-    ['courses', (c) => c.listCourses(), '/course-service/course', {}],
+    ['courses', (c) => c.listCourses(), '/course-service/course', []],
     ['course', (c) => c.getCourse(4242), '/course-service/course/4242', {}],
     [
       'device solar',
@@ -165,6 +166,16 @@ describe('GarminClient', () => {
     await expect(client.getCourse(0)).rejects.toBeInstanceOf(InputError);
     await expect(client.getDeviceSolar(-3, '2026-10-07')).rejects.toBeInstanceOf(InputError);
     await expect(client.getBloodPressure('2026-13-01')).rejects.toBeInstanceOf(InputError);
+  });
+
+  it('accepts the recorded list of courses without a schema warning', async () => {
+    const courses = fixture<unknown[]>('courses');
+    server.use(http.get(`${API}/course-service/course`, () => HttpResponse.json(courses as never)));
+    const logger = silentLogger.child({});
+    const warn = vi.spyOn(logger, 'warn');
+    const client = new GarminClient(config, fakeTokens().provider, { logger });
+    await expect(client.listCourses()).resolves.toEqual(courses);
+    expect(warn).not.toHaveBeenCalled();
   });
 
   it('pages through all activities', async () => {

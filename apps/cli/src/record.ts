@@ -44,7 +44,7 @@ export const RECORDABLE: Record<string, (c: GarminClient, a: { date: string; id?
   devices: (c) => c.listDevices(),
   'device-last-used': (c) => c.getLastUsedDevice(),
   'device-settings': (c, a) => c.getDeviceSettings(need(a.id, '--id')),
-  // Stage 8 endpoints: paths not confirmed until these recordings exist (E8-2).
+  // Stage 8 endpoints, recorded in E8-2 (fixtures: E8-2a).
   'activity-typed-splits': (c, a) => c.getActivityTypedSplits(need(a.id, '--id')),
   'activity-split-summaries': (c, a) => c.getActivitySplitSummaries(need(a.id, '--id')),
   'training-plans': (c) => c.listTrainingPlans(),

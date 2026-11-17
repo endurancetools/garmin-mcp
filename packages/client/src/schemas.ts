@@ -614,35 +614,178 @@ export const deviceSettingsSchema = z
   .nullable();
 export type DeviceSettings = z.infer<typeof deviceSettingsSchema>;
 
-// ---------------------------------------------------------------- stage 8 endpoints, not recorded yet
+// ---------------------------------------------------------------- stage 8 endpoints
 
 /*
- * Shapes below are not confirmed by a recording yet (E8-2): paths follow the
- * known shape of the Garmin Connect API, schemas only name ids we expect, so a
- * response of another shape is logged and passed through, never rejected.
- * Replace each with typed fields once its fixture is recorded.
+ * Paths of every stage 8 endpoint but the phased training plan
+ * (`getTrainingPlan`) are confirmed by a recording (E8-2): each answered 200.
+ * Fields below are the ones the recordings show; schemas stay loose and
+ * nullish, so a response of another shape is logged and passed through, never
+ * rejected. Recorded empty, so with item shapes still unknown: goals, daily
+ * events, blood pressure measurements, meals, menstrual day (`null`) and solar
+ * days; their items are left untyped.
  */
 
-export const activityTypedSplitsSchema = z.looseObject({ activityId: int });
-export const activitySplitSummariesSchema = z.looseObject({ activityId: int });
+const typedSplitFields = {
+  distance: num,
+  duration: num,
+  movingDuration: num,
+  elevationGain: num,
+  elevationLoss: num,
+  averageSpeed: num,
+  avgGradeAdjustedSpeed: num,
+  averageHR: num,
+  maxHR: num,
+  averagePower: num,
+};
 
-export const trainingPlansSchema = z.looseObject({});
-export const trainingPlanSchema = z.looseObject({ trainingPlanId: int });
+/** Run, walk, stand, ClimbPro climb and climb section... segments; `type` is e.g. `RWD_RUN`, `CLIMB_PRO_CYCLING_CLIMB`. */
+export const activityTypedSplitsSchema = z.looseObject({
+  activityId: int,
+  splits: z
+    .array(
+      z.looseObject({
+        ...typedSplitFields,
+        type: str,
+        messageIndex: int,
+        startTimeLocal: str,
+        startTimeGMT: str,
+        endTimeGMT: str,
+        startElevation: num,
+        averageGrade: num,
+        maxGrade: num,
+        climbProDifficulty: str,
+      }),
+    )
+    .nullish(),
+});
+/** Totals per `splitType` of the typed splits. */
+export const activitySplitSummariesSchema = z.looseObject({
+  activityId: int,
+  splitSummaries: z.array(z.looseObject({ ...typedSplitFields, splitType: str, noOfSplits: int })).nullish(),
+});
 
-/** One series per day, for heart rate (bpm) or speed. */
-export const lactateThresholdRangeSchema = z.array(z.looseObject({}));
-export const cyclingFtpSchema = z.looseObject({});
+const trainingPlanFields = {
+  trainingPlanId: int,
+  /** E.g. `FBT_ADAPTIVE` (Garmin Coach). */
+  trainingPlanCategory: str,
+  trainingType: z.looseObject({ typeId: int, typeKey: str }).nullish(),
+  name: str,
+  durationInWeeks: int,
+  avgWeeklyWorkouts: num,
+  startDate: str,
+  endDate: str,
+};
+export const trainingPlansSchema = z.looseObject({ trainingPlanList: z.array(z.looseObject(trainingPlanFields)).nullish() });
+/** A plan with the tasks of the current week and, for an adaptive plan, its phases. */
+export const trainingPlanSchema = z.looseObject({
+  ...trainingPlanFields,
+  taskList: z
+    .array(
+      z.looseObject({
+        calendarDate: str,
+        weekId: int,
+        dayOfWeekId: int,
+        keyWorkout: bool,
+        taskWorkout: z
+          .looseObject({
+            workoutId: int,
+            scheduledDate: str,
+            estimatedDurationInSecs: num,
+            estimatedDistanceInMeters: num,
+            trainingEffectLabel: str,
+            workoutPhrase: str,
+            priorityType: str,
+            restDay: bool,
+            adaptiveCoachingWorkoutStatus: str,
+          })
+          .nullish(),
+      }),
+    )
+    .nullish(),
+  /** `trainingPhase`: `BASE`, `BUILD`, `PEAK`, `TAPER`, `TARGET_EVENT_DAY`. */
+  adaptivePlanPhases: z.array(z.looseObject({ startDate: str, endDate: str, trainingPhase: str, currentPhase: bool })).nullish(),
+});
 
-export const bloodPressureRangeSchema = z.looseObject({});
+/** One row per change, for heart rate (bpm) or speed. */
+export const lactateThresholdRangeSchema = z.array(z.looseObject({ from: str, until: str, value: num, updatedDate: str }));
+/** The latest value only, no history. */
+export const cyclingFtpSchema = z.looseObject({ calendarDate: str, sport: str, functionalThresholdPower: num, biometricSourceType: str });
+
+export const bloodPressureRangeSchema = z.looseObject({ from: str, until: str, measurementSummaries: z.array(z.looseObject({})).nullish() });
 export const dailyEventsSchema = z.array(z.looseObject({}));
 export const goalsSchema = z.array(z.looseObject({}));
 
-export const coursesSchema = z.looseObject({});
-export const courseSchema = z.looseObject({ courseId: int });
+/** A list, not an object. */
+export const coursesSchema = z.array(
+  z.looseObject({
+    courseId: int,
+    courseName: str,
+    activityType: typeRef.nullish(),
+    distanceInMeters: num,
+    elevationGainInMeters: num,
+    elevationLossInMeters: num,
+    createdDate: num,
+  }),
+);
+const geoPointSchema = z.looseObject({ latitude: num, longitude: num, elevation: num, distance: num, timestamp: num });
+export const courseSchema = z.looseObject({
+  courseId: int,
+  courseName: str,
+  activityTypePk: int,
+  distanceMeter: num,
+  elevationGainMeter: num,
+  elevationLossMeter: num,
+  startPoint: geoPointSchema.nullish(),
+  geoPoints: z.array(geoPointSchema).nullish(),
+  courseLines: z
+    .array(z.looseObject({ sortOrder: int, numberOfPoints: int, distanceInMeters: num, points: z.array(z.looseObject({})).nullish() }))
+    .nullish(),
+  coursePoints: z.array(z.looseObject({})).nullish(),
+});
 
-export const deviceSolarSchema = z.looseObject({ deviceId: int });
-export const nutritionDaySchema = z.looseObject({});
-export const menstrualDaySchema = z.looseObject({});
+/** Solar days of the device, plus the activities and sleeps of the range. */
+export const deviceSolarSchema = z.looseObject({
+  deviceSolarInput: z.looseObject({ solarDailyDataDTOs: z.array(z.looseObject({})).nullish() }).nullish(),
+  listOfAllActivities: z.looseObject({ activityList: z.array(z.looseObject({})).nullish() }).nullish(),
+  DailySleeps: z.array(z.looseObject({})).nullish(),
+});
+export const nutritionDaySchema = z.looseObject({
+  mealDate: str,
+  dailyNutritionGoals: z.looseObject({ calories: num, adjustedCalories: num }).nullish(),
+  mealDetails: z.array(z.looseObject({})).nullish(),
+  loggedFoodsWithServingSizes: z.array(z.looseObject({})).nullish(),
+});
+/** `null` on an account without cycle tracking. */
+export const menstrualDaySchema = z.looseObject({}).nullable();
 
-export const earnedBadgesSchema = z.array(z.looseObject({ badgeId: int }));
-export const badgeChallengesSchema = z.array(z.looseObject({}));
+export const earnedBadgesSchema = z.array(
+  z.looseObject({
+    badgeId: int,
+    badgeKey: str,
+    badgeName: str,
+    badgeCategoryId: int,
+    badgePoints: num,
+    badgeEarnedDate: str,
+    badgeEarnedNumber: int,
+    badgeProgressValue: num,
+    badgeTargetValue: num,
+    badgeAssocTypeId: int,
+    /** E.g. the id of the activity that earned the badge, as a string. */
+    badgeAssocDataId: str,
+  }),
+);
+export const badgeChallengesSchema = z.array(
+  z.looseObject({
+    uuid: str,
+    badgeChallengeName: str,
+    badgeId: int,
+    badgeChallengeStatusId: int,
+    startDate: str,
+    endDate: str,
+    badgeProgressValue: num,
+    badgeTargetValue: num,
+    badgeUnitId: int,
+    userJoined: bool,
+  }),
+);

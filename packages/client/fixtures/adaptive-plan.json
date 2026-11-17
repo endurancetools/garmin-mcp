@@ -1,0 +1,380 @@
+{
+  "trainingPlanId": 32869447,
+  "trainingPlanCategory": "FBT_ADAPTIVE",
+  "trainingType": {
+    "typeId": 2,
+    "typeKey": "Running"
+  },
+  "trainingSubType": {
+    "subTypeId": 26,
+    "subTypeKey": "anon-subTypeKey"
+  },
+  "trainingLevel": {
+    "levelId": 3,
+    "levelKey": "anon-levelKey"
+  },
+  "trainingVersion": {
+    "versionId": 3,
+    "versionName": "anon-versionName"
+  },
+  "formatLocale": {
+    "id": 1,
+    "key": "anon-key",
+    "isSupported": true
+  },
+  "ownerId": 90001,
+  "ownerDisplayName": null,
+  "trainingStatus": {
+    "statusId": 1,
+    "statusKey": "anon-statusKey"
+  },
+  "privacyRule": {
+    "typeId": 2,
+    "typeKey": "private"
+  },
+  "name": "anon-name",
+  "description": "anon-description",
+  "durationInWeeks": 16,
+  "avgWeeklyWorkouts": 5,
+  "parentPlanId": 92504257,
+  "createDate": "2026-11-17T00:00:00.0",
+  "publishDate": null,
+  "expireDate": null,
+  "startDate": "2026-11-17T00:00:00.0",
+  "pausedDate": null,
+  "resumedDate": null,
+  "endDate": "2027-03-09T00:00:00.0",
+  "taskList": [
+    {
+      "trainingPlanId": 32869447,
+      "weekId": 1,
+      "dayOfWeekId": 2,
+      "workoutOrder": 1,
+      "taskNote": null,
+      "taskWorkout": {
+        "workoutId": null,
+        "sportType": {
+          "sportTypeId": 1,
+          "sportTypeKey": "anon-sportTypeKey",
+          "displayOrder": 1
+        },
+        "workoutName": "anon-workoutName",
+        "workoutDescription": "anon-workoutDescription",
+        "workoutCreatedDate": null,
+        "workoutUpdatedDate": null,
+        "workoutScheduleId": null,
+        "scheduledDate": "2026-11-17T18:24:01.0",
+        "workoutNameI18nKey": null,
+        "workoutDescriptionI18nKey": null,
+        "estimatedDurationInSecs": 1800,
+        "estimatedDistanceInMeters": 5475,
+        "workoutUuid": "anon-workoutUuid",
+        "priorityType": "REQUIRED",
+        "trainingEffectLabel": "AEROBIC_BASE",
+        "workoutPhrase": "RUNNING_HISTORY_REPLACED_BASE",
+        "restDay": false,
+        "benchmarkWorkout": false,
+        "adaptiveCoachingWorkoutStatus": "NOT_COMPLETE"
+      },
+      "noteNameI18nKey": null,
+      "noteContentI18nKey": null,
+      "longWkt": false,
+      "priority": 1,
+      "calendarDate": "2026-11-17",
+      "grouped": false,
+      "keyWorkout": false
+    },
+    {
+      "trainingPlanId": 32869447,
+      "weekId": 1,
+      "dayOfWeekId": 3,
+      "workoutOrder": 1,
+      "taskNote": null,
+      "taskWorkout": {
+        "workoutId": null,
+        "sportType": {
+          "sportTypeId": 1,
+          "sportTypeKey": "anon-sportTypeKey",
+          "displayOrder": 1
+        },
+        "workoutName": "anon-workoutName",
+        "workoutDescription": "anon-workoutDescription",
+        "workoutCreatedDate": null,
+        "workoutUpdatedDate": null,
+        "workoutScheduleId": null,
+        "scheduledDate": "2026-11-18T18:24:02.0",
+        "workoutNameI18nKey": null,
+        "workoutDescriptionI18nKey": null,
+        "estimatedDurationInSecs": 3540,
+        "estimatedDistanceInMeters": 10768,
+        "workoutUuid": "anon-workoutUuid",
+        "priorityType": "REQUIRED",
+        "trainingEffectLabel": "AEROBIC_BASE",
+        "workoutPhrase": "BASE",
+        "restDay": false,
+        "benchmarkWorkout": false,
+        "adaptiveCoachingWorkoutStatus": "NOT_COMPLETE"
+      },
+      "noteNameI18nKey": null,
+      "noteContentI18nKey": null,
+      "longWkt": false,
+      "priority": 1,
+      "calendarDate": "2026-11-18",
+      "grouped": false,
+      "keyWorkout": false
+    },
+    {
+      "trainingPlanId": 32869447,
+      "weekId": 1,
+      "dayOfWeekId": 4,
+      "workoutOrder": 1,
+      "taskNote": null,
+      "taskWorkout": {
+        "workoutId": null,
+        "sportType": {
+          "sportTypeId": 1,
+          "sportTypeKey": "anon-sportTypeKey",
+          "displayOrder": 1
+        },
+        "workoutName": "anon-workoutName",
+        "workoutDescription": "anon-workoutDescription",
+        "workoutCreatedDate": null,
+        "workoutUpdatedDate": null,
+        "workoutScheduleId": null,
+        "scheduledDate": "2026-11-19T18:24:03.0",
+        "workoutNameI18nKey": null,
+        "workoutDescriptionI18nKey": null,
+        "estimatedDurationInSecs": 1800,
+        "estimatedDistanceInMeters": 5475,
+        "workoutUuid": "anon-workoutUuid",
+        "priorityType": "REQUIRED",
+        "trainingEffectLabel": "AEROBIC_BASE",
+        "workoutPhrase": "REST_POSTPONED_BASE",
+        "restDay": false,
+        "benchmarkWorkout": false,
+        "adaptiveCoachingWorkoutStatus": "NOT_COMPLETE"
+      },
+      "noteNameI18nKey": null,
+      "noteContentI18nKey": null,
+      "longWkt": false,
+      "priority": 1,
+      "calendarDate": "2026-11-19",
+      "grouped": false,
+      "keyWorkout": false
+    },
+    {
+      "trainingPlanId": 32869447,
+      "weekId": 1,
+      "dayOfWeekId": 5,
+      "workoutOrder": 1,
+      "taskNote": null,
+      "taskWorkout": {
+        "workoutId": null,
+        "sportType": null,
+        "workoutName": null,
+        "workoutDescription": null,
+        "workoutCreatedDate": null,
+        "workoutUpdatedDate": null,
+        "workoutScheduleId": null,
+        "scheduledDate": "2026-11-20T18:24:04.0",
+        "workoutNameI18nKey": null,
+        "workoutDescriptionI18nKey": null,
+        "workoutUuid": "anon-workoutUuid",
+        "priorityType": "REQUIRED",
+        "trainingEffectLabel": "INVALID",
+        "workoutPhrase": "FORCED_REST",
+        "restDay": true,
+        "benchmarkWorkout": false,
+        "adaptiveCoachingWorkoutStatus": "NOT_COMPLETE"
+      },
+      "noteNameI18nKey": null,
+      "noteContentI18nKey": null,
+      "longWkt": false,
+      "priority": 1,
+      "calendarDate": "2026-11-20",
+      "grouped": false,
+      "keyWorkout": false
+    },
+    {
+      "trainingPlanId": 32869447,
+      "weekId": 1,
+      "dayOfWeekId": 6,
+      "workoutOrder": 1,
+      "taskNote": null,
+      "taskWorkout": {
+        "workoutId": null,
+        "sportType": {
+          "sportTypeId": 1,
+          "sportTypeKey": "anon-sportTypeKey",
+          "displayOrder": 1
+        },
+        "workoutName": "anon-workoutName",
+        "workoutDescription": "anon-workoutDescription",
+        "workoutCreatedDate": null,
+        "workoutUpdatedDate": null,
+        "workoutScheduleId": null,
+        "scheduledDate": "2026-11-21T18:24:04.0",
+        "workoutNameI18nKey": null,
+        "workoutDescriptionI18nKey": null,
+        "estimatedDurationInSecs": 2400,
+        "estimatedDistanceInMeters": 7300,
+        "workoutUuid": "anon-workoutUuid",
+        "priorityType": "REQUIRED",
+        "trainingEffectLabel": "AEROBIC_BASE",
+        "workoutPhrase": "BASE",
+        "restDay": false,
+        "benchmarkWorkout": false,
+        "adaptiveCoachingWorkoutStatus": "NOT_COMPLETE"
+      },
+      "noteNameI18nKey": null,
+      "noteContentI18nKey": null,
+      "longWkt": false,
+      "priority": 1,
+      "calendarDate": "2026-11-21",
+      "grouped": false,
+      "keyWorkout": false
+    },
+    {
+      "trainingPlanId": 32869447,
+      "weekId": 1,
+      "dayOfWeekId": 7,
+      "workoutOrder": 1,
+      "taskNote": null,
+      "taskWorkout": {
+        "workoutId": null,
+        "sportType": {
+          "sportTypeId": 1,
+          "sportTypeKey": "anon-sportTypeKey",
+          "displayOrder": 1
+        },
+        "workoutName": "anon-workoutName",
+        "workoutDescription": "anon-workoutDescription",
+        "workoutCreatedDate": null,
+        "workoutUpdatedDate": null,
+        "workoutScheduleId": null,
+        "scheduledDate": "2026-11-22T18:24:05.0",
+        "workoutNameI18nKey": null,
+        "workoutDescriptionI18nKey": null,
+        "estimatedDurationInSecs": 3000,
+        "estimatedDistanceInMeters": 9685,
+        "workoutUuid": "anon-workoutUuid",
+        "priorityType": "REQUIRED",
+        "trainingEffectLabel": "TEMPO",
+        "workoutPhrase": "TEMPO",
+        "restDay": false,
+        "benchmarkWorkout": false,
+        "adaptiveCoachingWorkoutStatus": "NOT_COMPLETE"
+      },
+      "noteNameI18nKey": null,
+      "noteContentI18nKey": null,
+      "longWkt": false,
+      "priority": 1,
+      "calendarDate": "2026-11-22",
+      "grouped": false,
+      "keyWorkout": true
+    },
+    {
+      "trainingPlanId": 32869447,
+      "weekId": 1,
+      "dayOfWeekId": 1,
+      "workoutOrder": 1,
+      "taskNote": null,
+      "taskWorkout": {
+        "workoutId": null,
+        "sportType": null,
+        "workoutName": null,
+        "workoutDescription": null,
+        "workoutCreatedDate": null,
+        "workoutUpdatedDate": null,
+        "workoutScheduleId": null,
+        "scheduledDate": "2026-11-23T18:24:06.0",
+        "workoutNameI18nKey": null,
+        "workoutDescriptionI18nKey": null,
+        "workoutUuid": "anon-workoutUuid",
+        "priorityType": "REQUIRED",
+        "trainingEffectLabel": "INVALID",
+        "workoutPhrase": "FORCED_REST",
+        "restDay": true,
+        "benchmarkWorkout": false,
+        "adaptiveCoachingWorkoutStatus": "NOT_COMPLETE"
+      },
+      "noteNameI18nKey": null,
+      "noteContentI18nKey": null,
+      "longWkt": false,
+      "priority": 1,
+      "calendarDate": "2026-11-23",
+      "grouped": false,
+      "keyWorkout": false
+    }
+  ],
+  "adaptivePlanPhases": [
+    {
+      "startDate": "2026-11-17",
+      "endDate": "2026-12-27",
+      "trainingPhase": "BASE",
+      "currentPhase": true
+    },
+    {
+      "startDate": "2026-12-28",
+      "endDate": "2027-01-31",
+      "trainingPhase": "BUILD",
+      "currentPhase": false
+    },
+    {
+      "startDate": "2027-02-01",
+      "endDate": "2027-02-28",
+      "trainingPhase": "PEAK",
+      "currentPhase": false
+    },
+    {
+      "startDate": "2027-03-01",
+      "endDate": "2027-03-08",
+      "trainingPhase": "TAPER",
+      "currentPhase": false
+    },
+    {
+      "startDate": "2027-03-09",
+      "endDate": "2027-03-09",
+      "trainingPhase": "TARGET_EVENT_DAY",
+      "currentPhase": false
+    }
+  ],
+  "planPhases": [
+    {
+      "startDate": "2026-11-17",
+      "endDate": "2026-12-27",
+      "trainingPhase": "BASE",
+      "currentPhase": true
+    },
+    {
+      "startDate": "2026-12-28",
+      "endDate": "2027-01-31",
+      "trainingPhase": "BUILD",
+      "currentPhase": false
+    },
+    {
+      "startDate": "2027-02-01",
+      "endDate": "2027-02-28",
+      "trainingPhase": "PEAK",
+      "currentPhase": false
+    },
+    {
+      "startDate": "2027-03-01",
+      "endDate": "2027-03-08",
+      "trainingPhase": "TAPER",
+      "currentPhase": false
+    },
+    {
+      "startDate": "2027-03-09",
+      "endDate": "2027-03-09",
+      "trainingPhase": "TARGET_EVENT_DAY",
+      "currentPhase": false
+    }
+  ],
+  "nameI18nKey": "anon-nameI18nKey",
+  "descriptionI18nKey": "anon-descriptionI18nKey",
+  "planKey": "anon-planKey",
+  "seriesIndex": null,
+  "daysInLastWeek": null,
+  "supplementalSports": []
+}

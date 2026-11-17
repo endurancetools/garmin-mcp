@@ -1,0 +1,10 @@
+{
+  "userProfilePK": 90001,
+  "version": 1794850610629,
+  "calendarDate": "2026-11-03T05:23:27.0",
+  "isStale": false,
+  "sequence": 1794850610629,
+  "sport": "CYCLING",
+  "functionalThresholdPower": 200,
+  "biometricSourceType": "CHANGE_LOG"
+}

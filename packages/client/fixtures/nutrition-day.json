@@ -1,0 +1,12 @@
+{
+  "mealDate": "2026-11-16",
+  "dayStartTime": "anon-dayStartTime",
+  "dayEndTime": "anon-dayEndTime",
+  "dailyViewType": "TIMELINE_VIEW",
+  "dailyNutritionGoals": {
+    "calories": 1990,
+    "adjustedCalories": 2401
+  },
+  "mealDetails": [],
+  "loggedFoodsWithServingSizes": []
+}

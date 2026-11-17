@@ -247,14 +247,14 @@ export class GarminClient {
     });
   }
 
-  /** Run, walk, idle, ClimbPro climb... segments of an activity. Path not confirmed by a recording yet (E8-2). */
+  /** Run, walk, idle, ClimbPro climb... segments of an activity. Path confirmed by a recording (E8-2). */
   async getActivityTypedSplits(id: number): Promise<unknown> {
     return this.http.request('GET', `/activity-service/activity/${positive(id)}/typedsplits`, {
       schema: s.activityTypedSplitsSchema,
     });
   }
 
-  /** Totals per split type. Path not confirmed by a recording yet (E8-2). */
+  /** Totals per split type. Path confirmed by a recording (E8-2). */
   async getActivitySplitSummaries(id: number): Promise<unknown> {
     return this.http.request('GET', `/activity-service/activity/${positive(id)}/split_summaries`, {
       schema: s.activitySplitSummariesSchema,
@@ -449,7 +449,7 @@ export class GarminClient {
     });
   }
 
-  /** Readings from `from` to `to`. Path not confirmed by a recording yet (E8-2). */
+  /** Readings from `from` to `to`. Path confirmed by a recording (E8-2). */
   async getBloodPressure(from: IsoDate, to: IsoDate = from): Promise<unknown> {
     return this.http.request('GET', `/bloodpressure-service/bloodpressure/range/${assertIsoDate(from)}/${assertIsoDate(to)}`, {
       query: { includeAll: true },
@@ -457,7 +457,7 @@ export class GarminClient {
     });
   }
 
-  /** Events of one day (sleep, naps, activities, stress) as Body Battery shows them. Path not confirmed by a recording yet (E8-2). */
+  /** Events of one day (sleep, naps, activities, stress) as Body Battery shows them. Path confirmed by a recording (E8-2). */
   async getDailyEvents(date: IsoDate): Promise<unknown> {
     return this.http.request('GET', '/wellness-service/wellness/dailyEvents', {
       query: { calendarDate: assertIsoDate(date) },
@@ -465,12 +465,12 @@ export class GarminClient {
     });
   }
 
-  /** Food log of one day with its calorie and macro totals. Path not confirmed by a recording yet (E8-2). */
+  /** Food log of one day with its calorie and macro totals. Path confirmed by a recording (E8-2). */
   async getNutritionDay(date: IsoDate): Promise<unknown> {
     return this.http.request('GET', `/nutrition-service/food/logs/${assertIsoDate(date)}`, { schema: s.nutritionDaySchema });
   }
 
-  /** Menstrual cycle day view. Path not confirmed by a recording yet (E8-2). */
+  /** Menstrual cycle day view. Path confirmed by a recording (E8-2). */
   async getMenstrualDay(date: IsoDate): Promise<unknown> {
     return this.http.request('GET', `/periodichealth-service/menstrualcycle/dayview/${assertIsoDate(date)}`, {
       schema: s.menstrualDaySchema,
@@ -528,7 +528,7 @@ export class GarminClient {
     });
   }
 
-  /** Running lactate threshold heart rate per day. Path and query not confirmed by a recording yet (E8-2). */
+  /** Running lactate threshold heart rate per day. Path and query confirmed by a recording (E8-2). */
   async getLactateThresholdHeartRate(from: IsoDate, to: IsoDate): Promise<unknown> {
     return this.http.request(
       'GET',
@@ -537,7 +537,7 @@ export class GarminClient {
     );
   }
 
-  /** Running lactate threshold speed per day. Path and query not confirmed by a recording yet (E8-2). */
+  /** Running lactate threshold speed per day. Path and query confirmed by a recording (E8-2). */
   async getLactateThresholdSpeed(from: IsoDate, to: IsoDate): Promise<unknown> {
     return this.http.request(
       'GET',
@@ -546,7 +546,7 @@ export class GarminClient {
     );
   }
 
-  /** Latest cycling FTP with the date Garmin set it. Path not confirmed by a recording yet (E8-2). */
+  /** Latest cycling FTP with the date Garmin set it. Path confirmed by a recording (E8-2). */
   async getCyclingFtp(): Promise<unknown> {
     return this.http.request('GET', '/biometric-service/biometric/latestFunctionalThresholdPower/CYCLING', {
       schema: s.cyclingFtpSchema,
@@ -608,14 +608,14 @@ export class GarminClient {
   }
 
   // ------------------------------------------------------------ training plans, goals, courses, badges
-  // Paths below are not confirmed by a recording yet (E8-2).
+  // Paths below are confirmed by a recording (E8-2), except the phased plan.
 
   /** Training plans of the account (Garmin Coach, adaptive, phased). */
   async listTrainingPlans(): Promise<unknown> {
     return this.http.request('GET', '/trainingplan-service/trainingplan/plans', { schema: s.trainingPlansSchema });
   }
 
-  /** A phased training plan with its phases and target event. */
+  /** A phased training plan with its phases and target event. Path not confirmed by a recording yet: the account has no phased plan. */
   async getTrainingPlan(id: number): Promise<unknown> {
     return this.http.request('GET', `/trainingplan-service/trainingplan/phased/${positive(id)}`, { schema: s.trainingPlanSchema });
   }
@@ -772,7 +772,7 @@ export class GarminClient {
     return this.http.request('GET', '/device-service/deviceservice/mylastused', { schema: s.deviceLastUsedSchema });
   }
 
-  /** Daily solar gain of a solar-charging device. Path not confirmed by a recording yet (E8-2). */
+  /** Daily solar gain of a solar-charging device. Path confirmed by a recording (E8-2). */
   async getDeviceSolar(deviceId: number, from: IsoDate, to: IsoDate = from): Promise<unknown> {
     return this.http.request('GET', `/web-gateway/solar/${positive(deviceId)}/${assertIsoDate(from)}/${assertIsoDate(to)}`, {
       query: { singleDayView: from === to },
