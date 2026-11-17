@@ -184,7 +184,8 @@ export const activitiesOutput = envelope({
 
 export const activityOutput = envelope(activityDetail);
 
-export const updateActivityOutput = envelope({ updated: bool, activity: obj(activityDetail) });
+const gearRef = obj({ uuid: str, name: str });
+export const updateActivityOutput = envelope({ updated: bool, activity: obj(activityDetail), gear: obj({ added: gearRef, removed: gearRef }) });
 
 export const downloadOutput = envelope({ path: str, bytes: num, format: str });
 

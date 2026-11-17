@@ -417,6 +417,11 @@ export class Store {
     })();
   }
 
+  /** Take `gearUuid` off the activity; a row that points at other gear is left alone. */
+  clearActivityGear(activityId: number, gearUuid: string): void {
+    this.db.prepare('UPDATE activities SET gear_uuid = NULL WHERE id = ? AND gear_uuid = ?').run(activityId, gearUuid);
+  }
+
   putActivityDetail(activityId: number, kind: DetailKind, raw: unknown, fetchedAt: number): void {
     this.db
       .prepare(
@@ -611,6 +616,14 @@ export class Store {
       this.db.prepare('DELETE FROM gear').run();
       for (const it of items) stmt.run({ ...gearColumns(it.gear, it.stats), raw: JSON.stringify(it), fetched_at: fetchedAt });
     })();
+  }
+
+  /** New totals of one gear item (after it was put on or taken off an activity); the rest of the row stays. */
+  setGearStats(uuid: string, stats: GearStats): void {
+    const row = this.db.prepare('SELECT raw FROM gear WHERE uuid = ?').get(uuid) as { raw: string } | undefined;
+    if (!row) return;
+    const raw = { ...(JSON.parse(row.raw) as { gear: Gear }), stats };
+    this.db.prepare('UPDATE gear SET total_distance_m = ?, raw = ? WHERE uuid = ?').run(gearColumns(raw.gear, stats).total_distance_m, JSON.stringify(raw), uuid);
   }
 
   getGear(): GearRow[] {

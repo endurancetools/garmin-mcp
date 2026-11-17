@@ -15,7 +15,7 @@ Unofficial. Garmin and Garmin Connect are trademarks of Garmin Ltd. or its subsi
 ## Why Garmin MCP
 
 - **Answers you can check.** Training load (TSS from power, pace, heart rate or session RPE), fitness, fatigue and form (CTL/ATL/TSB), ACWR, intensity distribution and morning readiness from your own HRV, resting heart rate, sleep and load against your own baselines, with methods from published sports-science literature, with citations. Every answer returns the values and rules it used, and you can change them. [Methods and evidence](https://endurancetools.github.io/garmin-mcp/methods/)
-- **Designed tools, not an API mirror.** 21 tools built around questions like "review my week" or "can I train hard today?", so one call answers one question. The whole tool list costs the model about 8,600 tokens of context, and the first tool call was the right one in 48 of 48 tool-selection scenarios. [Designed tools](https://endurancetools.github.io/garmin-mcp/how-it-works/#designed-tools)
+- **Designed tools, not an API mirror.** 21 tools built around questions like "review my week" or "can I train hard today?", so one call answers one question. The whole tool list costs the model about 8,800 tokens of context, and the first tool call was the right one in 51 of 51 tool-selection scenarios. [Designed tools](https://endurancetools.github.io/garmin-mcp/how-it-works/#designed-tools)
 - **Local and private.** You sign in on Garmin's own page, so your password never passes through the tool. What it downloads stays in a local database on your computer, answers come back from it in milliseconds, downloads are paced to stay gentle with Garmin, and tool answers go only to the AI client you connect. [What is stored where](https://endurancetools.github.io/garmin-mcp/how-it-works/#what-is-stored-where)
 - **From answer to watch.** Ask for "6×400 m with 90 s rest on Thursday": you see the steps and estimated duration first, nothing is saved until you agree, and then it goes to your Garmin calendar and syncs to the watch. [Workouts and calendar](https://endurancetools.github.io/garmin-mcp/asking/#workouts-and-calendar)
 
@@ -47,7 +47,7 @@ npx -y garmin-mcp-cli login
 - "Am I fatigued? What is my form right now?"
 - "When is my next race?" or "What is planned this week?"
 - "Build me 6×400 m with 90 s rest for Thursday" (you see the steps first, nothing is saved until you agree)
-- "Rename activity 21001 to Parkrun PB" or "Mark Saturday's trail run as a race"
+- "Rename activity 21001 to Parkrun PB", "Mark Saturday's trail run as a race" or "Put my new Speedgoats on yesterday's run"
 
 Optional: pre-load a range so the first questions answer instantly.
 
@@ -71,7 +71,7 @@ Measured on a real account after a 90-day sync (433 requests in about an hour): 
 | --- | --- |
 | `get_activities` | dense activity list with cursor paging (GAP, cadence, NP, Training Effect label, temperature when downloaded); `type` takes a Garmin type key (all keys in `garmin://activity-types`), plus `event_type` (e.g. `race`), `name`, `min_duration_min`/`max_duration_min` and a `pace` range |
 | `get_activity` | one activity: `summary` (with running dynamics, breathing, stamina, HR source), `splits` (laps with dynamics and workout steps), `hr_zones`, `power_zones`, `weather`, `exercise_sets` (strength sets), `stream_summary` (stream per km, 5 min, half or quarter), or `full` (all sections plus the raw stream, 50 KB pages, optional `metrics` and `downsample_s`) |
-| `update_activity` | name, type, event type (race, training...), description, RPE, feel |
+| `update_activity` | name, type, event type (race, training...), description, RPE, feel, and the gear used (`add_gear`, `remove_gear` by name or uuid) |
 | `download_activity_file` | FIT (unzipped), GPX, TCX, KML, CSV to the download directory (`GARMIN_FIT_DOWNLOAD_DIR`) |
 | `query_health` | steps (with daily distance), resting HR (with daily min/max HR), HRV (with status and baseline), sleep, stress, body battery, respiration, SpO2, intensity minutes, calories (burned, and eaten when a food log is linked), floors; per day or week, with 7/28-day trends |
 | `get_sleep` | one night with stages, or a range with averages |

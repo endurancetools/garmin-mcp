@@ -184,8 +184,9 @@ export const TOOLS: ToolDef[] = [
     name: 'update_activity',
     title: 'Edit an activity',
     description:
-      'Change an activity in Garmin Connect: name, type (Garmin type key such as "trail_running"; valid keys in resource garmin://activity-types), event_type (e.g. race), description (notes), rpe (0-10 perceived effort) ' +
-      'or feel (0 very weak, 25 weak, 50 normal, 75 strong, 100 very strong). Only call when the user asked for the change. Returns the activity after the edit.',
+      'Change an activity in Garmin Connect: name, type (Garmin type key such as "trail_running"; valid keys in resource garmin://activity-types), event_type (e.g. race), description (notes), rpe (0-10 perceived effort), ' +
+      'feel (0 very weak, 25 weak, 50 normal, 75 strong, 100 very strong), or the gear used: add_gear puts shoes or a bike on it, remove_gear takes one off (swap: both in one call). ' +
+      'Only call when the user asked for the change. Returns the activity after the edit.',
     input: {
       id,
       name: z.string().max(200).optional(),
@@ -194,6 +195,8 @@ export const TOOLS: ToolDef[] = [
       description: z.string().max(2000).optional(),
       rpe: z.number().min(0).max(10).optional(),
       feel: z.union([z.literal(0), z.literal(25), z.literal(50), z.literal(75), z.literal(100)]).optional(),
+      add_gear: z.string().optional().describe('Gear name (or part of it) or uuid from get_gear'),
+      remove_gear: z.string().optional().describe('Gear name or uuid from get_gear'),
     },
     output: updateActivityOutput,
     annotations: { ...WRITE, idempotentHint: true },

@@ -809,6 +809,37 @@ describe('GarminService', () => {
     expect(count('updateActivity')).toBe(2);
   });
 
+  it('puts gear on an activity and takes it off, by name or uuid, without touching the activity itself', async () => {
+    const { service, calls, count, store } = setup({ activities: [summary(1, '2026-10-07')] });
+    await service.getActivities({});
+    const shoe = (uuid: string, name: string, status = 'active') => ({ gear: { uuid, displayName: name, gearStatusName: status }, stats: { uuid, totalDistance: 1000, totalActivities: 1 } });
+    const OLD = 'fd9c450c67ba25e422229c359e4b315a';
+    const NEW = '253d02241e47cccd4899a0c5fa86238d';
+    store.replaceGear([shoe(OLD, 'Trail Shoe 2', 'retired'), shoe(NEW, 'Trail Shoe 2 new'), shoe('3d5b2fe936d68c9f4f566bfe08b268bb', 'Light Trainer v4')], NOW);
+    store.setActivityGear([1], OLD);
+
+    const res = await service.updateActivity(1, { remove_gear: OLD, add_gear: 'speedgoat' });
+    expect(calls.filter((c) => c.method.endsWith('Gear')).map((c) => [c.method, ...c.args])).toEqual([
+      ['unlinkGear', OLD, 1],
+      ['linkGear', NEW, 1],
+    ]);
+    expect(count('updateActivity')).toBe(0);
+    expect(res.data.gear).toEqual({ removed: { uuid: OLD, name: 'Trail Shoe 2' }, added: { uuid: NEW, name: 'Trail Shoe 2 new' } });
+    expect(res.data.activity).toMatchObject({ id: 1, gear_uuid: NEW });
+    // The totals of both items are read again, so get_gear shows the change.
+    expect(count('getGearStats')).toBe(2);
+    expect(store.getGear().find((g) => g.uuid === NEW)?.total_distance_m).toBe(133_456);
+
+    // The full name wins over a part of another name; a part shared by active items is refused before any write.
+    await service.updateActivity(1, { add_gear: 'trail shoe 2 new' });
+    await expect(service.updateActivity(1, { name: 'Trail', add_gear: 'e' })).rejects.toMatchObject({ code: 'INVALID_INPUT', message: expect.stringMatching(/matches several gear items/) });
+    await expect(service.updateActivity(1, { add_gear: 'Altra' })).rejects.toMatchObject({ code: 'INVALID_INPUT', message: expect.stringMatching(/^No gear matches "Altra"\. Gear: /) });
+    expect(count('updateActivity')).toBe(0);
+    // A uuid the stored list does not have yet goes to Garmin as it is.
+    await service.updateActivity(1, { add_gear: '0123456789abcdef0123456789abcdef' });
+    expect(calls.findLast((c) => c.method === 'linkGear')?.args).toEqual(['0123456789abcdef0123456789abcdef', 1]);
+  });
+
   it('explains an empty activity type filter: unknown key, keys not stored, or no such activities', async () => {
     const { service } = setup({ activities: [summary(1, '2026-10-07')] });
     const unstored = await service.getActivities({ type: 'trial_running' });

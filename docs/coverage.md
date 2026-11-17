@@ -187,7 +187,8 @@ garmin-mcp deliberately has few writes; listed so nothing disappears silently.
 | Delete weigh-ins | `delete_weigh_in` (opt-in, one sample) |
 | Add weigh-in or body composition | — (client has `addWeighIn`;) |
 | Blood pressure | — () |
-| Add or remove gear on an activity | — () |
+| Add or remove gear on an activity | `update_activity` `add_gear`, `remove_gear` (gear name or uuid) |
+| Add, edit or retire gear | — () |
 | Heart rate zones | — () |
 | Reprocess data on Garmin's side | — (closest: `garmin_sync` `force: true`, which re-downloads instead of asking Garmin to reprocess) |
 | FIT download directory (local setting) | `GARMIN_FIT_DOWNLOAD_DIR` or `download_activity_file` `output_dir` |

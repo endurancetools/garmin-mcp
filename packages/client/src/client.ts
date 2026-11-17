@@ -448,6 +448,16 @@ export class GarminClient {
     }
   }
 
+  /** Put a gear item on an activity. Garmin answers with the gear item. */
+  async linkGear(uuid: string, activityId: number): Promise<void> {
+    await this.http.request('PUT', `/gear-service/gear/link/${uuidOf(uuid)}/activity/${positive(activityId)}`);
+  }
+
+  /** Take a gear item off an activity. */
+  async unlinkGear(uuid: string, activityId: number): Promise<void> {
+    await this.http.request('PUT', `/gear-service/gear/unlink/${uuidOf(uuid)}/activity/${positive(activityId)}`);
+  }
+
   // ------------------------------------------------------------ weight and body composition
 
   async getWeighIns(from: IsoDate, to: IsoDate): Promise<s.WeighIns> {

@@ -48,3 +48,4 @@
 {"prompt": "Czy mój czas kontaktu z podłożem poprawia się z miesiąca na miesiąc przy tym samym tempie?", "expect": {"tool": "get_load", "args_include": {"include_dynamics": true}}, "forbid": ["garmin_sync"]}
 {"prompt": "Mark activity 21001 as a race.", "expect": {"tool": "update_activity", "args_include": {"id": 21001, "event_type": "race"}}, "forbid": ["garmin_sync", "get_activity"]}
 {"prompt": "Pokaż wszystkie aktywności z tego roku, które oznaczyłem jako zawody.", "expect": {"tool": "get_activities", "args_include": {"event_type": "race"}}, "forbid": ["garmin_sync"]}
+{"prompt": "Załóż buty Trail Shoe 2 na aktywność 21001.", "expect": {"tool": ["update_activity", "get_gear"], "args_include": {"update_activity": {"id": 21001}}}, "forbid": ["garmin_sync", "get_activity"]}

@@ -310,6 +310,21 @@ describe('GarminClient', () => {
     expect(body).toEqual({ activityId: 42, eventTypeDTO: { typeId: 1, typeKey: 'race' } });
   });
 
+  it('puts gear on an activity and takes it off', async () => {
+    const calls: string[] = [];
+    server.use(
+      http.put(`${API}/gear-service/gear/:action/:uuid/activity/:id`, ({ params }) => {
+        calls.push(`${String(params.action)} ${String(params.uuid)} ${String(params.id)}`);
+        return HttpResponse.json({ uuid: params.uuid });
+      }),
+    );
+    const { client } = makeClient();
+    await client.linkGear('fd9c450c67ba25e422229c359e4b315a', 42);
+    await client.unlinkGear('fd9c450c67ba25e422229c359e4b315a', 42);
+    expect(calls).toEqual(['link fd9c450c67ba25e422229c359e4b315a 42', 'unlink fd9c450c67ba25e422229c359e4b315a 42']);
+    await expect(client.linkGear('../activity', 42)).rejects.toThrow('invalid gear uuid');
+  });
+
   it('overwrites a workout with PUT carrying its id', async () => {
     let put: { id?: unknown; body?: unknown } = {};
     server.use(

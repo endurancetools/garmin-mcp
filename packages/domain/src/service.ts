@@ -125,7 +125,7 @@ export interface ActivitiesQuery {
   sort?: 'asc' | 'desc';
 }
 
-/** What `update_activity` can change. */
+/** What `update_activity` can change; gear is named by uuid or by (part of) its name. */
 export interface ActivityEdit {
   name?: string;
   type?: string;
@@ -133,6 +133,8 @@ export interface ActivityEdit {
   description?: string;
   rpe?: number;
   feel?: 0 | 25 | 50 | 75 | 100;
+  add_gear?: string;
+  remove_gear?: string;
 }
 
 /** Keys compared without case, spaces or separators: "Special Event", special_event and specialEvent are one key. */
@@ -717,17 +719,30 @@ export class GarminService {
 
   async updateActivity(id: number, patch: ActivityEdit) {
     if (Object.values(patch).every((v) => v === undefined)) {
-      throw new InputError('Nothing to update', 'Pass at least one of name, type, event_type, description, rpe, feel.');
+      throw new InputError('Nothing to update', 'Pass at least one of name, type, event_type, description, rpe, feel, add_gear, remove_gear.');
     }
-    // Both keys are resolved before the write, so a wrong one changes nothing.
+    // Every key and gear name is resolved before the first write, so a wrong one changes nothing.
     const activityType = patch.type === undefined ? undefined : await this.#cachedActivityType(patch.type);
     const eventType = patch.event_type === undefined ? undefined : await this.#eventType(patch.event_type);
-    const { event_type: _event, type, ...fields } = patch;
-    await this.client.updateActivity(id, { ...fields, typeKey: type, activityType, eventType });
-    const after = await this.client.getActivity(id);
+    const removed = patch.remove_gear === undefined ? undefined : this.#gearItem(patch.remove_gear);
+    const added = patch.add_gear === undefined ? undefined : this.#gearItem(patch.add_gear);
     const at = this.#now();
-    this.store.applyActivityEdit(after, at);
-    return this.getActivity(id, 'summary').then((r) => ({ data: { updated: true, activity: r.data }, meta: { source: 'live' as const, fetched_at: iso(at) } }));
+    const { add_gear: _add, remove_gear: _remove, event_type: _event, type, ...fields } = patch;
+    if (type !== undefined || eventType !== undefined || Object.values(fields).some((v) => v !== undefined)) {
+      await this.client.updateActivity(id, { ...fields, typeKey: type, activityType, eventType });
+      this.store.applyActivityEdit(await this.client.getActivity(id), at);
+    }
+    if (removed) {
+      await this.client.unlinkGear(removed.uuid, id);
+      this.store.clearActivityGear(id, removed.uuid);
+    }
+    if (added) {
+      await this.client.linkGear(added.uuid, id);
+      this.store.setActivityGear([id], added.uuid);
+    }
+    await Promise.all([removed, added].map((g) => g && this.#refreshGearStats(g.uuid)));
+    const gear = removed || added ? compact({ added, removed }) : undefined;
+    return this.getActivity(id, 'summary').then((r) => ({ data: compact({ updated: true, activity: r.data, gear }), meta: { source: 'live' as const, fetched_at: iso(at) } }));
   }
 
   /**
@@ -746,6 +761,39 @@ export class GarminService {
     if (match) return match;
     const valid = types.map((t) => t.typeKey).filter(Boolean).join(', ');
     throw new InputError(`Unknown event type "${key}". Valid keys: ${valid}`);
+  }
+
+  /**
+   * A gear item from the stored gear list by uuid or by name: the full name first, then a part
+   * of it, active gear before retired. A uuid that is not in the list passes as it is, so gear
+   * added in Garmin Connect a moment ago works without a sync.
+   */
+  #gearItem(ref: string): { uuid: string; name?: string } {
+    const rows = this.store.getGear();
+    const brief = (g: (typeof rows)[number]) => compact({ uuid: g.uuid, name: g.name ?? undefined });
+    const byUuid = rows.find((g) => g.uuid === ref);
+    if (byUuid) return brief(byUuid);
+    if (/^[0-9a-f-]{32,36}$/i.test(ref)) return { uuid: ref };
+    const needle = ref.trim().toLowerCase();
+    const named = rows.filter((g) => g.name?.toLowerCase() === needle);
+    const partly = named.length > 0 ? named : rows.filter((g) => g.name?.toLowerCase().includes(needle));
+    const active = partly.filter((g) => g.status === 'active');
+    const matches = active.length > 0 ? active : partly;
+    if (matches.length === 1) return brief(matches[0] as (typeof rows)[number]);
+    const names = (list: typeof rows) => list.map((g) => `${g.name ?? '(no name)'} (${g.uuid})`).join(', ');
+    if (matches.length > 1) throw new InputError(`"${ref}" matches several gear items: ${names(matches)}`, 'Pass the uuid of the one you mean.');
+    if (rows.length === 0) throw new InputError('No gear is stored yet', 'Call get_gear first, then pass the gear name or uuid.');
+    throw new InputError(`No gear matches "${ref}". Gear: ${names(rows)}`, 'Gear added a moment ago shows up in get_gear after a reference sync; its uuid works right away.');
+  }
+
+  /** Distance and activity count of one gear item after it was put on or taken off an activity; a failure only leaves the old totals. */
+  async #refreshGearStats(uuid: string): Promise<void> {
+    try {
+      const stats = await this.client.getGearStats(uuid);
+      if (stats) this.store.setGearStats(uuid, stats);
+    } catch (err) {
+      this.#log.warn({ gear: uuid, err: errInfo(err) }, 'gear totals not refreshed');
+    }
   }
 
   /**

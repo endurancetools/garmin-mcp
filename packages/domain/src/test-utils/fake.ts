@@ -52,6 +52,7 @@ export function setup(opts: { activities?: ActivitySummary[]; gone?: ReadonlySet
   const names = new Map<number, string>();
   const updated = new Map<number, Record<string, unknown>>();
   const eventTypes = new Map<number, { typeId?: number; typeKey?: string }>();
+  const gearLinks = new Set<string>();
   const rec = async <T>(method: string, args: unknown[], value: () => T): Promise<T> => {
     calls.push({ method, args });
     if (opts.delayMs) await new Promise((r) => setTimeout(r, opts.delayMs));
@@ -134,6 +135,17 @@ export function setup(opts: { activities?: ActivitySummary[]; gone?: ReadonlySet
         if (patch.eventType) eventTypes.set(id, patch.eventType);
       }),
     getEventTypes: () => rec('getEventTypes', [], () => fixture('event-types')),
+    listGear: () => rec('listGear', [], () => fixture('gear')),
+    getGearStats: (uuid: string) => rec('getGearStats', [uuid], () => ({ ...(fixture('gear-stats') as Record<string, unknown>), uuid, totalDistance: 123_456 + 10_000 * gearLinks.size })),
+    getGearActivities: (uuid: string) => rec('getGearActivities', [uuid], () => []),
+    linkGear: (uuid: string, activityId: number) =>
+      rec('linkGear', [uuid, activityId], () => {
+        gearLinks.add(`${uuid}:${activityId}`);
+      }),
+    unlinkGear: (uuid: string, activityId: number) =>
+      rec('unlinkGear', [uuid, activityId], () => {
+        gearLinks.delete(`${uuid}:${activityId}`);
+      }),
     // Food is logged (linked nutrition app) on days ending in 7 only; other days carry Garmin's "nothing logged" shape.
     getDailySummary: (date: string) =>
       rec('getDailySummary', [date], () => {

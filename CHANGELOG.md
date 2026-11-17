@@ -13,6 +13,7 @@ All notable changes to Garmin MCP. All `garmin-mcp-*` packages share one version
 ### Activities
 
 - **Tag an activity as a race.** `update_activity` takes `event_type`: `race`, `training`, `recreation`, `special_event`, `fitness`, `touring`, `transportation`, `geocaching` or `uncategorized`. `get_activities` and `get_activity` show `event_type` when an activity has one other than `uncategorized`, and `get_activities` filters by it, so "show all my races this year" is one call. ([#3](https://github.com/endurancetools/garmin-mcp/issues/3))
+- **Gear on activities.** `update_activity` takes `add_gear` and `remove_gear`: the uuid of a gear item or (part of) its name from `get_gear`, both in one call to swap shoes. A name that fits several active items is refused before anything is changed. The distance and activity count of the gear are read again afterwards, so `get_gear` shows the change at once. Adding, editing and retiring gear is not there yet. ([#2](https://github.com/endurancetools/garmin-mcp/issues/2))
 
 ## 0.5.0 (2026-10-30)
 
