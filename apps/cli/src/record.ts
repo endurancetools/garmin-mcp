@@ -72,6 +72,20 @@ export const RECORDABLE: Record<string, (c: GarminClient, a: { date: string; id?
  */
 const NAMED_BY_OWNER = new Set(['training-plans', 'training-plan', 'adaptive-plan', 'courses', 'course', 'goals', 'daily-events']);
 
+/**
+ * Stage 8 recordings (E8-1) whose shape nobody has seen yet: blood pressure,
+ * nutrition, cycle tracking and the rest may hold text the owner typed under
+ * keys no list here knows (notes, foods, meals, symptoms), so every string is
+ * replaced except the ones `keepsText` lets through. Older recordings keep the
+ * key-based rules, so their fixtures do not change.
+ */
+export const UNKNOWN_SHAPE: ReadonlySet<string> = new Set([
+  'activity-typed-splits', 'activity-split-summaries', 'training-plans', 'training-plan', 'adaptive-plan',
+  'lactate-threshold-range', 'lactate-threshold-speed-range', 'cycling-ftp', 'hydration-day', 'blood-pressure-range',
+  'daily-events', 'goals', 'courses', 'course', 'device-solar', 'nutrition-day', 'menstrual-day', 'earned-badges',
+  'badge-challenges',
+]);
+
 function need<T>(v: T | undefined, flag: string): T {
   if (v === undefined) throw new InputError(`this endpoint needs ${flag}`);
   return v;
@@ -88,6 +102,8 @@ const PERSONAL_STRINGS = new Set(
     'activityName', 'workoutName', 'title', 'description',
     // Courses, training plans and races are named after places and events.
     'courseName', 'trainingPlanName', 'planName', 'eventName', 'raceName', 'goalName', 'address', 'city',
+    // Notes and food log entries.
+    'note', 'notes', 'comment', 'foodName', 'mealName', 'brandName',
   ].map((k) => k.toLowerCase()),
 );
 /**
@@ -119,6 +135,16 @@ const PROFILE_IMAGE = /profileimage|profileimg/i;
 /** Uploaded photos under any key, e.g. a device's `imageUrl`. */
 const UPLOADED_IMAGE = /\/profile_images\//;
 
+/** An enum-like constant such as `RUNNING`, `INTERVAL_ACTIVE` or `5K`. */
+const ENUM_CONSTANT = /^[A-Z0-9_]+$/;
+/** A date or a timestamp: `2026-10-10`, `2026-10-10T06:15:00.0`, `2026-10-10 06:15:00`, with an optional zone. */
+const DATE_OR_TIMESTAMP = /^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?)?$/;
+/** Keys of type and unit names, which Garmin spells in lower case (`running`, `mmHg`, `kilocalorie`). */
+const TYPE_AND_UNIT_KEYS = new Set(['typeKey', 'type', 'unit', 'unitKey', 'units', 'unitOfMeasure', 'sportType', 'measurementSystem']);
+/** Strings kept in a recording of unknown shape; any other text is replaced. */
+const keepsText = (key: string, value: string): boolean =>
+  value === '' || ENUM_CONSTANT.test(value) || DATE_OR_TIMESTAMP.test(value) || TYPE_AND_UNIT_KEYS.has(key);
+
 /** Per-recording shift of coordinates, in degrees; it is not stored anywhere. */
 export interface CoordinateShift {
   lat: number;
@@ -139,14 +165,16 @@ export interface CoordinateShift {
  * too (see DEVICE_IDENTIFIERS). Courses, training plans and races carry place
  * and event names (`courseName`, `eventName`...) and encoded polylines, which
  * are replaced; `names` replaces every `name` as well, for recordings where
- * nothing but the owner names things (see NAMED_BY_OWNER).
+ * nothing but the owner names things (see NAMED_BY_OWNER). `unknownShape`
+ * replaces every other string too, except enum-like constants, dates,
+ * timestamps and type and unit names (see UNKNOWN_SHAPE).
  */
 export function anonymize(
   value: unknown,
   shift: CoordinateShift = { lat: Math.random(), lon: Math.random() },
   options: AnonymizeOptions = {},
 ): unknown {
-  const ctx: Scrub = { shift, names: options.names ?? false };
+  const ctx: Scrub = { shift, names: options.names ?? false, unknownShape: options.unknownShape ?? false };
   if (value && typeof value === 'object' && !Array.isArray(value)) {
     const out = Object.fromEntries(Object.entries(value).map(([k, v]) => [k, k === 'id' && typeof v === 'number' ? 90001 : scrub(v, k, ctx)]));
     return scrubMetricRows(out, shift);
@@ -157,11 +185,14 @@ export function anonymize(
 export interface AnonymizeOptions {
   /** Replace every `name` string too: plan, course, course point, goal and event names. */
   names?: boolean;
+  /** Replace every string but enum-like constants, dates, timestamps and type and unit names. */
+  unknownShape?: boolean;
 }
 
 interface Scrub {
   shift: CoordinateShift;
   names: boolean;
+  unknownShape: boolean;
 }
 
 function coordinate(value: number, key: string, shift: CoordinateShift): number {
@@ -201,16 +232,31 @@ function scrub(value: unknown, key: string, ctx: Scrub): unknown {
   if (DEVICE_IDENTIFIERS.test(key) && (typeof value === 'string' || typeof value === 'number')) return typeof value === 'number' ? 90002 : `anon-${key}`;
   if (typeof value === 'string' && PERSONAL_STRINGS.has(key.toLowerCase())) return key === 'birthDate' ? '1990-01-01' : `anon-${key}`;
   if (typeof value === 'string' && (PROFILE_IMAGE.test(key) || UPLOADED_IMAGE.test(value))) return `anon-${key}`;
+  if (typeof value === 'string' && ctx.unknownShape && !keepsText(key, value)) return `anon-${key}`;
   if (typeof value === 'string' && /[\w.+-]+@[\w-]+\.[\w.]+/.test(value)) return value.replaceAll(/[\w.+-]+@[\w-]+\.[\w.]+/g, 'anon@example.com');
   if (typeof value === 'number' && PERSONAL_IDS.has(key)) return 90001;
   if (typeof value === 'number' && isCoordinate(key)) return coordinate(value, key, shift);
   return value;
 }
 
-export function writeFixture(dir: string, name: string, data: unknown): string {
+/** Keys under which a string other than an `anon-` placeholder is left, sorted. */
+export function textKeys(value: unknown): string[] {
+  const keys = new Set<string>();
+  const walk = (v: unknown, key: string): void => {
+    if (Array.isArray(v)) for (const item of v) walk(item, key);
+    else if (v && typeof v === 'object') for (const [k, item] of Object.entries(v)) walk(item, k);
+    else if (typeof v === 'string' && v !== '' && !v.startsWith('anon-')) keys.add(key);
+  };
+  walk(value, '');
+  return [...keys].toSorted();
+}
+
+/** Write an anonymized recording; returns the file and the keys where text is left, for review before committing. */
+export function writeFixture(dir: string, name: string, data: unknown): { file: string; textKeys: string[] } {
   fs.mkdirSync(dir, { recursive: true });
   const file = path.join(dir, `${name}.json`);
   const shift = { lat: Math.random(), lon: Math.random() };
-  fs.writeFileSync(file, `${JSON.stringify(anonymize(data, shift, { names: NAMED_BY_OWNER.has(name) }), null, 2)}\n`);
-  return file;
+  const anonymized = anonymize(data, shift, { names: NAMED_BY_OWNER.has(name), unknownShape: UNKNOWN_SHAPE.has(name) });
+  fs.writeFileSync(file, `${JSON.stringify(anonymized, null, 2)}\n`);
+  return { file, textKeys: textKeys(anonymized) };
 }

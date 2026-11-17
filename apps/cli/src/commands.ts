@@ -512,7 +512,9 @@ export function buildProgram(deps: ProgramDeps = {}): Command {
       const rt: Runtime = createRuntime(config);
       const date = opts.date ?? addDays(new Intl.DateTimeFormat('en-CA', { timeZone: config.timezone }).format(new Date()), -1);
       const data = await fn(rt.client, { date, id: opts.id ? Number(opts.id) : undefined, uuid: opts.uuid });
-      out(`Wrote ${writeFixture(path.resolve(opts.out), endpoint, data)}`);
+      const { file, textKeys } = writeFixture(path.resolve(opts.out), endpoint, data);
+      out(`Wrote ${file}`);
+      out(textKeys.length ? `Text left under keys (review before committing): ${textKeys.join(', ')}` : 'No text left in the file.');
     });
 
   return program;

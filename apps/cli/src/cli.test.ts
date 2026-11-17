@@ -6,11 +6,12 @@ import { addRange, parseRangeSet, Store, Syncer, SyncJobRunner } from 'garmin-mc
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { readinessMarkdown } from './analytics.js';
 import { buildProgram, VERSION, type ProgramDeps } from './commands.js';
 import { table } from './io.js';
-import { anonymize, RECORDABLE, writeFixture } from './record.js';
+import { anonymize, RECORDABLE, UNKNOWN_SHAPE, writeFixture } from './record.js';
 
 const NO_SHIFT = { lat: 0, lon: 0 };
 
@@ -21,7 +22,8 @@ describe('anonymize', () => {
       fullName: 'Jan Kowalski',
       profileId: 123456,
       activityId: 99,
-      note: 'mail me at jan@example.org',
+      message: 'mail me at jan@example.org',
+      note: 'po kontuzji kolana',
       polyline: [{ lat: 52.2297, lon: 21.0122 }],
       nested: { ownerId: 5, garminGUID: 'abc' },
     }, NO_SHIFT);
@@ -30,7 +32,8 @@ describe('anonymize', () => {
       fullName: 'anon-fullName',
       profileId: 90001,
       activityId: 99,
-      note: 'mail me at anon@example.com',
+      message: 'mail me at anon@example.com',
+      note: 'anon-note',
       polyline: [{ lat: 0.2297, lon: 0.0122 }],
       nested: { ownerId: 90001, garminGUID: 'anon-garminGUID' },
     });
@@ -178,13 +181,95 @@ describe('anonymize', () => {
     expect(anonymize({ name: 'pl' }, shift)).toEqual({ name: 'pl' });
   });
 
-  it('writes plan and course recordings with every name hidden', () => {
+  it('hides notes and food log text under any recording', () => {
+    expect(anonymize({ notes: 'ból głowy', comment: 'u lekarza', foodName: 'Pierogi babci', mealName: 'Obiad u Ani', brandName: 'Biedronka' })).toEqual({
+      notes: 'anon-notes',
+      comment: 'anon-comment',
+      foodName: 'anon-foodName',
+      mealName: 'anon-mealName',
+      brandName: 'anon-brandName',
+    });
+  });
+
+  it('replaces any text in a recording of unknown shape but keeps constants, dates and units', () => {
+    const out = anonymize(
+      {
+        measurements: [
+          {
+            systolic: 128,
+            category: 'STAGE_1_HIGH',
+            measurementTimestampLocal: '2026-10-10T07:15:00.0',
+            calendarDate: '2026-10-10',
+            symptom: 'zawroty głowy po bieganiu',
+            memo: 'call jan@example.org',
+            unit: 'mmHg',
+            sourceType: 'MANUAL',
+            empty: '',
+          },
+        ],
+        activityType: { typeKey: 'running' },
+      },
+      NO_SHIFT,
+      { unknownShape: true },
+    );
+    expect(out).toEqual({
+      measurements: [
+        {
+          systolic: 128,
+          category: 'STAGE_1_HIGH',
+          measurementTimestampLocal: '2026-10-10T07:15:00.0',
+          calendarDate: '2026-10-10',
+          symptom: 'anon-symptom',
+          memo: 'anon-memo',
+          unit: 'mmHg',
+          sourceType: 'MANUAL',
+          empty: '',
+        },
+      ],
+      activityType: { typeKey: 'running' },
+    });
+    // Without `unknownShape` (older recordings) unknown keys keep their text.
+    expect(anonymize({ symptom: 'zawroty głowy', timeFormat: 'time_twenty_four_hr' })).toEqual({ symptom: 'zawroty głowy', timeFormat: 'time_twenty_four_hr' });
+  });
+
+  it('leaves the existing client fixtures out of the new rules', () => {
+    // Re-recording an older endpoint gives the same fixture as before: none of
+    // the keys added for notes and food logs occurs in it, and no fixture is a
+    // stage 8 recording, which hides all text.
+    const fixtures = fileURLToPath(new URL('../../../packages/client/fixtures/', import.meta.url));
+    const files = fs.readdirSync(fixtures).filter((f) => f.endsWith('.json'));
+    expect(files.length).toBeGreaterThan(30);
+    const added = ['note', 'notes', 'comment', 'foodname', 'mealname', 'brandname'];
+    for (const f of files) {
+      expect(UNKNOWN_SHAPE.has(f.replace(/\.json$/, ''))).toBe(false);
+      const keys = new Set<string>();
+      const walk = (v: unknown): void => {
+        if (Array.isArray(v)) v.forEach(walk);
+        else if (v && typeof v === 'object') {
+          for (const [k, item] of Object.entries(v)) {
+            keys.add(k.toLowerCase());
+            walk(item);
+          }
+        }
+      };
+      walk(JSON.parse(fs.readFileSync(path.join(fixtures, f), 'utf8')));
+      expect({ f, added: added.filter((k) => keys.has(k)) }).toEqual({ f, added: [] });
+    }
+  });
+
+  it('writes recordings with names or all text hidden and reports the keys where text is left', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'record-'));
     try {
-      const file = writeFixture(dir, 'training-plans', { trainingPlanList: [{ trainingPlanId: 1, name: 'Plan na Kraków' }] });
-      expect(JSON.parse(fs.readFileSync(file, 'utf8'))).toEqual({ trainingPlanList: [{ trainingPlanId: 1, name: 'anon-name' }] });
-      const other = writeFixture(dir, 'earned-badges', [{ badgeId: 3, name: 'Marathon' }]);
-      expect(JSON.parse(fs.readFileSync(other, 'utf8'))).toEqual([{ badgeId: 3, name: 'Marathon' }]);
+      const plans = writeFixture(dir, 'training-plans', { trainingPlanList: [{ trainingPlanId: 1, name: 'Plan na Kraków', level: 'INTERMEDIATE' }] });
+      expect(JSON.parse(fs.readFileSync(plans.file, 'utf8'))).toEqual({ trainingPlanList: [{ trainingPlanId: 1, name: 'anon-name', level: 'INTERMEDIATE' }] });
+      expect(plans.textKeys).toEqual(['level']);
+      const meals = writeFixture(dir, 'nutrition-day', { mealDate: '2026-10-10', meals: [{ label: 'Kolacja u Ani', calories: 640 }] });
+      expect(JSON.parse(fs.readFileSync(meals.file, 'utf8'))).toEqual({ mealDate: '2026-10-10', meals: [{ label: 'anon-label', calories: 640 }] });
+      expect(meals.textKeys).toEqual(['mealDate']);
+      // Older recordings keep the key-based rules: a bare `name` stays.
+      const types = writeFixture(dir, 'activity-types', [{ typeId: 1, typeKey: 'running', name: 'Bieg' }]);
+      expect(JSON.parse(fs.readFileSync(types.file, 'utf8'))).toEqual([{ typeId: 1, typeKey: 'running', name: 'Bieg' }]);
+      expect(types.textKeys).toEqual(['name', 'typeKey']);
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
@@ -201,6 +286,8 @@ describe('anonymize', () => {
       ]),
     );
     expect(Object.keys(RECORDABLE)).toHaveLength(58);
+    // Every stage 8 endpoint is recorded with all text hidden.
+    expect(Object.keys(RECORDABLE).slice(-UNKNOWN_SHAPE.size)).toEqual([...UNKNOWN_SHAPE]);
   });
 
   it('lists the recordable endpoints with `garmin record list`', async () => {
