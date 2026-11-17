@@ -2,7 +2,7 @@
 
 # garmin-mcp-fit
 
-FIT activity file reader behind Garmin MCP: 1 Hz records (power, heart rate, cadence, speed, elevation) and gear shifts from a Garmin activity file. Unofficial, not affiliated with Garmin.
+FIT file reader and writer behind Garmin MCP: 1 Hz records (power, heart rate, cadence, speed, elevation) and gear shifts from a Garmin activity file, and weight scale files with body fat. Unofficial, not affiliated with Garmin.
 
 This package is part of [Garmin MCP](https://endurancetools.github.io/garmin-mcp/) and is installed with it; its API is internal and may change in any release. To use Garmin MCP, install the server and sign in with the CLI:
 

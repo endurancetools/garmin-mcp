@@ -1,62 +1,6 @@
-// A minimal FIT writer for tests: synthetic activity files built field by field from the FIT
-// protocol (header, definition and data messages, CRC), independent of the parser under test.
+// Messages of synthetic activity files for tests, written with the package's FIT encoder.
 
-type BaseType = 'enum' | 'uint8' | 'uint16' | 'uint32';
-type Field = [num: number, type: BaseType, value: number | null | undefined];
-export interface FitMessage {
-  global: number;
-  fields: Field[];
-}
-
-const BASE: Record<BaseType, { id: number; size: number; invalid: number }> = {
-  enum: { id: 0x00, size: 1, invalid: 0xff },
-  uint8: { id: 0x02, size: 1, invalid: 0xff },
-  uint16: { id: 0x84, size: 2, invalid: 0xffff },
-  uint32: { id: 0x86, size: 4, invalid: 0xffff_ffff },
-};
-
-/** FIT timestamps count seconds from 1989-12-31T00:00:00Z. */
-export const FIT_EPOCH_S = 631_065_600;
-
-const CRC_TABLE = [0x0000, 0xcc01, 0xd801, 0x1400, 0xf001, 0x3c00, 0x2800, 0xe401, 0xa001, 0x6c00, 0x7800, 0xb401, 0x5000, 0x9c01, 0x8801, 0x4400];
-
-export function fitCrc(bytes: Iterable<number>): number {
-  let crc = 0;
-  for (const byte of bytes) {
-    for (const nibble of [byte & 0x0f, byte >> 4]) {
-      const tmp = CRC_TABLE[crc & 0x0f]!;
-      crc = (crc >> 4) & 0x0fff;
-      crc = crc ^ tmp ^ CRC_TABLE[nibble]!;
-    }
-  }
-  return crc;
-}
-
-const le = (value: number, size: number) => Array.from({ length: size }, (_, i) => Math.floor(value / 2 ** (8 * i)) % 256);
-
-/** A complete FIT file (protocol 2.0, little endian) with the messages in order. */
-export function encodeFit(messages: FitMessage[]): Uint8Array {
-  const data: number[] = [];
-  const locals = new Map<string, number>();
-  for (const m of messages) {
-    const layout = `${m.global}:${m.fields.map(([n, t]) => `${n}/${t}`).join(',')}`;
-    let local = locals.get(layout);
-    if (local === undefined) {
-      local = locals.size;
-      if (local > 15) throw new Error('more than 16 message layouts');
-      locals.set(layout, local);
-      data.push(0x40 | local, 0, 0, ...le(m.global, 2), m.fields.length);
-      for (const [n, t] of m.fields) data.push(n, BASE[t].size, BASE[t].id);
-    }
-    data.push(local);
-    for (const [, t, v] of m.fields) data.push(...le(v ?? BASE[t].invalid, BASE[t].size));
-  }
-  const header = [14, 0x20, ...le(2132, 2), ...le(data.length, 4), ...'.FIT'.split('').map((c) => c.charCodeAt(0))];
-  header.push(...le(fitCrc(header), 2));
-  const file = [...header, ...data];
-  file.push(...le(fitCrc(file), 2));
-  return new Uint8Array(file);
-}
+import { FIT_EPOCH_S, type FitMessage } from '../encode.js';
 
 export const fileId = (): FitMessage => ({ global: 0, fields: [[0, 'enum', 4]] });
 
@@ -97,13 +41,16 @@ export const timer = (time_s: number, running: boolean): FitMessage => ({
   ],
 });
 
-/** Session (global 18): its end as the timestamp, start_time and total_elapsed_time (ms). */
+/**
+ * Session (global 18): its end as the timestamp, start_time and total_elapsed_time (ms). An
+ * elapsed time beyond 32 bits wraps around, as a broken device would write it.
+ */
 export const session = (start_s: number, end_s: number): FitMessage => ({
   global: 18,
   fields: [
     [253, 'uint32', end_s - FIT_EPOCH_S],
     [2, 'uint32', start_s - FIT_EPOCH_S],
-    [7, 'uint32', (end_s - start_s) * 1000],
+    [7, 'uint32', ((end_s - start_s) * 1000) % 2 ** 32],
   ],
 });
 

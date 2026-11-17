@@ -188,7 +188,7 @@ garmin-mcp deliberately has few writes; listed so nothing disappears silently.
 | Unschedule workouts | `schedule_workouts` `unschedule` (schedule ids; the workout stays in the library) |
 | Delete workouts | `delete_workout` (opt-in `GARMIN_ENABLE_DESTRUCTIVE`) |
 | Delete weigh-ins | `delete_weigh_in` (opt-in, one sample) |
-| Add weigh-in or body composition | `garmin log weight <kg>` (CLI, `--date` for an earlier time; the day's weigh-ins are downloaded again into the local cache). Weight only: body fat and the other body composition values are not written yet |
+| Add weigh-in or body composition | `garmin log weight <kg>` (CLI, `--date` for an earlier time; the day's weigh-ins are downloaded again into the local cache); `--fat <pct>` adds body fat, sent as a weight scale FIT file through the upload service. Muscle mass, bone mass, water and the other body composition values are not written |
 | Blood pressure | `garmin log bp <systolic/diastolic>` (CLI, optional `--pulse`, `--note`, `--date`) |
 | Add or remove gear on an activity | `update_activity` `add_gear`, `remove_gear` (gear name or uuid) |
 | Add, edit or retire gear | — () |

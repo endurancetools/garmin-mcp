@@ -479,7 +479,7 @@ export function buildProgram(deps: ProgramDeps = {}): Command {
       if (reports.some((r) => r.status === 'failed')) process.exitCode = 1;
     });
 
-  const log = program.command('log').description('add a measurement to Garmin Connect: weight, blood pressure or water');
+  const log = program.command('log').description('add a measurement to Garmin Connect: weight (with body fat), blood pressure or water');
   const dateHelp = 'when: YYYY-MM-DD or "YYYY-MM-DD HH:MM" local time (default now; a past day without a time is 12:00)';
   const number = (value: string, what: string): number => {
     const n = Number(value);
@@ -488,12 +488,16 @@ export function buildProgram(deps: ProgramDeps = {}): Command {
   };
   log
     .command('weight <kg>')
-    .description('add a weigh-in in kg, e.g. `garmin log weight 72.4`')
+    .description('add a weigh-in in kg, e.g. `garmin log weight 72.4 --fat 18.5`')
+    .option('--fat <pct>', 'body fat in % (sent as a weight scale FIT file, the way Garmin takes body composition)')
     .option('--date <date>', dateHelp)
     .option('--json', 'machine readable output')
-    .action(async (kg: string, opts: { date?: string; json?: boolean }, cmd: Command) => {
-      const res = await withGarmin(cmd, (g) => g.logWeight(number(kg, 'weight'), opts.date));
-      out(opts.json ? JSON.stringify(res, null, 2) : `Logged weight ${res.weight_kg} kg at ${res.at}.`);
+    .action(async (kg: string, opts: { fat?: string; date?: string; json?: boolean }, cmd: Command) => {
+      const fatPct = opts.fat === undefined ? undefined : number(opts.fat, '--fat');
+      const res = await withGarmin(cmd, (g) => g.logWeight(number(kg, 'weight'), { date: opts.date, fatPct }));
+      if (opts.json) return out(JSON.stringify(res, null, 2));
+      out(`Logged weight ${res.weight_kg} kg${res.body_fat_pct !== undefined ? `, body fat ${res.body_fat_pct} %` : ''} at ${res.at}.`);
+      if (res.note) out(res.note);
     });
   log
     .command('bp <reading>')

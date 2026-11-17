@@ -24,12 +24,12 @@ import { CLIMB_RULES } from './climbs.js';
 import { deviceSettings } from './devices.js';
 import { energyBalance } from './energy.js';
 import { checkExerciseSets, exerciseSetsBody, exerciseSetsInput, rawExerciseSets, type ExerciseSetInput } from './exercise-sets.js';
-import { readFitFile, type FitGearChange } from './fit.js';
+import { readFitFile, weightScaleFile, type FitGearChange } from './fit.js';
 import { compact, hms, isFootSport, iso, km, round, speedOrPace } from './format.js';
 import { healthTable, tablesFor, type HealthGranularity, type HealthMetric } from './health.js';
 import { hourlyTable, intradayKinds, isHourlyMetric } from './intraday.js';
 import { activityListRow, activityTypeName, checkEditMode, checkManualActivity } from './manual-activity.js';
-import { checkPulse, checkWaterMl, checkWeightKg, measuredAt, parseBloodPressure } from './measurements.js';
+import { checkFatPct, checkPulse, checkWaterMl, checkWeightKg, measuredAt, parseBloodPressure } from './measurements.js';
 import { decodeCursor, encodeCursor, pageBySize } from './paging.js';
 import { bestEfforts, durationLabel, type BestEffort } from './power-curve.js';
 import { sleepNight, sleepRange, sleepTimeline } from './sleep.js';
@@ -974,13 +974,30 @@ export class GarminService {
     }
   }
 
-  /** `garmin log weight`: a manual weigh-in, then that day's weigh-ins downloaded again into the cache. */
-  async logWeight(kg: number, date?: string) {
-    const at = measuredAt(date, this.#tz, this.#now());
-    await this.client.addWeighIn(checkWeightKg(kg), at);
+  /**
+   * `garmin log weight`: a manual weigh-in, then that day's weigh-ins downloaded again into the
+   * cache. With body fat it goes as a weight scale FIT file through the upload service, the only
+   * way Garmin Connect takes body composition; a file Garmin refuses is an error, a duplicate or
+   * a file still processing comes back with a note.
+   */
+  async logWeight(kg: number, opts: { date?: string; fatPct?: number } = {}) {
+    const weight = checkWeightKg(kg);
+    const fat = opts.fatPct === undefined ? undefined : checkFatPct(opts.fatPct);
+    const at = measuredAt(opts.date, this.#tz, this.#now());
     const day = at.local.slice(0, 10);
+    let note: string | undefined;
+    if (fat === undefined) await this.client.addWeighIn(weight, at);
+    else {
+      const file = await weightScaleFile({ at: at.utc, createdAt: new Date(this.#now()), weightKg: weight, fatPct: fat });
+      const res = await this.client.uploadActivityFile('body_composition.fit', file);
+      if (res.status === 'failed') {
+        throw new GarminError('UPLOAD_REFUSED', `Garmin refused the body composition file: ${res.message}`, { hint: 'Nothing was added. Without --fat the weight goes as a plain weigh-in.' });
+      }
+      if (res.status === 'duplicate') note = `Garmin already has this measurement (${res.message}); nothing new was added`;
+      if (res.status === 'processing') note = `Garmin is still processing the file; if the weigh-in is missing, run \`garmin sync --scope health --from ${day} --to ${day} --force\` later`;
+    }
     const refreshed = await this.syncer.syncWeighIns(day, day, true);
-    return compact({ logged: 'weight', weight_kg: kg, at: at.local.slice(0, 16).replace('T', ' '), stored: refreshed.errors.length === 0 });
+    return compact({ logged: 'weight', weight_kg: kg, body_fat_pct: fat, at: at.local.slice(0, 16).replace('T', ' '), stored: refreshed.errors.length === 0, note });
   }
 
   /** `garmin log bp`: a manual blood pressure reading, "120/80" mmHg with an optional pulse. */

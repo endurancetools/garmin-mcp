@@ -680,7 +680,7 @@ describe('garmin status', () => {
  * A Garmin service over an in-memory store whose client answers only the write methods of
  * `upload` and `log` (and the reads that follow them); any other call fails the test.
  */
-function writer() {
+function writer(bodyUpload: unknown = { status: 'processing' }) {
   const calls: { name: string; args: unknown[] }[] = [];
   const ride = {
     activityId: 901,
@@ -690,6 +690,7 @@ function writer() {
   };
   const methods: Record<string, (...args: unknown[]) => unknown> = {
     uploadActivityFile: (name) => {
+      if (name === 'body_composition.fit') return bodyUpload;
       if (name === 'new.fit') return { status: 'created', activityId: 901 };
       if (name === 'dup.gpx') return { status: 'duplicate', activityId: 900, message: 'Duplicate Activity.' };
       if (name === 'slow.tcx') return { status: 'processing' };
@@ -794,6 +795,46 @@ describe('garmin log', () => {
     await expect(run(deps, 'log', 'weight', '720')).rejects.toThrow('weight (kg) must be from 20 to 400');
     await expect(run(deps, 'log', 'weight', '72', '--date', '2026-10-09')).rejects.toThrow('is in the future');
     expect(calls.filter((c) => c.name === 'addWeighIn')).toHaveLength(2);
+  });
+
+  it('sends weight with body fat as a weight scale FIT file and downloads that day again', async () => {
+    const { deps, calls } = writer();
+    const { stdout } = await run(deps, 'log', 'weight', '72.4', '--fat', '18.5', '--date', '2026-10-07 07:30');
+    expect(stdout).toBe(
+      'Logged weight 72.4 kg, body fat 18.5 % at 2026-10-07 07:30.\n' +
+        'Garmin is still processing the file; if the weigh-in is missing, run `garmin sync --scope health --from 2026-10-07 --to 2026-10-07 --force` later\n',
+    );
+    expect(calls.map((c) => c.name)).toEqual(['uploadActivityFile', 'getWeighIns']);
+    expect(calls[0]?.args[0]).toBe('body_composition.fit');
+    expect(calls[1]?.args).toEqual(['2026-10-07', '2026-10-07']);
+    // FIT header, then the weight_scale message: timestamp (s since 1989-12-31), weight and fat in hundredths.
+    const file = Buffer.from(calls[0]?.args[1] as Uint8Array);
+    expect(file.subarray(8, 12).toString()).toBe('.FIT');
+    const fitTime = Date.parse('2026-10-07T07:30:00Z') / 1000 - 631_065_600;
+    const le = (v: number, n: number) => Array.from({ length: n }, (_, i) => Math.floor(v / 2 ** (8 * i)) % 256);
+    expect(file.includes(Buffer.from([...le(fitTime, 4), ...le(7240, 2), ...le(1850, 2)]))).toBe(true);
+  });
+
+  it('reports a weigh-in Garmin already has and refuses a file Garmin rejects or a fat value out of range', async () => {
+    const dup = writer({ status: 'duplicate', message: 'Duplicate Activity.' });
+    const res = json<Record<string, unknown>>((await run(dup.deps, 'log', 'weight', '72', '--fat', '20', '--json')).stdout);
+    expect(res).toEqual({
+      logged: 'weight',
+      weight_kg: 72,
+      body_fat_pct: 20,
+      at: '2026-10-08 12:00',
+      stored: true,
+      note: 'Garmin already has this measurement (Duplicate Activity.); nothing new was added',
+    });
+    const created = writer({ status: 'created', activityId: 5 });
+    expect((await run(created.deps, 'log', 'weight', '72', '--fat', '20')).stdout).toBe('Logged weight 72 kg, body fat 20 % at 2026-10-08 12:00.\n');
+
+    const refused = writer({ status: 'failed', message: 'Unrecognized file' });
+    await expect(run(refused.deps, 'log', 'weight', '72', '--fat', '20')).rejects.toThrow('Garmin refused the body composition file: Unrecognized file');
+    expect(refused.calls.map((c) => c.name)).toEqual(['uploadActivityFile']);
+    await expect(run(refused.deps, 'log', 'weight', '72', '--fat', '90')).rejects.toThrow('body fat (%) must be from 1 to 75');
+    await expect(run(refused.deps, 'log', 'weight', '72', '--fat', 'lean')).rejects.toThrow('--fat must be a number');
+    expect(refused.calls).toHaveLength(1);
   });
 
   it('adds blood pressure with an optional pulse and note', async () => {

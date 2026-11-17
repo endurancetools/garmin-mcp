@@ -118,7 +118,7 @@ garmin thresholds export [--out <file.csv>]                     # date,param,val
 garmin thresholds import <file.csv>
 garmin import-activities <file.csv...>                          # Garmin Connect "Activities" CSV exports
 garmin upload <file.fit|gpx|tcx...> [--json]                    # new activities to Garmin Connect
-garmin log weight <kg> [--date] [--json]                        # measurements to Garmin Connect; --date "YYYY-MM-DD HH:MM"
+garmin log weight <kg> [--fat <pct>] [--date] [--json]          # measurements to Garmin Connect; --date "YYYY-MM-DD HH:MM"
 garmin log bp <systolic/diastolic> [--pulse --note --date --json]
 garmin log water <ml> [--date] [--json]
 garmin doctor                        # TLS strategy, hosts, permissions, tokens, SQLite driver

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { MAX_GAP_S, MAX_HOLD_S, MAX_SPAN_S, readFit } from './read.js';
-import { encodeFit, FIT_EPOCH_S, fileId, gearChange, record, session, timer, type RecordInput } from './test-utils/encode.js';
+import { encodeFit, FIT_EPOCH_S } from './encode.js';
+import { fileId, gearChange, record, session, timer, type RecordInput } from './test-utils/encode.js';
 
 const T0 = 1_763_370_000; // 2025-11-17T09:00:00Z
 const ride = (n: number, from = 0, extra: Partial<RecordInput> = {}) =>

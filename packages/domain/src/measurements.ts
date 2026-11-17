@@ -1,5 +1,5 @@
 /**
- * Measurements written by `garmin log` (weight, blood pressure, water): when they were taken and
+ * Measurements written by `garmin log` (weight with body fat, blood pressure, water): when they were taken and
  * the checks of their values, before anything is sent to Garmin.
  */
 import type { MeasuredAt } from 'garmin-mcp-client';
@@ -43,6 +43,9 @@ function inRange(value: number, min: number, max: number, what: string, opts: { 
 
 /** Body weight in kg, 20 to 400. */
 export const checkWeightKg = (kg: number): number => inRange(kg, 20, 400, 'weight (kg)');
+
+/** Body fat in percent of body weight, 1 to 75. */
+export const checkFatPct = (pct: number): number => inRange(pct, 1, 75, 'body fat (%)');
 
 /** Water in ml added to the day, 1 to 5000 per entry. */
 export const checkWaterMl = (ml: number): number => inRange(ml, 1, 5000, 'water (ml)', { integer: true });
