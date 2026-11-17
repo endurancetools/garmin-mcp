@@ -52,6 +52,36 @@ describe('stream summary', () => {
     expect(streamSummary(steady.map(({ sumDuration: _t, ...s }) => s), 'halves', true)?.buckets).toHaveLength(2);
   });
 
+  it('gives a row per climb with gain, grades, VAM and W/kg', () => {
+    // A ride every 5 s: 2 km flat at 10 m/s and 150 W, 1.5 km at 6 % at 4 m/s and 280 W, 2 km flat.
+    const ride: StreamSample[] = [];
+    let t = 0;
+    for (let d = 0; d <= 5500; t += 5) {
+      const climbing = d >= 2000 && d < 3500;
+      ride.push({ sumDuration: t, sumDistance: d, directElevation: 100 + Math.min(90, Math.max(0, (d - 2000) * 0.06)), directPower: climbing ? 280 : 150, directHeartRate: climbing ? 160 : 130 });
+      d += climbing ? 20 : 50;
+    }
+    const s = streamSummary(ride, 'climbs', false, { weightKg: 70 });
+    expect(s?.bucket).toBe('climbs');
+    expect(s?.buckets).toHaveLength(1);
+    const c = s?.buckets[0];
+    expect(c).toMatchObject({ n: 1, avg_hr_bpm: expect.any(Number), elevation_gain_m: 90, max_grade_pct: 6 });
+    expect(c?.start_km).toBeCloseTo(2, 1);
+    expect(c?.distance_km).toBeCloseTo(1.5, 1);
+    expect(c?.avg_speed_kmh).toBeCloseTo(14.4, 0);
+    expect(c?.avg_grade_pct).toBeGreaterThan(5.6);
+    // 90 m in about 375 s of the climb.
+    expect(c?.vam_m_h).toBeGreaterThan(800);
+    expect(c?.vam_m_h).toBeLessThan(900);
+    expect(c?.avg_power_w).toBeGreaterThan(270);
+    expect(c?.w_per_kg).toBeCloseTo((c?.avg_power_w ?? 0) / 70, 1);
+    expect(c?.elevation_change_m).toBeUndefined();
+    // Without a weight no W/kg; on the flat an empty list; without elevation nothing to read.
+    expect(streamSummary(ride, 'climbs', false)?.buckets[0]?.w_per_kg).toBeUndefined();
+    expect(streamSummary(ride.map((x) => ({ ...x, directElevation: 100 })), 'climbs', false)?.buckets).toEqual([]);
+    expect(streamSummary(ride.map(({ directElevation: _e, ...x }) => x), 'climbs', false)).toBeUndefined();
+  });
+
   it('aggregates a recorded trail run stream', () => {
     const raw = JSON.parse(fs.readFileSync(new URL('../../client/fixtures/activity-details.json', import.meta.url), 'utf8')) as {
       metricDescriptors: { metricsIndex: number; key: string }[];

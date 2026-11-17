@@ -3,6 +3,7 @@ export * from './activity-extras.js';
 export * from './activity-metrics.js';
 export * from './body.js';
 export * from './calendar.js';
+export * from './climbs.js';
 export * from './energy.js';
 export * from './format.js';
 export * from './health.js';

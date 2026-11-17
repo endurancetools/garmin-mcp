@@ -187,6 +187,22 @@ Around 5% is the usual orientation point: below it the session was aerobically s
 
 `compare_activities` puts sessions side by side, one row each, with the metrics of `include_activities` above, the paces as `m:ss /km`, the share of time in HR zones 4-5 and the temperature, dew point and humidity when the activity's weather was downloaded (`get_activity` with `detail: "weather"`). `ids` takes 2 to 10 activities in that order. `similar_to` takes one activity and adds the stored sessions like it, newest first (`limit`, default 5): the same activity type, duration within ±`duration_pct` (20 %), for running and hiking the pace within ±`pace_s_per_km` (20 s; grade adjusted pace when both sessions have it), with `same_route` start and end within 300 m and the distance within 10 %, and with `easy_only` less than 5 % of the time in zones 4-5. Each similar row says how it differs in `match` (e.g. `duration +3%, GAP -8 s/km, same route`). The search covers 365 days before the reference up to today unless `from` says otherwise. Decoupling needs the laps of each session, as in `get_load`.
 
+## Climbs
+
+`get_activity` with `detail: "stream_summary"` and `bucket: "climbs"` finds the climbs of one activity in its stream (distance and elevation, the same download as the other buckets; no FIT file) and gives one row per climb: where it starts (`start_km`), its length (`distance_km`), gain (`elevation_gain_m`), average and steepest grade, the usual stream means (pace and grade adjusted pace, or speed, heart rate, power, dynamics), VAM and, with power, W/kg. Time outside climbs is left out. An activity without climbs gives an empty list and a note; one without distance or elevation in its stream gives no `stream_summary`.
+
+A climb is a stretch of at least **500 m** with an average grade of at least **3 %** and at least **30 m** of gain from its foot to its top. Below 3 % the gradient hardly changes pace or power on a road or path; a shorter or lower rise (a bridge, a short ramp) is over too soon for heart rate and power to say anything about it. All the numbers are `CLIMB_RULES` in `packages/domain/src/climbs.ts`.
+
+How it is found:
+
+- The profile is resampled every 10 m of distance and its elevation averaged over ±50 m, which removes the noise of GPS and barometric altitude (a few metres from sample to sample) while keeping any climb of 500 m.
+- A point is climbing when the grade of the smoothed profile over the 100 m around it is at least 2 %. Climbing stretches at most **200 m** apart are one climb, so a flatter bit, a hairpin or a short dip does not split it; two climbs with a longer flat or descent between them stay apart.
+- The foot is the lowest and the top the highest point within 50 m of each end of a stretch, on elevation averaged over only ±20 m, so the ends are not moved by the wider averaging. Gain, average grade (gain over length) and the steepest 100 m (`max_grade_pct`) come from this profile; the steepest 100 m of a short steep ramp therefore reads a little lower than the ramp itself.
+- **VAM** (velocità ascensionale media) is the gain divided by the hours of timer time on the climb, in m/h: the climbing speed that does not depend on the grade. Pauses that the timer leaves out do not count.
+- **W/kg** is the average power on the climb over the body weight on the activity's day: the latest weigh-in up to 30 days before it, else the weight in the Garmin profile, both from the local database without a request; `meta.note` says which. Without power or a weight there is no W/kg.
+
+Elevation of the activity stream is what Garmin stored for the activity (corrected or not, as Garmin Connect shows it), so gains can differ by a few metres from the activity's total ascent.
+
 ## Morning readiness
 
 The decision is training information, not medical advice: it compares this morning with your own recent baselines and cannot tell whether you are ill or injured. If you feel unwell, talk to a doctor, whatever the decision says.

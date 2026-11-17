@@ -14,6 +14,8 @@
 {"prompt": "Jaka była pogoda podczas aktywności 21002?", "expect": {"tool": "get_activity", "args_include": {"id": 21002, "detail": "weather"}}}
 {"prompt": "Ile czasu spędziłem w poszczególnych strefach tętna na aktywności 21001?", "expect": {"tool": "get_activity", "args_include": {"id": 21001, "detail": "hr_zones"}}}
 {"prompt": "Porównaj pierwszą i drugą połowę biegu 21001: tętno, moc i kontakt z podłożem.", "expect": {"tool": "get_activity", "args_include": {"id": 21001, "detail": "stream_summary", "bucket": "halves"}}}
+{"prompt": "Jak mi poszły podjazdy na jeździe 21002? Chcę VAM i W/kg na każdym.", "expect": {"tool": "get_activity", "args_include": {"id": 21002, "detail": "stream_summary", "bucket": "climbs"}}, "forbid": ["get_activities"]}
+{"prompt": "How did I do on the climbs of ride 21002: gradient, VAM and power on each?", "expect": {"tool": "get_activity", "args_include": {"id": 21002, "detail": "stream_summary", "bucket": "climbs"}}, "forbid": ["get_activities"]}
 {"prompt": "What was my cadence and ground contact time on activity 21001?", "expect": {"tool": "get_activity", "args_include": {"id": 21001}}, "forbid": ["get_activities"]}
 {"prompt": "How did my HRV and resting heart rate trend over the last three months?", "expect": {"tool": "query_health", "args_include": {"metrics": ["hrv", "resting_hr"]}}, "forbid": ["get_sleep", "garmin_sync"]}
 {"prompt": "Ile kroków zrobiłem wczoraj?", "expect": {"tool": "query_health", "args_include": {"metrics": ["steps"]}}, "forbid": ["garmin_sync"]}

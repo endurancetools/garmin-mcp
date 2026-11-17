@@ -504,6 +504,51 @@ describe('GarminService', () => {
     expect(gps.meta.note).toBe('directLatitude left out: GPS is removed while GARMIN_REDACT is on.');
   });
 
+  it('lists climbs from the stream with W/kg from the latest weigh-in, else the profile', async () => {
+    const { service, store, count } = setup({ activities: [summary(1, '2026-10-07', { activityType: { typeId: 2, typeKey: 'road_biking' } })] });
+    // 2 km flat, 1.5 km at 6 % at 4 m/s and 280 W, 2 km flat; a sample every 5 s.
+    const rows: (number | null)[][] = [];
+    for (let d = 0, t = 0; d <= 5500; t += 5) {
+      const climbing = d >= 2000 && d < 3500;
+      rows.push([t, d, 100 + Math.min(90, Math.max(0, (d - 2000) * 0.06)), climbing ? 280 : 150]);
+      d += climbing ? 20 : 50;
+    }
+    const keys = ['sumDuration', 'sumDistance', 'directElevation', 'directPower'];
+    store.putActivityDetail(1, 'details', { metricDescriptors: keys.map((key, metricsIndex) => ({ metricsIndex, key })), activityDetailMetrics: rows.map((metrics) => ({ metrics })) }, NOW);
+    store.setProfile({ social: {}, settings: { userData: { weight: 80_000 } }, heartRateZones: [], powerZones: [] }, NOW);
+    const climbs = async () => service.getActivity(1, 'stream_summary', undefined, { bucket: 'climbs' });
+
+    const fromProfile = await climbs();
+    expect(fromProfile.data.stream_summary).toMatchObject({ bucket: 'climbs', buckets: [{ n: 1, elevation_gain_m: 90, max_grade_pct: 6 }] });
+    const power = fromProfile.data.stream_summary?.buckets[0]?.avg_power_w ?? 0;
+    expect(fromProfile.data.stream_summary?.buckets[0]?.w_per_kg).toBeCloseTo(power / 80, 1);
+    expect(fromProfile.meta.note).toBe('W/kg with 80 kg (profile).');
+    expect(() => output.activityOutput.parse(fromProfile)).not.toThrow();
+
+    // A weigh-in within 30 days before the ride wins; one after it or 31 days before does not count.
+    store.upsertWeighIns(
+      [
+        { samplePk: 1, calendarDate: '2026-09-06', timestampGMT: Date.parse('2026-09-06T06:00:00Z'), weight: 60_000 },
+        { samplePk: 2, calendarDate: '2026-09-20', timestampGMT: Date.parse('2026-09-20T06:00:00Z'), weight: 70_000 },
+        { samplePk: 3, calendarDate: '2026-10-08', timestampGMT: Date.parse('2026-10-08T06:00:00Z'), weight: 90_000 },
+      ],
+      NOW,
+    );
+    const fromWeighIn = await climbs();
+    expect(fromWeighIn.data.stream_summary?.buckets[0]?.w_per_kg).toBeCloseTo(power / 70, 1);
+    expect(fromWeighIn.meta.note).toBe('W/kg with 70 kg (weigh-in 2026-09-20).');
+    expect(count('getActivityDetails')).toBe(0);
+
+    // A flat stream: an empty list and why; the fake stream without distance: nothing to read.
+    store.putActivityDetail(1, 'details', { metricDescriptors: keys.map((key, metricsIndex) => ({ metricsIndex, key })), activityDetailMetrics: rows.map(([t, d]) => ({ metrics: [t ?? 0, d ?? 0, 100, 150] })) }, NOW);
+    const flat = await climbs();
+    expect(flat.data.stream_summary).toMatchObject({ bucket: 'climbs', buckets: [] });
+    expect(flat.meta.note).toBe('No climbs: a climb is at least 500 m long, 3 % steep on average and 30 m high.');
+    const { service: bare } = setup({ activities: [summary(2, '2026-10-07')] });
+    const none = await bare.getActivity(2, 'stream_summary', undefined, { bucket: 'climbs' });
+    expect(none.meta.note).toBe('Garmin has no a usable stream with distance and elevation for this activity.');
+  });
+
   it('converts weather wind from mph for statute_us accounts', async () => {
     const { service, store } = setup({ activities: [summary(1, '2026-10-07')] });
     store.setProfile({ social: {}, settings: { userData: { measurementSystem: 'statute_us' } }, heartRateZones: [], powerZones: [] }, NOW);

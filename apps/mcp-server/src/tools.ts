@@ -171,7 +171,7 @@ export const TOOLS: ToolDef[] = [
     input: {
       id: id.describe('Activity id from get_activities'),
       detail: z.enum(['summary', 'splits', 'hr_zones', 'power_zones', 'weather', 'exercise_sets', 'stream_summary', 'full']).default('summary'),
-      bucket: z.enum(['km', '5min', 'halves', 'quarters']).default('km').describe('For detail="stream_summary"'),
+      bucket: z.enum(['km', '5min', 'halves', 'quarters', 'climbs']).default('km').describe('For detail="stream_summary"; "climbs": each climb with grade, VAM, W/kg'),
       metrics: z.array(z.string()).optional().describe('For detail="full": stream keys to keep, e.g. ["directHeartRate","directPower"]'),
       downsample_s: z.number().int().positive().optional().describe('For detail="full": at most one sample per this many seconds'),
       cursor: z.string().optional().describe('For detail="full": next_cursor of the previous page (same metrics and downsample_s)'),

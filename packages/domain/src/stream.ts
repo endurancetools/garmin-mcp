@@ -1,3 +1,4 @@
+import { detectClimbs, type Climb } from './climbs.js';
 import { hms, km, pacePerKm, round } from './format.js';
 
 /**
@@ -16,7 +17,7 @@ import { hms, km, pacePerKm, round } from './format.js';
  * stream without them simply leaves the fields out.
  */
 
-export type StreamBucket = 'km' | '5min' | 'halves' | 'quarters';
+export type StreamBucket = 'km' | '5min' | 'halves' | 'quarters' | 'climbs';
 
 export type StreamSample = Record<string, unknown>;
 
@@ -40,7 +41,7 @@ const MEANS = {
 type MeanField = keyof typeof MEANS;
 
 export interface StreamBucketRow {
-  /** 1-based: kilometre, 5-minute block, half or quarter. */
+  /** 1-based: kilometre, 5-minute block, half, quarter or climb. */
   n: number;
   /** Timer time at the start and end of the bucket. */
   from: string;
@@ -62,6 +63,13 @@ export interface StreamBucketRow {
   performance_condition?: number;
   elevation_change_m?: number;
   stamina_end_pct?: number;
+  /** Climbs only: where the climb starts, its gain and grades, VAM, and W/kg with a weight. */
+  start_km?: number;
+  elevation_gain_m?: number;
+  avg_grade_pct?: number;
+  max_grade_pct?: number;
+  vam_m_h?: number;
+  w_per_kg?: number;
 }
 
 export interface PerformanceConditionSummary {
@@ -100,16 +108,19 @@ function timeOf(s: StreamSample, firstTs: number | undefined): number | undefine
   return ts !== undefined && firstTs !== undefined ? (ts - firstTs) / 1000 : undefined;
 }
 
-const COUNTS: Record<StreamBucket, number | undefined> = { km: undefined, '5min': undefined, halves: 2, quarters: 4 };
+const COUNTS: Record<StreamBucket, number | undefined> = { km: undefined, '5min': undefined, halves: 2, quarters: 4, climbs: undefined };
 
 /**
- * Stream aggregated per kilometre (`sumDistance`), 5 minutes of timer time, or halves or
- * quarters of the timer time. A sample's interval goes to the bucket of its midpoint, so a
- * bucket edge between two samples is off by at most one sample spacing. Pace is the bucket's
- * distance over its time; for foot sports pace, else speed. `undefined` with fewer than two
- * timed samples, or for `km` without distance.
+ * Stream aggregated per kilometre (`sumDistance`), 5 minutes of timer time, halves or
+ * quarters of the timer time, or climbs (`detectClimbs` on distance and `directElevation`;
+ * time outside climbs is left out). A sample's interval goes to the bucket of its midpoint, so
+ * a bucket edge between two samples is off by at most one sample spacing. Pace is the bucket's
+ * distance over its time; for foot sports pace, else speed. A climb also has its length, gain,
+ * grades, VAM (gain per hour of timer time) and, with `weightKg` and power, W/kg. `undefined`
+ * with fewer than two timed samples, for `km` without distance, or for `climbs` without
+ * distance and elevation; no climbs is an empty list.
  */
-export function streamSummary(samples: readonly StreamSample[], bucket: StreamBucket, footSport: boolean): StreamSummary | undefined {
+export function streamSummary(samples: readonly StreamSample[], bucket: StreamBucket, footSport: boolean, opts: { weightKg?: number } = {}): StreamSummary | undefined {
   const firstTs = num(samples[0]?.directTimestamp);
   const timed = samples.flatMap((s) => {
     const t = timeOf(s, firstTs);
@@ -119,7 +130,17 @@ export function streamSummary(samples: readonly StreamSample[], bucket: StreamBu
   const total = timed.at(-1)?.t ?? 0;
   const parts = COUNTS[bucket];
   if (bucket === 'km' && !timed.some((x) => (x.d ?? 0) > 0)) return undefined;
+  let climbs: Climb[] = [];
+  if (bucket === 'climbs') {
+    const profile = timed.flatMap(({ s, d }) => {
+      const e = num(s.directElevation);
+      return d === undefined || e === undefined ? [] : [{ distance_m: d, elevation_m: e }];
+    });
+    if (profile.length < 2) return undefined;
+    climbs = detectClimbs(profile);
+  }
   const indexOf = (t: number, d: number | undefined): number => {
+    if (bucket === 'climbs') return d === undefined ? -1 : climbs.findIndex((c) => d >= c.start_m && d < c.end_m);
     if (bucket === 'km') return Math.max(0, Math.floor((d ?? 0) / 1000));
     if (bucket === '5min') return Math.max(0, Math.floor(t / 300));
     return Math.min((parts ?? 1) - 1, Math.max(0, Math.floor((t / (total || 1)) * (parts ?? 1))));
@@ -133,6 +154,7 @@ export function streamSummary(samples: readonly StreamSample[], bucket: StreamBu
     if (!(w > 0)) continue;
     const midD = prev.d !== undefined && cur.d !== undefined ? (prev.d + cur.d) / 2 : cur.d;
     const idx = indexOf((prev.t + cur.t) / 2, midD);
+    if (idx < 0) continue;
     let a = accs.get(idx);
     if (!a) {
       a = { t0: prev.t, t1: cur.t, d0: prev.d, d1: cur.d, e0: num(prev.s.directElevation), sums: {} };
@@ -165,7 +187,9 @@ export function streamSummary(samples: readonly StreamSample[], bucket: StreamBu
       const mps = dist !== undefined && dist > 0 && dur > 0 ? dist / dur : undefined;
       const gap = mean(a, 'gap_mps');
       const stride = mean(a, 'stride_cm');
-      return {
+      const power = mean(a, 'avg_power_w');
+      const climb = climbs[idx];
+      const row: StreamBucketRow = {
         n: idx + 1,
         from: hms(a.t0) ?? '0:00',
         to: hms(a.t1) ?? '0:00',
@@ -173,7 +197,7 @@ export function streamSummary(samples: readonly StreamSample[], bucket: StreamBu
         ...(footSport ? { avg_pace: pacePerKm(mps), avg_gap_pace: pacePerKm(gap) } : { avg_speed_kmh: round(mps === undefined ? undefined : mps * 3.6, 1) }),
         avg_hr_bpm: round(mean(a, 'avg_hr_bpm'), 0),
         max_hr_bpm: a.maxHr,
-        avg_power_w: round(mean(a, 'avg_power_w'), 0),
+        avg_power_w: round(power, 0),
         cadence_spm: round(mean(a, 'cadence_spm'), 0),
         gct_ms: round(mean(a, 'gct_ms'), 0),
         gct_balance_left_pct: round(mean(a, 'gct_balance_left_pct'), 1),
@@ -184,6 +208,18 @@ export function streamSummary(samples: readonly StreamSample[], bucket: StreamBu
         performance_condition: round(mean(a, 'performance_condition'), 0),
         elevation_change_m: a.e0 !== undefined && a.e1 !== undefined ? round(a.e1 - a.e0, 0) : undefined,
         stamina_end_pct: a.stamina,
+      };
+      if (!climb) return row;
+      return {
+        ...row,
+        start_km: km(climb.start_m),
+        distance_km: km(climb.length_m),
+        elevation_change_m: undefined,
+        elevation_gain_m: round(climb.gain_m, 0),
+        avg_grade_pct: climb.avg_grade_pct,
+        max_grade_pct: climb.max_grade_pct,
+        vam_m_h: dur > 0 ? round(climb.gain_m / (dur / 3600), 0) : undefined,
+        w_per_kg: power !== undefined && power > 0 && opts.weightKg !== undefined && opts.weightKg > 0 ? round(power / opts.weightKg, 2) : undefined,
       };
     });
   return { bucket, samples: timed.length, buckets, performance_condition: performanceCondition(timed) };

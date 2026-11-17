@@ -20,6 +20,7 @@ import { activityWeather, strengthSets, zoneTimes, type ActivityWeather, type St
 import { gapPace, GPS_STREAM_METRICS, hrSource, motionTime, redactActivityRaw, respiration, runningDynamics, stamina, trainingEffectText, type RunningDynamics } from './activity-metrics.js';
 import { bodyComposition } from './body.js';
 import { calendarEvent } from './calendar.js';
+import { CLIMB_RULES } from './climbs.js';
 import { deviceSettings } from './devices.js';
 import { energyBalance } from './energy.js';
 import { compact, hms, isFootSport, iso, km, round, speedOrPace } from './format.js';
@@ -667,8 +668,14 @@ export class GarminService {
       const indexed = all.flatMap((k, i) => (this.#redact && GPS_STREAM_METRICS.has(k) ? [] : [[k, i] as const]));
       const samples = (details.raw?.activityDetailMetrics ?? []).map((m) => Object.fromEntries(indexed.map(([k, i]) => [k, m.metrics[i] ?? null])));
       if (detail === 'stream_summary') {
-        extra.stream_summary = streamSummary(samples, opts.bucket ?? 'km', footSport);
-        if (!extra.stream_summary) missing.push(`a usable stream${(opts.bucket ?? 'km') === 'km' ? ' with distance' : ''}`);
+        const bucket = opts.bucket ?? 'km';
+        const date = (row?.start_time_local ?? s.startTimeLocal ?? undefined)?.slice(0, 10);
+        const weight = bucket === 'climbs' && date !== undefined ? this.#weightOn(date) : undefined;
+        extra.stream_summary = streamSummary(samples, bucket, footSport, { weightKg: weight?.kg });
+        if (!extra.stream_summary) missing.push(`a usable stream${bucket === 'km' ? ' with distance' : bucket === 'climbs' ? ' with distance and elevation' : ''}`);
+        else if (bucket === 'climbs' && extra.stream_summary.buckets.length === 0)
+          notes.push(`No climbs: a climb is at least ${CLIMB_RULES.minLengthM} m long, ${CLIMB_RULES.minAvgGradePct} % steep on average and ${CLIMB_RULES.minGainM} m high.`);
+        else if (weight && extra.stream_summary.buckets.some((b) => b.w_per_kg !== undefined)) notes.push(`W/kg with ${weight.kg} kg (${weight.source}).`);
       } else {
         const keys = indexed.map(([k]) => k);
         const filtered = filterStream(keys, samples, { metrics: opts.metrics, downsampleS: opts.downsample_s });
@@ -687,7 +694,24 @@ export class GarminService {
       }
     }
     if (missing.length > 0) notes.unshift(`Garmin has no ${missing.join(', ')} for this activity.`);
-    return { data: compact({ ...base, ...extra }), meta: this.#meta(sources, times, notes.length > 0 ? { note: notes.join(' ') } : {}) };
+    const data = compact({ ...base, ...extra });
+    // No climbs is an answer: the empty list stays.
+    if (data.stream_summary && extra.stream_summary?.buckets.length === 0) data.stream_summary.buckets = [];
+    return { data, meta: this.#meta(sources, times, notes.length > 0 ? { note: notes.join(' ') } : {}) };
+  }
+
+  /**
+   * Body weight on a day from the cache, without requests: the latest weigh-in up to 30 days
+   * before (and on) the day, else the profile's weight.
+   */
+  #weightOn(date: IsoDate): { kg: number; source: string } | undefined {
+    const weighIn = this.store
+      .getBodyComposition(addDays(date, -30), date)
+      .filter((r) => r.weight_kg !== null && r.weight_kg > 0)
+      .at(-1);
+    if (weighIn?.weight_kg) return { kg: round(weighIn.weight_kg, 1) ?? weighIn.weight_kg, source: `weigh-in ${weighIn.date}` };
+    const grams = ((this.store.getProfile()?.raw.settings ?? {}) as { userData?: { weight?: unknown } }).userData?.weight;
+    return typeof grams === 'number' && grams > 0 ? { kg: round(grams / 1000, 1) ?? grams / 1000, source: 'profile' } : undefined;
   }
 
   /**
