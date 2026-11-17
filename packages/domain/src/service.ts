@@ -456,14 +456,15 @@ export class GarminService {
    * Garmin's own threshold history for the analytics reads: the running lactate threshold heart
    * rate and speed per day over the last {@link THRESHOLD_HISTORY_DAYS} days and the latest
    * cycling FTP. Three requests within the daily request limit, at most once a local day and only
-   * with on-demand fetching; no sync job fetches it. A part Garmin does not give is stored as
+   * with auto fetch on; no sync job fetches it. A part Garmin does not give is stored as
    * null, so it is not asked for again that day. The analytics records it as `garmin-auto`
    * thresholds from the cache (`Store.getThresholdHistory`).
    */
   async ensureThresholdHistory(): Promise<{ result: EnsureResult; note?: string }> {
     const cached = this.store.getThresholdHistory();
     const today = this.today();
-    if (!this.syncer.fetchOnDemand || (cached && dateIn(this.#tz, new Date(cached.fetched_at)) >= today)) return { result: { source: 'cache' } };
+    const fetch = this.#autoSync || this.syncer.fetchOnDemand;
+    if (!fetch || (cached && dateIn(this.#tz, new Date(cached.fetched_at)) >= today)) return { result: { source: 'cache' } };
     const from = addDays(today, -THRESHOLD_HISTORY_DAYS);
     const parts = {
       lthr_hr: () => this.client.getLactateThresholdHeartRate(from, today),
@@ -1541,8 +1542,8 @@ export class GarminService {
 
   /**
    * The training plan with the nearest workout on the calendar from today on: one request (the
-   * adaptive or the phased plan), fetched lazily by `list_workouts` and kept for the reference
-   * TTL (1 h), within the daily request limit; no sync job fetches it. A plan Garmin does not
+   * adaptive or the phased plan), fetched lazily by `list_workouts` with auto fetch on and kept
+   * for the reference TTL (1 h), within the daily request limit; no sync job fetches it. A plan Garmin does not
    * give is stored as null, so it is not asked for again within the TTL.
    */
   async #activePlan(): Promise<{ active?: { id: number; adaptive: boolean }; cached?: TrainingPlanCache; result?: EnsureResult; note?: string }> {
@@ -1550,7 +1551,7 @@ export class GarminService {
     if (!active) return {};
     const stored = this.store.getTrainingPlan();
     const cached = stored?.id === active.id ? stored : undefined;
-    if ((cached && isFresh(cached.fetched_at, TTL.reference, this.#now())) || !this.syncer.fetchOnDemand) {
+    if ((cached && isFresh(cached.fetched_at, TTL.reference, this.#now())) || !(this.#autoSync || this.syncer.fetchOnDemand)) {
       return { active, cached, result: cached && { source: 'cache' } };
     }
     try {

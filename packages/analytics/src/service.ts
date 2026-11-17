@@ -357,8 +357,9 @@ export class AnalyticsService {
   }
 
   /**
-   * Fetch the Garmin profile when missing or stale and Garmin's threshold history once a day
-   * (only with `fetchOnDemand` and `fetch`), then record their thresholds. `notes` says why the
+   * Fetch the Garmin profile when missing or stale (only with `fetchOnDemand`) and Garmin's
+   * threshold history once a day (with auto fetch on), both only with `fetch`, then record their
+   * thresholds. `notes` says why the
    * history could not be downloaded.
    */
   async #profile(fetch = true): Promise<{ ensured: EnsureResult; gap: Partial<ResponseMeta>; notes: string[] }> {

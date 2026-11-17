@@ -735,6 +735,24 @@ describe('AnalyticsService thresholds', () => {
     expect(again.data.history).toEqual(res.data.history);
   });
 
+  it("downloads Garmin's threshold history with auto fetch through auto sync (as in the running server) and not with both off", async () => {
+    const on = setup({ autoSync: true });
+    on.store.markReferenceFetched('profile', NOW);
+    on.daily('daily_summary', '2026-09-01', TODAY, () => ({ resting_hr: 50 }));
+    const res = await on.analytics.getThresholds();
+    expect(on.calls).toEqual(['getLactateThresholdHeartRate', 'getLactateThresholdSpeed', 'getCyclingFtp']);
+    expect(res.meta).toMatchObject({ source: 'live' });
+    expect(on.store.getThresholdHistory()).toEqual({ lthr_hr: null, lthr_speed: null, ftp: null, fetched_at: NOW });
+    const off = setup();
+    off.store.markReferenceFetched('profile', NOW);
+    off.daily('daily_summary', '2026-09-01', TODAY, () => ({ resting_hr: 50 }));
+    const cached = await off.analytics.getThresholds();
+    expect(off.calls).toEqual([]);
+    // The note says only what it said before: nothing about the threshold history.
+    expect(cached.meta).toEqual({ source: 'cache', note: 'No Garmin profile in the cache, so zones are left out.' });
+    expect(off.store.getThresholdHistory()).toBeUndefined();
+  });
+
   it('keeps a threshold history Garmin does not give as empty for the day, without failing the read', async () => {
     const t = setup({ fetchOnDemand: true });
     t.store.markReferenceFetched('profile', NOW);

@@ -1200,6 +1200,24 @@ describe('GarminService', () => {
     expect(count('getAdaptiveTrainingPlan')).toBe(0);
   });
 
+  it('downloads the training plan with auto fetch through auto sync (as in the running server) and not with both off', async () => {
+    const now = Date.parse('2026-11-17T12:00:00Z');
+    const on = setup({ plan: true, now, autoFetch: false, autoSync: true });
+    await on.service.jobs.run({ scope: 'reference', from: '2026-11-16', to: '2026-11-30' });
+    expect(on.count('getAdaptiveTrainingPlan')).toBe(0);
+    const res = await on.service.listWorkouts({ from: '2026-11-16', to: '2026-11-30' });
+    expect(on.count('getAdaptiveTrainingPlan')).toBe(1);
+    expect(res.data.plan?.name).toBe('anon-name');
+    expect(res.data.upcoming_schedule?.[0]).toMatchObject({ source: 'plan', description: '30 min, 5.5 km, aerobic base' });
+    const off = setup({ plan: true, now, autoFetch: false });
+    await off.service.jobs.run({ scope: 'reference', from: '2026-11-16', to: '2026-11-30' });
+    const cached = await off.service.listWorkouts({ from: '2026-11-16', to: '2026-11-30' });
+    expect(off.count('getAdaptiveTrainingPlan')).toBe(0);
+    expect(cached.data.plan).toBeUndefined();
+    expect(cached.data.upcoming_schedule?.[0]).toEqual({ date: '2026-11-17', title: 'anon-title', schedule_id: 9887721846739, source: 'plan', sport: 'running' });
+    expect(cached.meta.note).toBeUndefined();
+  });
+
   it('refuses to unschedule a plan workout and leaves the plan alone', async () => {
     const now = Date.parse('2026-11-17T12:00:00Z');
     const { service, store, calls } = setup({ plan: true, now });
