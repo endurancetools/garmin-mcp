@@ -18,7 +18,7 @@ import { errInfo, FATAL_CODES, isFresh, SCOPE_DAILY, signInPause, TTL, type Dail
 import fs from 'node:fs';
 import path from 'node:path';
 import { activityBrief, activityListItem, eventTypeKey, periodActivitySummary } from './activities.js';
-import { activityWeather, splitSummaries, strengthSets, typedSplits, zoneTimes, type ActivityWeather, type SplitSummary, type StrengthSets, type TypedSplit, type ZoneTime } from './activity-extras.js';
+import { activityWeather, MIN_TYPED_SPLIT_S, splitSummaries, strengthSets, typedSplits, zoneTimes, type ActivityWeather, type SplitSummary, type StrengthSets, type TypedSplit, type ZoneTime } from './activity-extras.js';
 import { gapPace, GPS_STREAM_METRICS, hrSource, motionTime, redactActivityRaw, respiration, runningDynamics, stamina, trainingEffectText, type RunningDynamics } from './activity-metrics.js';
 import { bodyComposition } from './body.js';
 import { calendarEvent } from './calendar.js';
@@ -741,7 +741,10 @@ export class GarminService {
       const typed = await this.#detail(id, 'typed_splits', () => this.client.getActivityTypedSplits(id), true);
       sources.push({ source: typed.live ? 'live' : 'cache' });
       times.push(typed.fetched_at);
-      extra.typed_splits = typedSplits(typed.raw, sport);
+      const typedList = typedSplits(typed.raw, sport);
+      extra.typed_splits = typedList.splits;
+      const merged = typedList.merged;
+      if (merged > 0) notes.push(`${merged} run, walk or stand ${merged === 1 ? 'split' : 'splits'} under ${MIN_TYPED_SPLIT_S} s ${merged === 1 ? 'is' : 'are'} merged into a neighbour in typed_splits; split_summaries count all.`);
       // The activity carries the totals per split type itself; only without them they are fetched.
       if (Array.isArray(summary.raw.splitSummaries)) extra.split_summaries = splitSummaries(summary.raw.splitSummaries, sport);
       else {

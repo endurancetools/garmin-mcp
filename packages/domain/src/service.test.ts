@@ -10,6 +10,9 @@ import { fixture, NOW, setup, summary } from './test-utils/fake.js';
 import * as output from './output.js';
 import { compileWorkout } from './workouts/index.js';
 
+/** Note of every splits answer from the recorded typed splits (the fake serves them for any activity but 2). */
+const MERGED_NOTE = '5 run, walk or stand splits under 60 s are merged into a neighbour in typed_splits; split_summaries count all.';
+
 describe('GarminService', () => {
   it('lists activities from cache with cursor paging', async () => {
     const { service, count } = setup({ activities: Array.from({ length: 5 }, (_, i) => summary(i + 1, `2026-10-0${i + 1}`)) });
@@ -273,22 +276,33 @@ describe('GarminService', () => {
   it('adds typed splits and their totals per type to the laps, cached for good', async () => {
     const { service, store, count } = setup({ activities: [summary(1, '2026-10-07'), summary(2, '2026-10-07')] });
     const res = await service.getActivity(1, 'splits');
-    // ClimbPro climb sections are left out; the rest follows the start time.
-    expect(res.data.typed_splits?.map((t) => [t.type, t.start])).toEqual([
-      ['interval_active', '09:00:03'],
-      ['stand', '09:00:03'],
-      ['climb', '09:00:07'],
-      ['run', '09:00:10'],
-      ['walk', '09:13:02'],
-      ['run', '09:15:41'],
-      ['walk', '09:15:52'],
-      ['run', '09:18:07'],
-      ['walk', '09:18:18'],
-      ['climb', '09:40:28'],
-      ['climb', '10:01:13'],
-      ['stand', '10:44:54'],
-      ['stand', '12:18:54'],
+    // ClimbPro climb sections are left out; the rest follows the start time. Run, walk and stand
+    // splits under a minute are merged: the 7 s stand at the start into the next run, the 11 s runs
+    // and the late stands into the walk before them.
+    expect(res.data.typed_splits?.map((t) => [t.type, t.start, t.duration])).toEqual([
+      ['interval_active', '09:00:03', '6:33:44'],
+      ['run', '09:00:03', '12:59'],
+      ['climb', '09:00:07', '21:02'],
+      ['walk', '09:13:02', '2:50'],
+      ['walk', '09:15:52', '2:26'],
+      ['walk', '09:18:18', '3:29'],
+      ['climb', '09:40:28', '11:18'],
+      ['climb', '10:01:13', '2:45'],
     ]);
+    expect(res.meta.note).toBe(MERGED_NOTE);
+    // The merged run: time and distance add up, pace from them, GAP and HR averaged over time.
+    expect(res.data.typed_splits?.[1]).toEqual({
+      type: 'run',
+      start: '09:00:03',
+      duration: '12:59',
+      distance_km: 2.31,
+      avg_pace: '5:37 /km',
+      avg_gap_pace: '5:06 /km',
+      avg_hr_bpm: 157,
+      max_hr_bpm: 170,
+      elevation_gain_m: 82,
+      elevation_loss_m: 0,
+    });
     expect(res.data.typed_splits?.[2]).toEqual({
       type: 'climb',
       start: '09:00:07',
@@ -303,8 +317,6 @@ describe('GarminService', () => {
       avg_grade_pct: 7,
       max_grade_pct: 30.9,
     });
-    // Standing has no pace.
-    expect(res.data.typed_splits?.[1]).toEqual({ type: 'stand', start: '09:00:03', duration: '0:07', distance_km: 0.01, avg_hr_bpm: 89, max_hr_bpm: 93, elevation_gain_m: 0, elevation_loss_m: 0 });
     expect(res.data.split_summaries?.map((t) => [t.type, t.count])).toEqual([
       ['stand', 22],
       ['run', 115],
@@ -342,6 +354,19 @@ describe('GarminService', () => {
     await service.getActivity(2, 'splits');
     expect(count('getActivityTypedSplits')).toBe(2);
     expect(count('getActivitySplitSummaries')).toBe(2);
+  });
+
+  it('leaves typed splits of a minute and more as they are, without a note', async () => {
+    const { service, store } = setup({ activities: [summary(3, '2026-10-07')] });
+    const split = (type: string, start: string, duration: number) => ({ type, startTimeLocal: `2026-10-07T${start}.0`, startTimeGMT: `2026-10-07T${start}.0`, duration, distance: duration * 3 });
+    store.putActivityDetail(3, 'typed_splits', { splits: [split('RWD_RUN', '07:00:00', 600), split('RWD_WALK', '07:10:00', 60), split('RWD_STAND', '07:11:00', 90)] }, NOW);
+    const res = await service.getActivity(3, 'splits');
+    expect(res.data.typed_splits?.map((t) => [t.type, t.duration])).toEqual([
+      ['run', '10:00'],
+      ['walk', '1:00'],
+      ['stand', '1:30'],
+    ]);
+    expect(res.meta.note).toBeUndefined();
   });
 
   it('serves power zones, weather and strength sets as detail levels and in full', async () => {
@@ -515,7 +540,7 @@ describe('GarminService', () => {
       [5, 4, '3. Cooldown until lap button @ HR 120-140 bpm', undefined],
       [6, undefined, undefined, undefined],
     ]);
-    expect(res.meta.note).toBeUndefined();
+    expect(res.meta.note).toBe(MERGED_NOTE);
     expect(count('getWorkout')).toBe(0);
 
     // Changed after the run: still named, with a note.
@@ -572,7 +597,7 @@ describe('GarminService', () => {
 
     const thin = await service.getActivity(1, 'full', undefined, { metrics: ['directHeartRate', 'directLatitude'], downsample_s: 60 });
     expect(thin.data.stream).toMatchObject({ metrics: ['directTimestamp', 'directHeartRate'], total_samples: 50 });
-    expect(thin.meta.note).toBe('This stream has no directLatitude; its metrics are directTimestamp, directHeartRate.');
+    expect(thin.meta.note).toBe(`${MERGED_NOTE} This stream has no directLatitude; its metrics are directTimestamp, directHeartRate.`);
 
     store.putActivityDetail(
       1,
@@ -582,7 +607,7 @@ describe('GarminService', () => {
     );
     const gps = await service.getActivity(1, 'full', undefined, { metrics: ['directLatitude'] });
     expect(gps.data.stream).toEqual({ total_samples: 1, offset: 0 });
-    expect(gps.meta.note).toBe('directLatitude left out: GPS is removed while GARMIN_REDACT is on.');
+    expect(gps.meta.note).toBe(`${MERGED_NOTE} directLatitude left out: GPS is removed while GARMIN_REDACT is on.`);
   });
 
   it('lists climbs from the stream with W/kg from the latest weigh-in, else the profile', async () => {

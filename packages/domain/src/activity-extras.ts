@@ -188,23 +188,119 @@ function splitNumbers(s: Obj, type: string | undefined, sport: string | undefine
 }
 
 /**
+ * Run, walk and stand splits shorter than this many seconds are merged into a neighbouring one in
+ * `typed_splits`: a long trail run has a hundred and more of them, mostly a few seconds each.
+ */
+export const MIN_TYPED_SPLIT_S = 60;
+/** The run/walk/stand splits; only these are merged. Climbs and intervals overlap them and stay as they are. */
+const MOTION_SPLITS = new Set(['RWD_RUN', 'RWD_WALK', 'RWD_STAND']);
+
+/** Sum of `key` over the two splits; undefined when neither has it. */
+function sum(a: Obj, b: Obj, key: string): number | undefined {
+  const x = num(a[key]);
+  const y = num(b[key]);
+  return x === undefined && y === undefined ? undefined : (x ?? 0) + (y ?? 0);
+}
+
+/** Larger `key` of the two splits. */
+function max(a: Obj, b: Obj, key: string): number | undefined {
+  const x = num(a[key]);
+  const y = num(b[key]);
+  return x === undefined ? y : y === undefined ? x : Math.max(x, y);
+}
+
+/** `key` averaged over the two splits weighted by `by` (time or distance), over the ones that have both. */
+function weighted(a: Obj, b: Obj, key: string, by: string): number | undefined {
+  const parts = [a, b].flatMap((s) => {
+    const v = num(s[key]);
+    return v === undefined ? [] : [{ v, w: num(s[by]) ?? 0 }];
+  });
+  const total = parts.reduce((t, p) => t + p.w, 0);
+  if (parts.length === 0) return undefined;
+  return total > 0 ? parts.reduce((t, p) => t + p.v * p.w, 0) / total : parts[0]?.v;
+}
+
+/**
+ * One split out of two neighbours (`first` started earlier): time, distance, gain and loss add up,
+ * heart rate and grade adjusted speed are averaged over time, grade over distance; the type is
+ * the longer one's, the start the earlier one's.
+ */
+function mergeSplits(first: Obj, second: Obj): Obj {
+  const longer = (num(second.duration) ?? 0) > (num(first.duration) ?? 0) ? second : first;
+  return {
+    type: longer.type,
+    startTimeLocal: first.startTimeLocal,
+    startTimeGMT: first.startTimeGMT,
+    messageIndex: first.messageIndex,
+    duration: sum(first, second, 'duration'),
+    distance: sum(first, second, 'distance'),
+    elevationGain: sum(first, second, 'elevationGain'),
+    elevationLoss: sum(first, second, 'elevationLoss'),
+    averageHR: weighted(first, second, 'averageHR', 'duration'),
+    maxHR: max(first, second, 'maxHR'),
+    avgGradeAdjustedSpeed: weighted(first, second, 'avgGradeAdjustedSpeed', 'duration'),
+    averageGrade: weighted(first, second, 'averageGrade', 'distance'),
+    maxGrade: max(first, second, 'maxGrade'),
+  };
+}
+
+/**
+ * Merges every run/walk/stand split shorter than `minS` into the previous run/walk/stand split, or,
+ * at the start, into the next one. Other splits in between neither merge nor stop the merging.
+ * `sorted` is in start order; the result keeps it, as a merged split starts with its earlier part.
+ */
+function mergeShortSplits(sorted: Obj[], minS: number): { kept: Obj[]; merged: number } {
+  const kept: Obj[] = [];
+  const motion: number[] = [];
+  let leadIsShort = false;
+  let merged = 0;
+  for (const s of sorted) {
+    if (!MOTION_SPLITS.has(str(s.type) ?? '')) {
+      kept.push(s);
+      continue;
+    }
+    const duration = num(s.duration);
+    const short = duration !== undefined && duration < minS;
+    const last = motion.at(-1);
+    if (short && last !== undefined) {
+      kept[last] = mergeSplits(kept[last] as Obj, s);
+      merged++;
+      continue;
+    }
+    if (last === undefined) leadIsShort = short;
+    motion.push(kept.length);
+    kept.push(s);
+  }
+  const [first, next] = motion;
+  if (leadIsShort && first !== undefined && next !== undefined) {
+    kept[first] = mergeSplits(kept[first] as Obj, kept[next] as Obj);
+    kept.splice(next, 1);
+    merged++;
+  }
+  return { kept, merged };
+}
+
+/**
  * `activity/{id}/typedsplits`: `{ splits: [{ type, startTimeLocal, duration (s), distance (m),
  * avgGradeAdjustedSpeed (m/s), averageGrade, maxGrade, ... }] }`, in start order. Pace or speed
- * follows the activity's sport, as for laps.
+ * follows the activity's sport, as for laps. Run, walk and stand splits shorter than `minS`
+ * (`MIN_TYPED_SPLIT_S`) are merged into a neighbour; `merged` says how many.
  */
-export function typedSplits(raw: unknown, sport: string | undefined): TypedSplit[] {
+export function typedSplits(raw: unknown, sport: string | undefined, minS = MIN_TYPED_SPLIT_S): { splits: TypedSplit[]; merged: number } {
   const list = obj(raw)?.splits;
-  return (Array.isArray(list) ? list : [])
+  const sorted = (Array.isArray(list) ? list : [])
     .map(obj)
     .filter((s): s is Obj => s !== undefined && !LEFT_OUT_SPLITS.has(str(s.type) ?? ''))
-    .toSorted((a, b) => (str(a.startTimeGMT) ?? '').localeCompare(str(b.startTimeGMT) ?? '') || (num(a.messageIndex) ?? 0) - (num(b.messageIndex) ?? 0))
-    .map((s) => ({
-      type: splitType(s.type),
-      start: str(s.startTimeLocal)?.slice(11, 19),
-      ...splitNumbers(s, splitType(s.type), sport),
-      avg_grade_pct: round(num(s.averageGrade), 1),
-      max_grade_pct: round(num(s.maxGrade), 1),
-    }));
+    .toSorted((a, b) => (str(a.startTimeGMT) ?? '').localeCompare(str(b.startTimeGMT) ?? '') || (num(a.messageIndex) ?? 0) - (num(b.messageIndex) ?? 0));
+  const { kept, merged } = mergeShortSplits(sorted, minS);
+  const splits = kept.map((s) => ({
+    type: splitType(s.type),
+    start: str(s.startTimeLocal)?.slice(11, 19),
+    ...splitNumbers(s, splitType(s.type), sport),
+    avg_grade_pct: round(num(s.averageGrade), 1),
+    max_grade_pct: round(num(s.maxGrade), 1),
+  }));
+  return { splits, merged };
 }
 
 /**
