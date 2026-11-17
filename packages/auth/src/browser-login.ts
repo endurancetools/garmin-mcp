@@ -15,13 +15,28 @@ export class BrowserUnavailableError extends GarminError {
   }
 }
 
+/** A 403 or 429 that Garmin's sign-in API gave its own page while the person was signing in. */
+export interface SignInRefusal {
+  status: number;
+  path: string;
+}
+
 /** The user closed the window or did not finish in time. */
 export class BrowserLoginAbortedError extends GarminError {
   readonly kind = 'browser_login_aborted' as const;
-  constructor(reason: string) {
-    super('AUTH_BROWSER_LOGIN_ABORTED', `Browser sign-in did not complete: ${reason}`, {
-      hint: 'Run `garmin login` again and finish signing in in the window that opens.',
-    });
+  /** Set when Garmin refused the sign-in request itself: signing in again right away will not help. */
+  readonly refused: SignInRefusal | undefined;
+  constructor(reason: string, refused?: SignInRefusal) {
+    super(
+      'AUTH_BROWSER_LOGIN_ABORTED',
+      `Browser sign-in did not complete: ${reason}${refused ? `; Garmin answered its sign-in page with HTTP ${refused.status} (${refused.path})` : ''}`,
+      {
+        hint: refused
+          ? `Garmin refused the sign-in request from this browser or network (HTTP ${refused.status}), whatever the password. Wait 15-60 minutes or try another network (no VPN), then sign in again; \`garmin doctor\` shows the other ways to sign in.`
+          : 'Run `garmin login` again and finish signing in in the window that opens.',
+      },
+    );
+    this.refused = refused;
   }
 }
 
@@ -217,21 +232,31 @@ export async function captureTicket(cdp: CdpConnection, signInUrl: string, servi
   const targetId = page ? page.targetId : ((await cdp.send('Target.createTarget', { url: 'about:blank' })) as { targetId: string }).targetId;
   const { sessionId } = (await cdp.send('Target.attachToTarget', { targetId, flatten: true })) as { sessionId: string };
 
+  const signInHost = new URL(signInUrl).host;
   return new Promise<string>((resolve, reject) => {
     let settled = false;
+    // The last answer of Garmin's sign-in API to its page, kept only while it is a refusal:
+    // the page then shows an error of its own, and the reason belongs in ours.
+    let refused: SignInRefusal | undefined;
     const finish = (fn: () => void) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
       fn();
     };
-    const timer = setTimeout(() => finish(() => reject(new BrowserLoginAbortedError(`no sign-in within ${Math.round(timeoutMs / 60_000)} min`))), timeoutMs);
+    const timer = setTimeout(() => finish(() => reject(new BrowserLoginAbortedError(`no sign-in within ${Math.round(timeoutMs / 60_000)} min`, refused))), timeoutMs);
     timer.unref();
 
-    cdp.onClose(() => finish(() => reject(new BrowserLoginAbortedError('the browser window was closed'))));
+    cdp.onClose(() => finish(() => reject(new BrowserLoginAbortedError('the browser window was closed', refused))));
     cdp.onEvent((e) => {
       if (e.method === 'Target.targetDestroyed' && e.params.targetId === targetId) {
-        finish(() => reject(new BrowserLoginAbortedError('the browser window was closed')));
+        finish(() => reject(new BrowserLoginAbortedError('the browser window was closed', refused)));
+        return;
+      }
+      if (e.method === 'Network.responseReceived' && e.sessionId === sessionId) {
+        const { url = '', status } = (e.params as { response?: { url?: string; status?: number } }).response ?? {};
+        const at = URL.canParse(url) ? new URL(url) : undefined;
+        if (at?.host === signInHost && at.pathname.includes('/api/')) refused = status === 403 || status === 429 ? { status, path: at.pathname } : undefined;
         return;
       }
       if (e.method !== 'Fetch.requestPaused' || e.sessionId !== sessionId) return;
@@ -260,6 +285,8 @@ export async function captureTicket(cdp: CdpConnection, signInUrl: string, servi
       await cdp.send('Target.setDiscoverTargets', { discover: true });
       await cdp.send('Fetch.enable', { patterns: [{ urlPattern: `${serviceUrl}*`, requestStage: 'Request' }] }, sessionId);
       await cdp.send('Page.enable', {}, sessionId);
+      // Only for the reason of a failed sign-in (see `refused`); the sign-in itself works without it.
+      await cdp.send('Network.enable', {}, sessionId).catch(() => undefined);
       await cdp.send('Page.navigate', { url: signInUrl }, sessionId);
     })().catch((err: unknown) => finish(() => reject(new BrowserUnavailableError(err instanceof Error ? err.message : String(err)))));
   });

@@ -95,6 +95,29 @@ const abortableSleep = (ms: number, signal?: AbortSignal) =>
     );
   });
 
+/** Error codes only a new sign-in ends: the tokens are missing, expired or rejected. */
+export const SIGN_IN_CODES: ReadonlySet<string> = new Set(['AUTH_NOT_LOGGED_IN', 'AUTH_EXPIRED', 'UNAUTHORIZED']);
+
+/**
+ * The error behind a pause `reason` ("CODE: message") when only a new sign-in ends it;
+ * undefined for a rate limit, a Cloudflare block or failed requests.
+ */
+export function signInPause(reason: string | undefined): { code: string; message: string } | undefined {
+  const [, code, message] = /^([A-Z_]+): (.*)$/s.exec(reason ?? '') ?? [];
+  return code !== undefined && message !== undefined && SIGN_IN_CODES.has(code) ? { code, message } : undefined;
+}
+
+/**
+ * End a sync pause that began because nobody was signed in; call after a sign-in. A pause for a
+ * rate limit or a Cloudflare block stays. Returns whether a pause was cleared.
+ */
+export function clearSignInPause(store: Store, now: number = Date.now()): boolean {
+  if (Number(store.getMeta('sync:paused_until') ?? 0) <= now) return false;
+  if (!signInPause(store.getMeta('sync:pause_reason'))) return false;
+  store.setMeta('sync:paused_until', '0');
+  return true;
+}
+
 /**
  * Explicit, user-requested sync of a scope and date range. Nothing
  * syncs on its own. Long ranges are split into chunks, newest first, with a
@@ -144,7 +167,7 @@ export class SyncJobRunner {
     };
   }
 
-  /** Clear a pause, e.g. after a fresh `garmin login`. */
+  /** Clear a pause. */
   resume(): void {
     this.#store.setMeta('sync:paused_until', '0');
   }

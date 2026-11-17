@@ -5,7 +5,7 @@ import { addDays, assertIsoDate, GarminError, InputError, loadConfig, parsePause
 import { activityBrief, createRuntime, healthTable, HEALTH_METRICS, type HealthMetric, type Runtime } from 'garmin-mcp-domain';
 // The one sanctioned app-to-app import: `garmin serve` runs the MCP server in-process.
 import { startServer } from 'garmin-mcp-server';
-import { databasePath, forgetAccount, readAccount, SYNC_SCOPES, Store, type SyncScope } from 'garmin-mcp-store';
+import { clearSignInPause, databasePath, forgetAccount, readAccount, SYNC_SCOPES, Store, type SyncScope } from 'garmin-mcp-store';
 import fs from 'node:fs';
 import path from 'node:path';
 import { loadMarkdown, parseThresholdsCsv, readinessMarkdown, readJsonObject, setThresholdText, thresholdsCsv, thresholdsMarkdown } from './analytics.js';
@@ -39,6 +39,14 @@ function openLocalStore(config: GarminConfig): Store | undefined {
   if (!account) return undefined;
   const file = databasePath(config.dataDir, account.hash);
   return fs.existsSync(file) ? Store.open(file) : undefined;
+}
+
+/** After new tokens: syncing paused because nobody was signed in may go on at once. */
+function resumeAfterSignIn(config: GarminConfig): void {
+  const store = openLocalStore(config);
+  if (!store) return;
+  clearSignInPause(store);
+  store.close();
 }
 
 /** The analytics service of a command and how to release it. */
@@ -126,6 +134,7 @@ export function buildProgram(deps: ProgramDeps = {}): Command {
         result = await rt.auth.login({ email, password }, async (method) => prompt(`MFA code (${method}): `));
       }
       const account = await rt.account({ fresh: true }).catch(() => undefined);
+      resumeAfterSignIn(config);
       out(`Logged in${account?.displayName ? ` as ${account.displayName}` : ''} via ${result.strategy}. Token valid until ${result.expiresAt.toISOString()}.`);
       out(`Tokens: ${config.tokensFile}`);
       out('Nothing is downloaded until you ask: e.g. `garmin sync --scope health --from 2026-09-01 --to 2026-09-30`.');
@@ -139,6 +148,7 @@ export function buildProgram(deps: ProgramDeps = {}): Command {
       const rt = createRuntime(config);
       await rt.auth.importTokens(path.resolve(file));
       const account = await rt.account({ fresh: true });
+      resumeAfterSignIn(config);
       out(`Imported tokens for ${account.displayName ?? 'account'} into ${config.tokensFile}.`);
     });
 

@@ -152,6 +152,32 @@ describe('browser sign-in', () => {
     await expect(captureTicket(b.cdp, 'https://x', hosts.portalServiceUrl, 20)).rejects.toThrow(/no sign-in/);
   });
 
+  it('names a refusal of Garmin\'s sign-in API when the sign-in then fails, and forgets it once a later answer goes through', async () => {
+    const api = (status: number, path = '/portal/api/login') => ({ response: { url: `https://sso.example${path}?clientId=GarminConnect`, status } });
+    const a = fakeCdp();
+    const refused = captureTicket(a.cdp, 'https://sso.example/portal/sso/en-US/sign-in', hosts.portalServiceUrl, 10_000);
+    await tick();
+    expect(a.sent.some((c) => c.method === 'Network.enable' && c.sessionId === 'S1')).toBe(true);
+    a.emit('Network.responseReceived', { response: { url: 'https://sso.example/static/app.js', status: 403 } });
+    a.emit('Network.responseReceived', { response: { url: 'https://other.example/portal/api/login', status: 429 } });
+    a.emit('Network.responseReceived', api(429));
+    a.emit('Target.targetDestroyed', { targetId: 'T1' }, undefined);
+    await expect(refused).rejects.toMatchObject({
+      code: 'AUTH_BROWSER_LOGIN_ABORTED',
+      refused: { status: 429, path: '/portal/api/login' },
+      message: 'Browser sign-in did not complete: the browser window was closed; Garmin answered its sign-in page with HTTP 429 (/portal/api/login)',
+      hint: expect.stringMatching(/^Garmin refused the sign-in request from this browser or network \(HTTP 429\)/),
+    });
+
+    const b = fakeCdp();
+    const closed = captureTicket(b.cdp, 'https://sso.example/portal/sso/en-US/sign-in', hosts.portalServiceUrl, 10_000);
+    await tick();
+    b.emit('Network.responseReceived', api(403));
+    b.emit('Network.responseReceived', api(200));
+    b.emit('Target.targetDestroyed', { targetId: 'T1' }, undefined);
+    await expect(closed).rejects.toMatchObject({ refused: undefined, hint: expect.stringMatching(/^Run `garmin login` again/) });
+  });
+
   it('uses a configured browser path only when it exists', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'garmin-browser-'));
     const exe = path.join(dir, 'chrome');

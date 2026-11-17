@@ -4,13 +4,13 @@ description: "Connect Garmin Connect to Claude Desktop: install the one-click .m
 parent: Getting started
 nav_order: 2
 ---
-Sign in to Garmin first if you have not ([Getting started](../getting-started.md)).
+You do not need to sign in to Garmin first: the first question opens Garmin's sign-in page in your browser ([Getting started](../getting-started.md#sign-in-once)).
 
 ## Option A: install the extension
 
 1. Download `garmin-mcp-<version>.mcpb` from the [latest release](https://github.com/endurancetools/garmin-mcp/releases/latest).
 2. Open the file. Claude Desktop asks whether to install the "Garmin MCP" extension; confirm.
-3. In the extension settings you can switch **Download missing data automatically** off if you want Claude to ask before fetching. It is on by default.
+3. In the extension settings you can switch **Download missing data automatically** off if you want Claude to ask before fetching, and **Open Garmin's sign-in page automatically** off if you prefer to sign in from the terminal. Both are on by default.
 
 The extension runs `npx -y garmin-mcp-server` for you, so Node.js 22 or newer still has to be installed.
 

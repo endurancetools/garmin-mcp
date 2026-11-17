@@ -10,6 +10,7 @@ Everything works without configuration. Settings are environment variables passe
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `GARMIN_AUTO_FETCH` | `true` | the server downloads missing days by itself; `false`: it reports what is missing and the assistant asks you first |
+| `GARMIN_AUTO_LOGIN` | `true` | the server opens Garmin's sign-in page in your browser when a question needs Garmin and nobody is signed in; `false`: you sign in with `garmin-mcp-cli login` ([Signing in](sign-in.md)) |
 | `GARMIN_ENABLE_DESTRUCTIVE` | `false` | `true` adds deleting activities, workouts and weigh-ins, and overwriting saved workouts |
 | `GARMIN_REDACT` | `true` | the raw activity output (`get_activity` with `detail: "full"`) leaves out your name, profile and photo links, device and sensor serial numbers and GPS positions; `false` returns Garmin's data as sent |
 | `GARMIN_DATA_DIR` | `~/.garmin-mcp` | where tokens, the database and `config.json` live |

@@ -2,6 +2,14 @@
 
 All notable changes to Garmin MCP. All `garmin-mcp-*` packages share one version. The same list is on the [documentation site](https://endurancetools.github.io/garmin-mcp/changelog/).
 
+## Unreleased
+
+### Signing in
+
+- **Sign in from the assistant, without the terminal.** When a tool needs Garmin and nobody is signed in, the MCP server now opens Garmin's own sign-in page in your browser by itself: the same window `garmin login` opens, so the password still never passes through the tool. The tool call waits up to 30 s for you. When you need longer it answers `AUTH_SIGN_IN_PENDING`, the window stays open, and the next call goes on once you are signed in. The window also comes back when Garmin no longer accepts the stored tokens. This works where the server runs on your own computer (stdio) with Chrome, Edge, Brave or Chromium installed; a server in Docker or reached over HTTP reports `AUTH_NOT_LOGGED_IN` with the `garmin login` hint, as before. `GARMIN_AUTO_LOGIN=false` (in the Claude Desktop extension: **Open Garmin's sign-in page automatically**) turns it off.
+- **A sign-in that Garmin refuses says so.** When Garmin's sign-in API answers its own page with 403 or 429, the page shows an error whatever the password. The failed sign-in now names that status and says to wait or to change the network, instead of only "the browser window was closed".
+- **Syncing goes on right after a new sign-in.** A sync that found nobody signed in pauses all syncing for an hour, and signing in again did not end that pause. `garmin login`, `garmin import-tokens` and the sign-in from the assistant now end it; a pause for a rate limit or a Cloudflare block stays.
+
 ## 0.5.0 (2026-10-30)
 
 ### Activities

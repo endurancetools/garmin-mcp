@@ -11,7 +11,7 @@ import {
   type IsoDate,
   type Logger,
 } from 'garmin-mcp-config';
-import { errInfo, isFresh, SCOPE_DAILY, TTL, type DailyKind, type DetailKind, type EnsureResult, type ReferenceKind, type Store, type SyncJobProgress, type SyncJobReport, type SyncJobRunner, type SyncScope, type Syncer } from 'garmin-mcp-store';
+import { errInfo, isFresh, SCOPE_DAILY, signInPause, TTL, type DailyKind, type DetailKind, type EnsureResult, type ReferenceKind, type Store, type SyncJobProgress, type SyncJobReport, type SyncJobRunner, type SyncScope, type Syncer } from 'garmin-mcp-store';
 import fs from 'node:fs';
 import path from 'node:path';
 import { activityBrief, activityListItem, periodActivitySummary } from './activities.js';
@@ -67,6 +67,17 @@ export interface Envelope<T> {
 /** Progress of the sync job a call starts (MCP `notifications/progress`); not called when it joins a running job. */
 export interface SyncProgressOptions {
   onProgress?: (p: SyncJobProgress) => void;
+  /**
+   * A sync that stops because nobody is signed in (no tokens, expired or rejected ones) throws
+   * that error instead of reporting a pause, so the caller can start a sign-in.
+   */
+  throwWhenSignedOut?: boolean;
+}
+
+/** The auth error behind a sync report paused for a missing sign-in; other reports pass. */
+function throwIfSignedOut(report: SyncJobReport | undefined): void {
+  const cause = report?.status === 'paused' ? signInPause(report.reason) : undefined;
+  if (cause) throw new GarminError(cause.code, cause.message, { hint: 'Sign in again with `garmin login`.' });
 }
 
 export interface GarminServiceOptions {
@@ -254,6 +265,7 @@ export class GarminService {
       this.#log.warn({ err: errInfo(err), hint }, 'auto sync failed');
       return first;
     }
+    if (opts.throwWhenSignedOut) throwIfSignedOut(report);
     const second = (await read()) as T & Envelope<unknown>;
     if (!second.meta.sync_hint) return { ...second, meta: { ...second.meta, source: 'live' } };
     const { sync_hint: _, ...meta } = second.meta;
@@ -376,6 +388,7 @@ export class GarminService {
     const job = this.jobs.start({ scope, from: start, to: end, force, ...(opts.onProgress && { onProgress: opts.onProgress }) });
     const timer = new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), this.#budget).unref());
     const report: SyncJobReport | undefined = await Promise.race([job, timer]);
+    if (opts.throwWhenSignedOut) throwIfSignedOut(report);
     const current = this.jobs.current();
     return {
       data: compact({

@@ -1,7 +1,8 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { TTL } from 'garmin-mcp-store';
+import { GarminError } from 'garmin-mcp-config';
+import { clearSignInPause, TTL } from 'garmin-mcp-store';
 import { describe, expect, it, vi } from 'vitest';
 import { makeZip } from './test-utils/zip.js';
 import { NOW, setup, summary } from './test-utils/fake.js';
@@ -724,6 +725,24 @@ describe('GarminService', () => {
     expect(res.meta).toMatchObject({ source: 'partial', note: expect.stringMatching(/background/) });
     expect(res.meta.sync_hint).toBeUndefined();
     await vi.waitFor(() => expect(service.jobs.current()).toBeUndefined(), { timeout: 10_000 });
+  });
+
+  it('reports a sync that found nobody signed in as a pause, or throws the auth error when asked to', async () => {
+    const { service, store } = setup({ autoFetch: false, autoSync: true });
+    const client = service.client as unknown as Record<string, () => Promise<never>>;
+    client.getDailySummary = client.getSleep = client.getHrv = async () => {
+      throw new GarminError('AUTH_EXPIRED', 'The Garmin refresh token is no longer valid');
+    };
+    const read = () => service.queryHealth(['steps'], '2026-10-01', '2026-10-07');
+    const quiet = await service.withAutoSync(read);
+    expect(quiet.meta).toMatchObject({ source: 'partial', note: expect.stringMatching(/paused \(AUTH_EXPIRED: The Garmin refresh token is no longer valid\)/) });
+    // The pause now answers every sync; a caller that can start a sign-in gets the error itself.
+    await expect(service.withAutoSync(read, { throwWhenSignedOut: true })).rejects.toMatchObject({ code: 'AUTH_EXPIRED', message: 'The Garmin refresh token is no longer valid' });
+    await expect(service.sync('health', '2026-10-01', '2026-10-07', false, { throwWhenSignedOut: true })).rejects.toMatchObject({ code: 'AUTH_EXPIRED' });
+    expect((await service.sync('health', '2026-10-01', '2026-10-07')).data).toMatchObject({ status: 'paused' });
+    expect(clearSignInPause(store, NOW)).toBe(true);
+    expect(service.jobs.limits().paused_until).toBeUndefined();
+    expect(clearSignInPause(store, NOW)).toBe(false);
   });
 
   it('leaves the sync hint to the user when auto sync is off, and does not report empty training for unsynced activities', async () => {

@@ -23,13 +23,7 @@ Unofficial. Garmin and Garmin Connect are trademarks of Garmin Ltd. or its subsi
 
 Requirements: Node.js 22 or newer, a Garmin Connect account, and Chrome, Edge, Brave or Chromium for the sign-in window (there is a terminal fallback).
 
-**1. Sign in once.** This opens Garmin's own sign-in page in your browser. Your password never passes through the tool; only the tokens Garmin issues are stored, in `~/.garmin-mcp`.
-
-```bash
-npx -y garmin-mcp-cli login
-```
-
-**2. Add the server to your client.**
+**1. Add the server to your client.**
 
 | Client | Configuration |
 | --- | --- |
@@ -39,6 +33,12 @@ npx -y garmin-mcp-cli login
 | Antigravity CLI | `agy mcp add garmin npx -y garmin-mcp-server` |
 | opencode | `opencode.json`: `{"mcp":{"garmin":{"type":"local","command":["npx","-y","garmin-mcp-server"],"enabled":true}}}` |
 | Any other client | command `npx`, arguments `-y garmin-mcp-server`, transport stdio |
+
+**2. Sign in when it asks.** The first question that needs Garmin opens Garmin's own sign-in page in your browser; sign in there (MFA included) and ask again if the assistant says it is still waiting. Your password never passes through the tool; only the tokens Garmin issues are stored, in `~/.garmin-mcp`. To sign in beforehand, or where the server cannot open a browser (Docker, a remote HTTP server, `GARMIN_AUTO_LOGIN=false`), use the terminal:
+
+```bash
+npx -y garmin-mcp-cli login
+```
 
 **3. Ask.** Nothing is downloaded until a question needs it. For example:
 
@@ -124,6 +124,8 @@ Run it with `npx -y garmin-mcp-cli <command>` or install it globally (`npm i -g 
 
 ## Signing in
 
+The MCP server opens the same window by itself when a tool needs Garmin and nobody is signed in (no tokens yet, or Garmin no longer accepts them): the tool call waits up to 30 s for you, and when you need longer the assistant is told that the window is waiting and to ask again once you are done. This works over stdio, where the server runs on your computer, with a Chromium-based browser installed; `GARMIN_AUTO_LOGIN=false` turns it off, and then tools report `AUTH_NOT_LOGGED_IN` until you run `garmin login`.
+
 `garmin login` opens Garmin's real sign-in page in your installed Chrome, Edge, Brave or Chromium (a temporary profile, removed afterwards). You sign in there, including MFA or a CAPTCHA if Garmin asks; the tool only catches the one-time ticket Garmin redirects to afterwards and exchanges it for tokens. Cloudflare sees a real browser. Set `GARMIN_BROWSER_PATH` if your browser is not found.
 
 Without a browser (headless server, Docker) or with `--strategy curl|fetch`, it asks for e-mail, password and MFA in the terminal and talks to Garmin's mobile login API, trying curl-impersonate (optional `cuimp` package, downloads its binary on first use) and then plain fetch. If that is blocked too, log in with Python and import the tokens; `garmin doctor` prints the exact command:
@@ -158,6 +160,7 @@ Precedence: CLI flag > environment > `<data dir>/config.json` > default. `~`, `$
 | `GARMIN_ENABLED_TOOLS`, `GARMIN_DISABLED_TOOLS` | | comma-separated allow/deny lists |
 | `GARMIN_ENABLE_DESTRUCTIVE` | `false` | delete tools and workout overwrite |
 | `GARMIN_AUTO_FETCH` | `true` | read tools download missing data themselves; `false`: only explicit syncs |
+| `GARMIN_AUTO_LOGIN` | `true` | the server opens Garmin's sign-in page in your browser when nobody is signed in (stdio only); `false`: sign in with `garmin login` |
 | `GARMIN_REDACT` | `true` | `get_activity` `full` leaves out name, profile/photo URLs, device and sensor serials and GPS; `false`: raw as sent |
 | `GARMIN_FIT_DOWNLOAD_DIR` | `$GARMIN_DATA_DIR/downloads` | |
 | `GARMIN_MCP_TRANSPORT`, `GARMIN_MCP_PORT`, `GARMIN_MCP_HOST`, `GARMIN_MCP_HTTP_TOKEN` | `stdio`, `8000`, `127.0.0.1`, | |

@@ -23,7 +23,9 @@ It checks the sign-in strategy, that Garmin's hosts are reachable, file permissi
 - **The browser window does not open**: set `GARMIN_BROWSER_PATH` to your Chrome, Edge, Brave or Chromium, or sign in from the terminal with `--strategy fetch`.
 - **Garmin shows a CAPTCHA or asks for a code**: complete it in the window; that is expected.
 - **The terminal sign-in is blocked by Cloudflare**: use the browser, or sign in with Python and import the tokens ([Signing in](sign-in.md)).
-- **"Not logged in" after it worked before**: tokens were invalidated (password change, long inactivity). Run `login` again.
+- **Garmin's page shows an error after you typed a correct password**: Garmin refused the sign-in from this browser or network. The error then names the HTTP status Garmin answered with (403 or 429): wait 15 to 60 minutes or try another network without a VPN.
+- **The assistant says the sign-in window is waiting**: finish signing in in that window and ask again. No window in sight? It may be behind other windows; closing it and asking again opens a new one.
+- **"Not logged in" after it worked before**: tokens were invalidated (password change, long inactivity). The next question opens the sign-in page again, or run `login` yourself.
 
 ## Answers say data is missing or still downloading
 

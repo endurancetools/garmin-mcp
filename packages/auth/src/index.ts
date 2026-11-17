@@ -27,6 +27,7 @@ export {
   portalSignInUrl,
   ticketFromUrl,
   type CdpConnection,
+  type SignInRefusal,
 } from './browser-login.js';
 export { diagnose, type AuthDiagnosis, type PathDiagnosis } from './diagnose.js';
 export { PYTHON_FALLBACK_COMMAND, PYTHON_LOGIN_SCRIPT, pythonFallbackCommand, pythonLoginScriptPath } from './python-fallback.js';

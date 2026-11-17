@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { toToolError } from './errors.js';
 import type { Runtime, SyncProgressOptions } from 'garmin-mcp-domain';
 import type { SyncJobProgress } from 'garmin-mcp-store';
+import { canSignIn, withSignIn } from './sign-in.js';
 import { inputSchema, selectTools, type ToolDef } from './tools.js';
 
 export const SERVER_NAME = 'garmin-mcp';
@@ -18,6 +19,10 @@ const INSTRUCTIONS = `Garmin Connect data for the signed-in user, served from a 
 - Every result has meta.source: "cache", "live", "partial" or "local" (computed by the server without Garmin, e.g. create_workout with dry_run: true). On "partial", mention briefly that some days are still downloading (meta.note says when to ask again). meta.fetched_at is when the oldest record in the answer was downloaded; newer ones may be fresher.
 - Errors come back as {"error":{"code","message","hint"}}; relay the hint to the user (e.g. to run \`garmin login\`).
 - Every result is also in structuredContent (the same JSON, typed by the tool's outputSchema), and a workout is saved only after you showed the user its steps from create_workout with dry_run: true and they agreed.`;
+
+/** Added while this server can open Garmin's sign-in page itself (see `canSignIn`). */
+const SIGN_IN_INSTRUCTIONS = `
+- When nobody is signed in to Garmin, a tool call opens Garmin's sign-in page in the user's browser and waits a moment. If it answers AUTH_SIGN_IN_PENDING, ask the user to finish signing in there and call the tool again only after they say they did.`;
 
 function json(value: unknown) {
   return { content: [{ type: 'text' as const, text: JSON.stringify(value) }] };
@@ -84,10 +89,13 @@ function registerTool(server: McpServer, def: ToolDef, getService: () => Promise
     async (args: Record<string, unknown>, request: ServerContext) => {
       const started = performance.now();
       const progress = progressReporter(request);
-      const ctx = progress?.ctx ?? {};
+      // With sign-in from the server a sync that finds nobody signed in fails instead of pausing, so the window opens.
+      const ctx: SyncProgressOptions = { ...progress?.ctx, ...(canSignIn(runtime) && { throwWhenSignedOut: true }) };
       try {
-        const service = await getService();
-        const result = await service.withAutoSync(() => def.run(service, args, ctx), ctx).finally(() => progress?.flush());
+        const result = await withSignIn(runtime, async () => {
+          const service = await getService();
+          return service.withAutoSync(() => def.run(service, args, ctx), ctx);
+        }).finally(() => progress?.flush());
         runtime.logger.debug({ tool: def.name, ms: Math.round(performance.now() - started) }, 'tool ok');
         return structured(result);
       } catch (err) {
@@ -238,7 +246,7 @@ const LIST_CACHE = { ttlMs: 3_600_000, cacheScope: 'private' } as const;
 export function createMcpServer(runtime: Runtime): McpServer {
   const server = new McpServer(
     { name: SERVER_NAME, version: SERVER_VERSION },
-    { instructions: INSTRUCTIONS, cacheHints: { 'tools/list': LIST_CACHE, 'resources/list': LIST_CACHE, 'prompts/list': LIST_CACHE } },
+    { instructions: canSignIn(runtime) ? INSTRUCTIONS + SIGN_IN_INSTRUCTIONS : INSTRUCTIONS, cacheHints: { 'tools/list': LIST_CACHE, 'resources/list': LIST_CACHE, 'prompts/list': LIST_CACHE } },
   );
   const getService = () => runtime.service();
   const cfg = runtime.config;

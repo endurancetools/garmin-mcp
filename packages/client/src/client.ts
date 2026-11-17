@@ -71,6 +71,11 @@ export class GarminClient {
     return this.#profile;
   }
 
+  /** Drop the cached profile: after a new sign-in the tokens may belong to another account. */
+  forgetProfile(): void {
+    this.#profile = undefined;
+  }
+
   async getUserSettings(): Promise<s.UserSettings> {
     return this.http.request('GET', '/userprofile-service/userprofile/user-settings', { schema: s.userSettingsSchema });
   }

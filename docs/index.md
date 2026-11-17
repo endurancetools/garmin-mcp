@@ -89,8 +89,8 @@ The server has {{ site.data.facts.tools_default }} tools and costs the model abo
 
 ## Connect Garmin to Claude in three steps
 
-1. **Sign in to Garmin once.** A browser window opens Garmin's own sign-in page; only the tokens Garmin issues are kept on your machine.
-2. **Add the server to your client.** One command or one line of configuration ([Getting started](getting-started.md)).
+1. **Add the server to your client.** One command or one line of configuration ([Getting started](getting-started.md)).
+2. **Sign in to Garmin once.** Your first question opens Garmin's own sign-in page in a browser window; only the tokens Garmin issues are kept on your machine.
 3. **Ask.** "How did I sleep this week?", "Review my training week", "When is my next race?", "Build me 6×400 m for Thursday". More in [what you can ask](asking.md).
 
 ## What it does not do

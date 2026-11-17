@@ -78,6 +78,11 @@ export interface GarminConfig {
    */
   autoFetch: boolean;
   /**
+   * Let the MCP server open Garmin's sign-in page in the user's browser when a tool needs Garmin
+   * and nobody is signed in (stdio only). On by default; false leaves signing in to `garmin login`.
+   */
+  autoLogin: boolean;
+  /**
    * Strip personal data (name, profile and photo URLs, device and sensor serials) and GPS
    * positions from raw activity output. On by default; false returns Garmin's JSON as sent.
    */
@@ -117,6 +122,7 @@ const rawSchema = z
     concurrency: z.union([z.number(), z.string()]),
     minRequestIntervalMs: z.union([z.number(), z.string()]),
     autoFetch: z.union([z.boolean(), z.string()]),
+    autoLogin: z.union([z.boolean(), z.string()]),
     redact: z.union([z.boolean(), z.string()]),
     syncChunkDays: z.union([z.number(), z.string()]),
     syncPauseSeconds: z.union([z.number(), z.string()]),
@@ -160,6 +166,7 @@ const ENV_MAP: Record<string, keyof RawConfig> = {
   GARMIN_CONCURRENCY: 'concurrency',
   GARMIN_MIN_REQUEST_INTERVAL_MS: 'minRequestIntervalMs',
   GARMIN_AUTO_FETCH: 'autoFetch',
+  GARMIN_AUTO_LOGIN: 'autoLogin',
   GARMIN_REDACT: 'redact',
   GARMIN_SYNC_CHUNK_DAYS: 'syncChunkDays',
   GARMIN_SYNC_PAUSE_S: 'syncPauseSeconds',
@@ -307,6 +314,7 @@ export function loadConfig(options: LoadConfigOptions = {}): GarminConfig {
     concurrency: int(merged.concurrency, 4, 'concurrency'),
     minRequestIntervalMs: int(merged.minRequestIntervalMs, 250, 'minRequestIntervalMs', 0),
     autoFetch: merged.autoFetch === undefined ? true : bool(merged.autoFetch),
+    autoLogin: merged.autoLogin === undefined ? true : bool(merged.autoLogin),
     redact: merged.redact === undefined ? true : bool(merged.redact),
     syncChunkDays: int(merged.syncChunkDays, 7, 'syncChunkDays'),
     syncPause: parsePauseSeconds(merged.syncPauseSeconds ?? DEFAULT_SYNC_PAUSE_SECONDS, 'syncPauseSeconds'),

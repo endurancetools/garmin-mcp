@@ -1,5 +1,5 @@
 import { Client, InMemoryTransport, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
-import type { AuthService } from 'garmin-mcp-auth';
+import { BrowserLoginAbortedError, BrowserUnavailableError, type AuthService } from 'garmin-mcp-auth';
 import { GarminError, InputError, loadConfig, silentLogger, type GarminConfig } from 'garmin-mcp-config';
 import { GarminService, WorkoutDefinitionError } from 'garmin-mcp-domain';
 import { addRange, Store, Syncer, SyncJobRunner, type SyncJobReport, type SyncJobRequest } from 'garmin-mcp-store';
@@ -11,6 +11,7 @@ import { z } from 'zod';
 import type { Runtime } from 'garmin-mcp-domain';
 import { toToolError } from './errors.js';
 import { createMcpServer } from './server.js';
+import { canSignIn, withSignIn } from './sign-in.js';
 import { serveHttp } from './transports.js';
 
 const meta = { source: 'cache' };
@@ -38,15 +39,18 @@ const fakeService = {
   },
 } as unknown as GarminService;
 
+/** Sign-in from the server is off unless a test turns it on: whether a browser is installed must not decide a test. */
 function runtime(overrides: Partial<GarminConfig> = {}, service: GarminService = fakeService): Runtime {
-  const config = { ...loadConfig({ env: { HOME: os.tmpdir() } }), ...overrides };
+  const config = { ...loadConfig({ env: { HOME: os.tmpdir() } }), autoLogin: false, ...overrides };
+  const account = { hash: 'x', displayName: null, fullName: null };
   return {
     config,
     logger: silentLogger,
     auth: {} as AuthService,
     client: {} as Runtime['client'],
     service: async () => service,
-    account: async () => ({ hash: 'x', displayName: null, fullName: null }),
+    account: async () => account,
+    signIn: async () => account,
     close: () => undefined,
   };
 }
@@ -362,6 +366,110 @@ describe('MCP server', () => {
       const rendered = await client.getPrompt({ name: prompt.name, arguments: Object.fromEntries(names.map((n) => [n, `\${arguments.${n}}`])) });
       expect(entry?.text).toBe(rendered.messages.map((m) => (m.content as { text: string }).text).join());
     }
+  });
+});
+
+describe('sign-in from the server', () => {
+  const notLoggedIn = () => new GarminError('AUTH_NOT_LOGGED_IN', 'No Garmin tokens found', { hint: 'Run `garmin login`.' });
+  /** Any existing file passes for the browser: the fake `signIn` never starts it. */
+  const BROWSER = { autoLogin: true, browserPath: process.execPath };
+
+  /**
+   * A runtime nobody is signed in to: the service opens only after `signIn` (the test's) went
+   * through. Like the real one it runs one sign-in at a time, and later callers join it.
+   */
+  function signedOut(signIn: () => Promise<unknown>, overrides: Partial<GarminConfig> = BROWSER) {
+    const state = { signedIn: false, signIns: 0 };
+    const base = runtime(overrides);
+    let pending: ReturnType<Runtime['signIn']> | undefined;
+    const rt: Runtime = {
+      ...base,
+      service: async () => {
+        if (!state.signedIn) throw notLoggedIn();
+        return fakeService;
+      },
+      signIn: () => {
+        pending ??= (async () => {
+          state.signIns++;
+          await signIn();
+          state.signedIn = true;
+          return base.account();
+        })().finally(() => (pending = undefined));
+        return pending;
+      },
+    };
+    return { rt, state };
+  }
+
+  it('opens the sign-in window when a tool finds nobody signed in, and answers once the user is', async () => {
+    const { rt, state } = signedOut(async () => undefined);
+    const client = await connect(rt);
+    expect(client.getInstructions()).toContain('AUTH_SIGN_IN_PENDING');
+    const res = await client.callTool({ name: 'get_activities', arguments: {} });
+    expect(res.isError).toBeFalsy();
+    expect(res.structuredContent).toMatchObject({ data: { activities: [{ id: 1 }] } });
+    expect(state.signIns).toBe(1);
+    await client.callTool({ name: 'get_activities', arguments: {} });
+    expect(state.signIns).toBe(1);
+  });
+
+  it('asks syncs to fail instead of pausing when nobody is signed in, only while it can open the window', async () => {
+    const seen: unknown[] = [];
+    const service = { ...fakeService, withAutoSync: async (read: () => Promise<unknown>, opts: unknown) => (seen.push(opts), read()) } as unknown as GarminService;
+    await (await connect(runtime(BROWSER, service))).callTool({ name: 'get_activities', arguments: {} });
+    await (await connect(runtime({}, service))).callTool({ name: 'get_activities', arguments: {} });
+    expect(seen).toEqual([{ throwWhenSignedOut: true }, {}]);
+  });
+
+  it('says the window is waiting when the user needs longer than the call can wait, and lets a later call finish', async () => {
+    let finish: () => void = () => undefined;
+    const { rt, state } = signedOut(() => new Promise<void>((resolve) => (finish = resolve)));
+    const call = async () => (await rt.service()).getActivities({});
+    await expect(withSignIn(rt, call, 20)).rejects.toMatchObject({
+      code: 'AUTH_SIGN_IN_PENDING',
+      hint: expect.stringMatching(/finish signing in in that window .* Do not call it again before that\.$/),
+    });
+    // The window stayed open: the next call joins the same sign-in instead of opening another.
+    setTimeout(() => finish(), 10);
+    await expect(withSignIn(rt, call, 5_000)).resolves.toMatchObject({ data: { activities: [{ id: 1 }] } });
+    expect(state.signIns).toBe(1);
+  });
+
+  it('explains a closed window, keeps the reason when Garmin refused the sign-in, and falls back to the login hint without a browser', async () => {
+    const failing = (err: Error) => signedOut(async () => Promise.reject(err)).rt;
+    const call = (rt: Runtime) => withSignIn(rt, async () => (await rt.service()).getActivities({}), 1_000);
+    await expect(call(failing(new BrowserLoginAbortedError('the browser window was closed')))).rejects.toMatchObject({
+      code: 'AUTH_BROWSER_LOGIN_ABORTED',
+      hint: expect.stringMatching(/^The user closed the sign-in window or did not finish in time\. Call the tool again only when they want to sign in/),
+    });
+    await expect(call(failing(new BrowserLoginAbortedError('the browser window was closed', { status: 429, path: '/portal/api/login' })))).rejects.toMatchObject({
+      code: 'AUTH_BROWSER_LOGIN_ABORTED',
+      hint: expect.stringMatching(/^Garmin refused the sign-in request/),
+    });
+    await expect(call(failing(new BrowserUnavailableError('no Chrome, Edge, Brave or Chromium found')))).rejects.toMatchObject({ code: 'AUTH_NOT_LOGGED_IN', hint: 'Run `garmin login`.' });
+  });
+
+  it.each([
+    ['GARMIN_AUTO_LOGIN is off', { ...BROWSER, autoLogin: false }],
+    ['the client is remote (HTTP)', { ...BROWSER, transport: 'streamable-http' as const }],
+    ['the sign-in strategy is not the browser', { ...BROWSER, ssoStrategy: 'curl' as const }],
+    ['no browser is installed', { ...BROWSER, browserPath: '/nonexistent/chrome' }],
+  ])('leaves signing in to `garmin login` when %s', async (_why, overrides) => {
+    const { rt, state } = signedOut(async () => undefined, overrides);
+    expect(canSignIn(rt)).toBe(false);
+    const client = await connect(rt);
+    expect(client.getInstructions()).not.toContain('AUTH_SIGN_IN_PENDING');
+    const res = await client.callTool({ name: 'get_activities', arguments: {} });
+    expect(text(res)).toEqual({ error: { code: 'AUTH_NOT_LOGGED_IN', message: 'No Garmin tokens found', hint: 'Run `garmin login`.' } });
+    expect(state.signIns).toBe(0);
+  });
+
+  it('does not open the window for other failures', async () => {
+    const { rt, state } = signedOut(async () => undefined);
+    state.signedIn = true;
+    const res = await (await connect(rt)).callTool({ name: 'create_workout', arguments: { preset: { name: 'easy_z2', params: { duration_min: 30 } } } });
+    expect(text(res)).toMatchObject({ error: { code: 'INVALID_INPUT' } });
+    expect(state.signIns).toBe(0);
   });
 });
 

@@ -4,7 +4,7 @@ description: "Add the Garmin MCP server to Claude Code with one command, check i
 parent: Getting started
 nav_order: 1
 ---
-Sign in to Garmin first if you have not ([Getting started](../getting-started.md)).
+You do not need to sign in to Garmin first: the first question opens Garmin's sign-in page in your browser ([Getting started](../getting-started.md#sign-in-once)).
 
 ## Add the server
 

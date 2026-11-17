@@ -1,7 +1,7 @@
-import { createAuthService, type AuthService } from 'garmin-mcp-auth';
+import { createAuthService, type AuthService, type BrowserLoginOptions } from 'garmin-mcp-auth';
 import { GarminClient } from 'garmin-mcp-client';
 import { createLogger, type GarminConfig, type Logger } from 'garmin-mcp-config';
-import { accountHash, databasePath, readAccount, Store, Syncer, SyncJobRunner, writeAccount, type AccountInfo } from 'garmin-mcp-store';
+import { accountHash, clearSignInPause, databasePath, readAccount, Store, Syncer, SyncJobRunner, writeAccount, type AccountInfo } from 'garmin-mcp-store';
 import path from 'node:path';
 import { GarminService } from './service.js';
 
@@ -22,6 +22,14 @@ export interface Runtime {
    * rewrites the cache; login and token import use it, because new tokens may be another account's.
    */
   account(opts?: { fresh?: boolean }): Promise<AccountInfo>;
+  /**
+   * Sign in through Garmin's own page in the user's browser, for a long-running process such as
+   * the MCP server: afterwards the runtime follows the new tokens. The account is asked afresh
+   * (the tokens may be another account's, which gets its own database), and a sync pause that
+   * began because nobody was signed in ends. One sign-in at a time: a call during a running one
+   * joins it.
+   */
+  signIn(opts?: BrowserLoginOptions): Promise<AccountInfo>;
   close(): void;
 }
 
@@ -37,6 +45,7 @@ export function createRuntime(config: GarminConfig, options: RuntimeOptions = {}
   const client = new GarminClient(config, auth, { logger: logger.child({ layer: 'client' }) });
   let store: Store | undefined;
   let service: Promise<GarminService> | undefined;
+  let signingIn: Promise<AccountInfo> | undefined;
 
   const account = async (opts: { fresh?: boolean } = {}): Promise<AccountInfo> => {
     const cached = opts.fresh ? undefined : readAccount(config.dataDir);
@@ -47,7 +56,7 @@ export function createRuntime(config: GarminConfig, options: RuntimeOptions = {}
     return info;
   };
 
-  return {
+  const runtime: Runtime = {
     config,
     logger,
     auth,
@@ -90,8 +99,29 @@ export function createRuntime(config: GarminConfig, options: RuntimeOptions = {}
       });
       return service;
     },
+    signIn(opts = {}) {
+      signingIn ??= (async () => {
+        await auth.loginWithBrowser(opts);
+        client.forgetProfile();
+        const before = readAccount(config.dataDir)?.hash;
+        const info = await account({ fresh: true });
+        if (service && before !== info.hash) {
+          // Another account signed in: its data lives in its own database.
+          await service.catch(() => undefined);
+          store?.close();
+          store = undefined;
+          service = undefined;
+        }
+        clearSignInPause((await runtime.service()).store);
+        return info;
+      })().finally(() => {
+        signingIn = undefined;
+      });
+      return signingIn;
+    },
     close() {
       store?.close();
     },
   };
+  return runtime;
 }

@@ -4,7 +4,7 @@ description: "Use the Garmin MCP server with Codex, Antigravity CLI, opencode, D
 parent: Getting started
 nav_order: 3
 ---
-Sign in to Garmin first if you have not ([Getting started](../getting-started.md)). Every MCP client needs the same thing: run the command `npx` with the arguments `-y garmin-mcp-server` over stdio.
+Over stdio the first question opens Garmin's sign-in page in your browser; for HTTP and Docker sign in from the terminal first ([Getting started](../getting-started.md#sign-in-once)). Every MCP client needs the same thing: run the command `npx` with the arguments `-y garmin-mcp-server` over stdio.
 
 ## Codex
 
