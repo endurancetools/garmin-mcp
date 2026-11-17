@@ -35,6 +35,15 @@ export interface FitActivity {
  */
 export const MAX_HOLD_S = 10;
 
+/** The longest activity `readFit` lays out as 1 Hz records; a longer one is an error, not millions of rows. */
+export const MAX_SPAN_S = 7 * 24 * 3600;
+
+/** Without a usable `session` message, records further than this from their neighbours are a run of their own. */
+export const MAX_GAP_S = 12 * 3600;
+
+/** How far outside the activity window a record or a gear shift may still lie. */
+const WINDOW_MARGIN_S = 60;
+
 const VALUE_KEYS = ['power_w', 'heart_rate_bpm', 'cadence', 'speed_m_s', 'elevation_m'] as const;
 type Values = Pick<FitRecord, (typeof VALUE_KEYS)[number]>;
 
@@ -52,8 +61,50 @@ const gear = (v: unknown): number | null => {
 };
 
 /**
+ * The time window an activity's records and gear shifts must fall in. Anything outside it has a
+ * broken timestamp (a device clock at the FIT epoch, a jump into the future) and is dropped before
+ * the 1 Hz series is laid out, so one such second cannot stretch the series over years.
+ *
+ * The window is the span of the `session` messages when it is usable: its end is not before its
+ * start, it is at most `MAX_SPAN_S` long and at least one record lies in it. Otherwise it is the
+ * largest run of records (by count) in which neighbours are at most `MAX_GAP_S` apart. Either way
+ * it is widened by `WINDOW_MARGIN_S` on both sides. `null` = nothing to go by, nothing is dropped.
+ */
+function activityWindow(times: readonly number[], sessions: readonly { start_time?: unknown; timestamp?: unknown; total_elapsed_time?: unknown }[]): { from: number; to: number } | null {
+  const widen = (from: number, to: number) => ({ from: from - WINDOW_MARGIN_S, to: to + WINDOW_MARGIN_S });
+
+  const spans = sessions.flatMap((s) => {
+    const start = seconds(s.start_time);
+    const elapsed = num(s.total_elapsed_time);
+    const ends = [seconds(s.timestamp), start !== null && elapsed !== null ? start + Math.ceil(elapsed) : null].filter((t) => t !== null);
+    return start === null || ends.length === 0 ? [] : [{ start, end: Math.max(...ends) }];
+  });
+  if (spans.length > 0) {
+    const session = widen(Math.min(...spans.map((s) => s.start)), Math.max(...spans.map((s) => s.end)));
+    const usable =
+      session.to >= session.from &&
+      session.to - session.from <= MAX_SPAN_S + 2 * WINDOW_MARGIN_S &&
+      (times.length === 0 || times.some((t) => t >= session.from && t <= session.to));
+    if (usable) return session;
+  }
+
+  // `times` is sorted: split it where neighbours are more than MAX_GAP_S apart, keep the largest run.
+  let best: { from: number; to: number; n: number } | null = null;
+  let runStart = 0;
+  for (let i = 1; i <= times.length; i++) {
+    if (i < times.length && times[i]! - times[i - 1]! <= MAX_GAP_S) continue;
+    const n = i - runStart;
+    if (best === null || n > best.n) best = { from: times[runStart]!, to: times[i - 1]!, n };
+    runStart = i;
+  }
+  return best && widen(best.from, best.to);
+}
+
+/**
  * Decodes a FIT activity file into 1 Hz records from the first to the last recorded second, plus
- * the gear shifts. Throws on a file that is not FIT or fails its CRC.
+ * the gear shifts; records and shifts with a timestamp far outside the activity are dropped (see
+ * `activityWindow`). Throws on a file that is not FIT, fails its CRC or whose records still span
+ * more than `MAX_SPAN_S`.
  */
 export async function readFit(bytes: Uint8Array): Promise<FitActivity> {
   const buffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
@@ -89,10 +140,20 @@ export async function readFit(bytes: Uint8Array): Promise<FitActivity> {
     })
     .toSorted((a, b) => a.t - b.t);
 
-  const records: FitRecord[] = [];
-  const times = [...bySecond.keys()].toSorted((a, b) => a - b);
+  const allTimes = [...bySecond.keys()].toSorted((a, b) => a - b);
+  const window = activityWindow(allTimes, parsed.sessions ?? []);
+  const inWindow = (t: number) => window === null || (t >= window.from && t <= window.to);
+  const times = allTimes.filter(inWindow);
   const first = times[0];
   const last = times.at(-1);
+  if (first !== undefined && last !== undefined && last - first > MAX_SPAN_S) {
+    const days = (s: number) => Math.round((s / 86_400) * 10) / 10;
+    throw new Error(
+      `The records of this FIT file span ${days(last - first)} days, more than the ${days(MAX_SPAN_S)} days an activity is read for; its timestamps are probably broken.`,
+    );
+  }
+
+  const records: FitRecord[] = [];
   if (first !== undefined && last !== undefined) {
     let held: { t: number; values: Values } | null = null;
     let running = true;
@@ -109,7 +170,7 @@ export async function readFit(bytes: Uint8Array): Promise<FitActivity> {
   const gear_changes: FitGearChange[] = events.flatMap((e) => {
     const derailleur = e.event === 'front_gear_change' ? 'front' : e.event === 'rear_gear_change' ? 'rear' : null;
     const t = seconds(e.timestamp);
-    if (derailleur === null || t === null) return [];
+    if (derailleur === null || t === null || !inWindow(t)) return [];
     // Devices write `data` (gear_change_data); its components are the four gear fields.
     const data = num(e.data);
     const byte = (i: number) => (data === null ? null : Math.floor(data / 2 ** (8 * i)) % 256);

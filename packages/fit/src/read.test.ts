@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { MAX_HOLD_S, readFit } from './read.js';
-import { encodeFit, fileId, gearChange, record, timer, type RecordInput } from './test-utils/encode.js';
+import { MAX_GAP_S, MAX_HOLD_S, MAX_SPAN_S, readFit } from './read.js';
+import { encodeFit, FIT_EPOCH_S, fileId, gearChange, record, session, timer, type RecordInput } from './test-utils/encode.js';
 
 const T0 = 1_763_370_000; // 2025-11-17T09:00:00Z
 const ride = (n: number, from = 0, extra: Partial<RecordInput> = {}) =>
@@ -79,6 +79,61 @@ describe('readFit', () => {
     const bytes = encodeFit(ride(3));
     bytes[20] = (bytes[20] ?? 0) ^ 0xff;
     await expect(readFit(bytes)).rejects.toThrow(Error);
+  });
+
+  describe('timestamps far outside the activity', () => {
+    const gears = { front_gear_num: 2, front_teeth: 50, rear_gear_num: 5, rear_teeth: 21 };
+    const FUTURE = T0 + 10 * 365 * 86_400;
+    const timed = async (bytes: Uint8Array) => {
+      const started = performance.now();
+      const fit = await readFit(bytes);
+      expect(performance.now() - started).toBeLessThan(500);
+      return fit;
+    };
+
+    it.each([
+      ['the FIT epoch', FIT_EPOCH_S],
+      ['the far future', FUTURE],
+    ])('drop a single record and gear shift at %s without a session message', async (_, at) => {
+      const { records, gear_changes } = await timed(
+        encodeFit([...ride(3), record({ time_s: at, power_w: 999 }), gearChange(at, 'rear', gears), gearChange(T0 + 1, 'rear', gears)]),
+      );
+      expect(records.map((r) => [r.time_s - T0, r.power_w])).toEqual([
+        [0, 200],
+        [1, 201],
+        [2, 202],
+      ]);
+      expect(gear_changes.map((g) => g.time_s)).toEqual([T0 + 1]);
+    });
+
+    it('drop what lies outside the session window', async () => {
+      // Two seconds an hour after the session: within MAX_GAP_S, so only the session tells them apart.
+      const bytes = encodeFit([
+        record({ time_s: FIT_EPOCH_S, power_w: 1 }),
+        ...ride(3),
+        ...ride(2, 3600),
+        gearChange(T0 + 3600, 'rear', gears),
+        session(T0, T0 + 2),
+      ]);
+      const { records, gear_changes } = await timed(bytes);
+      expect(records.map((r) => r.time_s - T0)).toEqual([0, 1, 2]);
+      expect(gear_changes).toEqual([]);
+    });
+
+    it('fall back to neighbours when the session window is broken itself', async () => {
+      const { records } = await timed(encodeFit([...ride(3), record({ time_s: FUTURE, power_w: 999 }), session(FIT_EPOCH_S, FUTURE)]));
+      expect(records.map((r) => r.time_s - T0)).toEqual([0, 1, 2]);
+    });
+
+    it(`reject records that still span more than ${MAX_SPAN_S / 86_400} days, without laying them out`, async () => {
+      // One record an hour for eight days: no gap to split at, so nothing is an outlier.
+      const hourly = Array.from({ length: 8 * 24 + 1 }, (_, h) => record({ time_s: T0 + h * 3600, power_w: 200 }));
+      const started = performance.now();
+      await expect(readFit(encodeFit(hourly))).rejects.toThrow(/span 8 days, more than the 7 days/);
+      await expect(readFit(encodeFit([...hourly, session(T0, T0 + 8 * 86_400)]))).rejects.toThrow(/span 8 days/);
+      expect(performance.now() - started).toBeLessThan(500);
+      expect(MAX_GAP_S).toBeGreaterThan(3600);
+    });
   });
 
   it('reads a view into a larger buffer', async () => {

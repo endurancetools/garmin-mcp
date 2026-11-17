@@ -611,6 +611,21 @@ describe('GarminService', () => {
     expect(brokenStore.getActivityDetail(4, 'power_curve')).toBeUndefined();
   });
 
+  it('answers a FIT file whose records span more than MAX_SPAN_S with a note, without keeping it', async () => {
+    // One record an hour for eight days: readFit refuses it instead of laying out 700 000 seconds.
+    const start = Date.parse('2026-10-07T05:00:00Z') / 1000;
+    const { service, store, count } = setup({
+      activities: [summary(5, '2026-10-07', { avgPower: 200 })],
+      zip: makeZip('5_ACTIVITY.fit', fitWithPower(start, Array<number>(8 * 24 + 1).fill(200), 3600)),
+    });
+    const long = await service.getActivity(5, 'power_curve');
+    expect(long.data.power_curve).toBeUndefined();
+    expect(long.meta.note).toMatch(/^The FIT file of this activity could not be read \(The records of this FIT file span 8 days, more than the 7 days .+\), so there is no power curve\.$/);
+    expect(() => output.activityOutput.parse(long)).not.toThrow();
+    expect(store.getActivityDetail(5, 'power_curve')).toBeUndefined();
+    expect(count('downloadActivity')).toBe(1);
+  });
+
   it('converts weather wind from mph for statute_us accounts', async () => {
     const { service, store } = setup({ activities: [summary(1, '2026-10-07')] });
     store.setProfile({ social: {}, settings: { userData: { measurementSystem: 'statute_us' } }, heartRateZones: [], powerZones: [] }, NOW);

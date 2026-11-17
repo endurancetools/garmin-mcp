@@ -97,6 +97,16 @@ export const timer = (time_s: number, running: boolean): FitMessage => ({
   ],
 });
 
+/** Session (global 18): its end as the timestamp, start_time and total_elapsed_time (ms). */
+export const session = (start_s: number, end_s: number): FitMessage => ({
+  global: 18,
+  fields: [
+    [253, 'uint32', end_s - FIT_EPOCH_S],
+    [2, 'uint32', start_s - FIT_EPOCH_S],
+    [7, 'uint32', (end_s - start_s) * 1000],
+  ],
+});
+
 /** Event 42/43 (front/rear gear change), event_type marker, `data` = gear_change_data. */
 export function gearChange(
   time_s: number,
