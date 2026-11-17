@@ -2,7 +2,7 @@
 
 All notable changes to Garmin MCP. All `garmin-mcp-*` packages share one version. The same list is on the [documentation site](https://endurancetools.github.io/garmin-mcp/changelog/).
 
-## Unreleased
+## 0.6.2 (2026-11-17)
 
 ### Tools
 
