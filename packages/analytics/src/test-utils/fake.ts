@@ -29,18 +29,25 @@ export function activity(id: number, date: IsoDate, extra: Record<string, unknow
 /**
  * An analytics service over an in-memory store whose Garmin client fails every call: the
  * tests seed synthetic rows and never reach Garmin (on-demand fetching off unless `fetchOnDemand`,
- * when a read that tries to fetch fails and is listed in `calls`).
+ * when a read that tries to fetch fails and is listed in `calls`). `answers` lets chosen client
+ * methods answer instead; their calls are listed too, with the arguments in `args`.
  */
-export function setup(opts: { autoSync?: boolean; fetchOnDemand?: boolean } = {}) {
+export function setup(opts: { autoSync?: boolean; fetchOnDemand?: boolean; answers?: Record<string, (...args: unknown[]) => unknown> } = {}) {
   const calls: string[] = [];
+  const args: Record<string, unknown[]> = {};
   const client = new Proxy(
     {},
     {
       get: (_, name) =>
         name === 'then'
           ? undefined
-          : () => {
+          : (...a: unknown[]) => {
               calls.push(String(name));
+              const answer = opts.answers?.[String(name)];
+              if (answer) {
+                args[String(name)] = a;
+                return Promise.resolve(answer(...a));
+              }
               return Promise.reject(new Error(`Unexpected Garmin call: ${String(name)}`));
             },
     },
@@ -66,6 +73,7 @@ export function setup(opts: { autoSync?: boolean; fetchOnDemand?: boolean } = {}
     garmin,
     analytics,
     calls,
+    args,
     /** Stores activities and marks [from, to] as synced (`activities:covered`). */
     activities(list: readonly Summary[], from: IsoDate, to: IsoDate) {
       store.upsertActivities(list, NOW);

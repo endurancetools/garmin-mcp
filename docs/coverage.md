@@ -13,7 +13,7 @@ Coverage:
 
 All reads come from the local SQLite cache. Data that garmin-mcp does not sync is not available, even if the client has a method for it.
 
-Totals for the 111 reads: 68 full, 13 partial, 30 missing.
+Totals for the 111 reads: 69 full, 12 partial, 30 missing.
 
 ## Reads
 
@@ -96,8 +96,8 @@ Totals for the 111 reads: 68 full, 13 partial, 30 missing.
 | HRV trend | `query_health` `metrics: [hrv]`, `from`, `to` | full | |
 | Respiration trend | `query_health` `metrics: [respiration]`, `from`, `to` | full | |
 | Progress summary between dates | `get_period_summary` `period: "range"`, `from`, `to`; `get_activities` | full | any range up to 366 days; `period` week or month with `anchor_date` for calendar periods |
-| Cycling FTP | `garmin://profile` → `power_zones[].ftp_w` | full | |
-| Lactate threshold | `garmin://profile` → `lactate_threshold_hr_bpm` | partial | current HR only; no pace or history. |
+| Cycling FTP | `garmin://profile` → `power_zones[].ftp_w`, `get_thresholds` `ftp_w` | full | `get_thresholds` dates it with the day Garmin set it |
+| Lactate threshold | `get_thresholds` `lthr_run`, `run_threshold_pace_s_per_km` (`history: true`); `garmin://profile` → `lactate_threshold_hr_bpm` | full | heart rate and pace with Garmin's dates, the last 365 days, downloaded once a day by the analytics reads |
 | Endurance score | `get_training_status` → `metrics.endurance_score` | partial | latest score, class and weekly averages of the 4 weeks before the sync; no arbitrary range, no contributors. |
 | Hill score | `get_training_status` → `metrics.hill_score` | partial | latest overall/strength/endurance and the 4-week max before the sync; no arbitrary range. |
 | Fitness age | `get_training_status` `to` = date → `metrics.fitness_age` | partial | current value saved by each training sync that reaches today (one row per sync day); dates that were never synced have no value.; no component breakdown |
@@ -210,7 +210,7 @@ Not Garmin Connect reads: these are computed by garmin-mcp from data already in 
 | Own load model: TSS per activity (power, pace, heart rate or RPE), CTL/ATL/TSB, ACWR, monotony, strain, flags | `get_load` | activities (normalized power, grade adjusted speed, heart rate, duration), daily resting heart rate, threshold history |
 | Weekly volume per sport, 3-zone intensity split, efficiency trend | `get_load` `include_activities`, `include_efficiency` | activities (HR zones, speed, grade adjusted speed, normalized power) |
 | Morning GO / MODIFY / REST decision | `get_readiness` | HRV, resting heart rate, hours of sleep, the load model; Body Battery, stress, sleep score and training readiness shown, not counted |
-| Threshold history (LTHR per sport, LT1, HRmax, FTP, VO2max...) | `get_thresholds`, `set_threshold` | Garmin profile values recorded on each change, plus your own test results |
+| Threshold history (LTHR per sport, LT1, HRmax, FTP, VO2max...) | `get_thresholds`, `set_threshold` | Garmin profile values recorded on each change, Garmin's lactate threshold and FTP history with its dates, plus your own test results |
 | FTP estimate: 95 % of the best 20 min ride power of 90 days, shown and not recorded | `get_thresholds` → `estimates.ftp_w` | power curves stored by `get_activity` `detail: "power_curve"` |
 | Best 5 and 20 min power next to the other session metrics | `compare_activities` → `best_5min_w`, `best_20min_w` | power curves stored by `get_activity` `detail: "power_curve"` |
 | Activities from Garmin Connect CSV exports | `garmin import-activities` (CLI) | for dates the synced activities do not cover |

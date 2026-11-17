@@ -166,6 +166,14 @@ describe('Store', () => {
     expect(store.getTrainingPlan()).toEqual({ id: 48, raw: { name: 'Half' }, fetched_at: T });
   });
 
+  it("keeps Garmin's threshold history as one value", () => {
+    const store = Store.open(':memory:');
+    expect(store.getThresholdHistory()).toBeUndefined();
+    const value = { lthr_hr: [{ from: '2026-11-01', value: 170 }], lthr_speed: null, ftp: { functionalThresholdPower: 200 }, fetched_at: T };
+    store.setThresholdHistory(value);
+    expect(store.getThresholdHistory()).toEqual(value);
+  });
+
   it('adds the analytics tables in migration 6 and keeps the cached data', () => {
     const db = new Database(':memory:');
     for (const sql of MIGRATIONS.slice(0, 5)) db.exec(sql);

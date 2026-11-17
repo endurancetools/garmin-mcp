@@ -4,6 +4,7 @@ import {
   assertIsoDate,
   eachDay,
   endOfMonth,
+  dateIn,
   GarminError,
   InputError,
   isIsoDate,
@@ -113,6 +114,8 @@ const MAX_RANGE_DAYS = 366 * 3;
 const MAX_HOURLY_DAYS = 3;
 /** Longest `get_period_summary` range, in days including both ends. */
 const MAX_PERIOD_DAYS = 366;
+/** Days before today Garmin's lactate threshold history is downloaded for (the range a recording confirmed). */
+export const THRESHOLD_HISTORY_DAYS = 365;
 
 /** Workout input of `create_workout`: exactly one of the three forms. */
 export interface WorkoutInput {
@@ -446,6 +449,43 @@ export class GarminService {
    */
   referenceCoverage(kind: ReferenceKind): Partial<ResponseMeta> {
     return this.#referenceGap(kind);
+  }
+
+  /**
+   * Garmin's own threshold history for the analytics reads: the running lactate threshold heart
+   * rate and speed per day over the last {@link THRESHOLD_HISTORY_DAYS} days and the latest
+   * cycling FTP. Three requests within the daily request limit, at most once a local day and only
+   * with on-demand fetching; no sync job fetches it. A part Garmin does not give is stored as
+   * null, so it is not asked for again that day. The analytics records it as `garmin-auto`
+   * thresholds from the cache (`Store.getThresholdHistory`).
+   */
+  async ensureThresholdHistory(): Promise<{ result: EnsureResult; note?: string }> {
+    const cached = this.store.getThresholdHistory();
+    const today = this.today();
+    if (!this.syncer.fetchOnDemand || (cached && dateIn(this.#tz, new Date(cached.fetched_at)) >= today)) return { result: { source: 'cache' } };
+    const from = addDays(today, -THRESHOLD_HISTORY_DAYS);
+    const parts = {
+      lthr_hr: () => this.client.getLactateThresholdHeartRate(from, today),
+      lthr_speed: () => this.client.getLactateThresholdSpeed(from, today),
+      ftp: () => this.client.getCyclingFtp(),
+    };
+    const got = { lthr_hr: null as unknown, lthr_speed: null as unknown, ftp: null as unknown };
+    for (const key of Object.keys(parts) as (keyof typeof parts)[]) {
+      try {
+        const res = await this.syncer.lazyRequest(`thresholds:${key}`, parts[key]);
+        if ('blocked' in res) {
+          const why = res.blocked.reason === 'budget' ? 'The daily Garmin request limit is used up' : 'Syncing with Garmin is paused';
+          return { result: { source: 'cache' }, note: `${why}; Garmin's threshold history downloads after ${iso(res.blocked.resume_at)} when asked again.` };
+        }
+        got[key] = res.value ?? null;
+      } catch (err) {
+        const info = errInfo(err);
+        if (FATAL_CODES.has(info.code)) return { result: { source: 'cache' }, note: `Garmin's threshold history could not be downloaded (${info.code}).` };
+        this.#log.warn({ part: key, err: info }, 'threshold history fetch failed');
+      }
+    }
+    this.store.setThresholdHistory({ ...got, fetched_at: this.#now() });
+    return { result: { source: 'live' } };
   }
 
   #referenceGap(kind: ReferenceKind): Partial<ResponseMeta> {

@@ -506,7 +506,7 @@ export const TOOLS: ToolDef[] = [
     name: 'get_thresholds',
     title: 'Get training thresholds',
     description:
-      'Thresholds the analytics use on `date` (default today): per param its value, the date it applies since and its source (garmin-auto from the Garmin profile, test, manual, import), ' +
+      'Thresholds the analytics use on `date` (default today): per param its value, the date it applies since and its source (garmin-auto from the Garmin profile and its LTHR, threshold pace and FTP history; test, manual, import), ' +
       'by_sport (run, bike, swim: LTHR and LT1 with a note when a fallback, default or approximation), HRmax and the 28-day resting HR. ' +
       'zones has the HR and power zone floors per sport from the Garmin profile (method, HRmax/rest/LTHR or FTP used, fetched date; current, not historical). ' +
       'estimates.ftp_w: 95 % of best stored 20 min ride power, not saved. ' +

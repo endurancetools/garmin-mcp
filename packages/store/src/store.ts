@@ -91,6 +91,18 @@ export interface TrainingPlanCache {
 }
 
 /**
+ * Garmin's own threshold history as the analytics reads last fetched it: running lactate
+ * threshold heart rate and speed per day, and the latest cycling FTP. A part is null when
+ * Garmin did not give it.
+ */
+export interface ThresholdHistoryCache {
+  lthr_hr: unknown;
+  lthr_speed: unknown;
+  ftp: unknown;
+  fetched_at: number;
+}
+
+/**
  * Where a calendar item belongs: a library workout (type "workout" without a plan), a plan
  * workout (type "fbtAdaptiveWorkout" of Garmin Coach, or any workout type carrying a
  * `trainingPlanId`; library workouts have 0 there), or neither.
@@ -694,6 +706,16 @@ export class Store {
   getTrainingPlan(): TrainingPlanCache | undefined {
     const v = this.getMeta('training_plan');
     return v === undefined ? undefined : (JSON.parse(v) as TrainingPlanCache);
+  }
+
+  /** Garmin's threshold history, kept as one JSON value in `meta` (fetched by the analytics reads, no sync job). */
+  setThresholdHistory(value: ThresholdHistoryCache): void {
+    this.setMeta('threshold_history', JSON.stringify(value));
+  }
+
+  getThresholdHistory(): ThresholdHistoryCache | undefined {
+    const v = this.getMeta('threshold_history');
+    return v === undefined ? undefined : (JSON.parse(v) as ThresholdHistoryCache);
   }
 
   getSchedule(from: IsoDate, to: IsoDate): ScheduleRow[] {

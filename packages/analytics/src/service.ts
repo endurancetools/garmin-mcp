@@ -58,6 +58,7 @@ import {
   hrmaxOn,
   profileZoneFloors,
   profileZones,
+  recordGarminHistory,
   recordProfileThresholds,
   restingHrOn,
   RHR_MIN_SAMPLES,
@@ -330,8 +331,9 @@ const historyOf = (r: Pick<ThresholdRow, 'date' | 'param' | 'value' | 'source' |
  * with the `{ data, meta }` envelope of the other tools. `meta.sync_hint` comes from
  * `GarminService.coverage`, and each read goes through `withAutoSync`. Every read first makes
  * sure the Garmin profile is cached (`ensureReference`, as `get_profile`; without auto fetch a
- * missing profile is a `sync_hint` with `scope: "reference"`), then records its changed
- * thresholds (`recordProfileThresholds`, offline), as `setThreshold` does without the fetch.
+ * missing profile is a `sync_hint` with `scope: "reference"`) and, once a day, Garmin's
+ * threshold history (`GarminService.ensureThresholdHistory`), then records the changes of both
+ * (`recordGarminHistory`, `recordProfileThresholds`, offline), as `setThreshold` does without the fetch.
  */
 export class AnalyticsService {
   readonly garmin: GarminService;
@@ -348,15 +350,28 @@ export class AnalyticsService {
     return this.garmin.store;
   }
 
+  /** Records Garmin's threshold history, then the changed profile values, as `garmin-auto` rows (offline). */
   #recordProfile(): void {
+    recordGarminHistory(this.#store, this.#now());
     recordProfileThresholds(this.#store, this.#now(), this.garmin.timeZone);
   }
 
-  /** Fetch the Garmin profile when missing or stale (only with `fetchOnDemand` and `fetch`), then record its thresholds. */
-  async #profile(fetch = true): Promise<{ ensured: EnsureResult; gap: Partial<ResponseMeta> }> {
-    const ensured: EnsureResult = fetch ? await this.garmin.syncer.ensureReference('profile', this.#budget) : { source: 'cache' };
+  /**
+   * Fetch the Garmin profile when missing or stale and Garmin's threshold history once a day
+   * (only with `fetchOnDemand` and `fetch`), then record their thresholds. `notes` says why the
+   * history could not be downloaded.
+   */
+  async #profile(fetch = true): Promise<{ ensured: EnsureResult; gap: Partial<ResponseMeta>; notes: string[] }> {
+    const [ensured, history] = fetch
+      ? await Promise.all([this.garmin.syncer.ensureReference('profile', this.#budget), this.garmin.ensureThresholdHistory()])
+      : [{ source: 'cache' as const }, { result: { source: 'cache' as const } }];
     this.#recordProfile();
-    return { ensured, gap: this.garmin.referenceCoverage('profile') };
+    return {
+      // The history is cache or live, so a partial profile fetch decides the source.
+      ensured: ensured.source === 'cache' ? history.result : ensured,
+      gap: this.garmin.referenceCoverage('profile'),
+      notes: history.note ? [history.note] : [],
+    };
   }
 
   /**
@@ -496,7 +511,7 @@ export class AnalyticsService {
       note,
     };
     const gap = withProfileGap(this.garmin.coverage('period', from, to, ['daily_summary']), profile.gap);
-    return { data: compact(data), meta: readMeta([profile.ensured, ...ensured], gap, [...allNotes]) };
+    return { data: compact(data), meta: readMeta([profile.ensured, ...ensured], gap, [...allNotes, ...profile.notes]) };
   }
 
   // ------------------------------------------------------------ compare_activities
@@ -586,7 +601,7 @@ export class AnalyticsService {
     const withoutLaps = compared.filter((s) => noLaps.has(s.id) && decouplingEligible(s)).length;
     if (withoutLaps > 0) notes.push(decouplingLapsNote(withoutLaps));
     const data: CompareData = { reference: refSession ? Number(refSession.id) : undefined, criteria, activities: rows, not_found: notFound.length > 0 ? notFound : undefined };
-    return { data: compact(data), meta: readMeta([profile.ensured, ...ensured], profile.gap, [...new Set(notes)]) };
+    return { data: compact(data), meta: readMeta([profile.ensured, ...ensured], profile.gap, [...new Set(notes), ...profile.notes]) };
   }
 
   /** Account measurement system from the cached profile (weather wind units). */
@@ -634,7 +649,7 @@ export class AnalyticsService {
     });
     const allNotes = ruleInput.note ? [...notes, ruleInput.note] : notes;
     const gap = withProfileGap(this.garmin.coverage('period', from, date, kinds), profile.gap);
-    return { data: compact(result), meta: readMeta([profile.ensured, ...ensured], gap, allNotes) };
+    return { data: compact(result), meta: readMeta([profile.ensured, ...ensured], gap, [...allNotes, ...profile.notes]) };
   }
 
   // ------------------------------------------------------------ garmin://today
@@ -724,7 +739,7 @@ export class AnalyticsService {
       estimates: ftp.value ? { ftp_w: ftp.value } : undefined,
     };
     const gap = withProfileGap(this.garmin.coverage('daily', window.from, window.to, ['daily_summary']), profile.gap);
-    const notes = [zones.note, ftp.note].filter((n): n is string => n !== undefined);
+    const notes = [zones.note, ftp.note, ...profile.notes].filter((n): n is string => n !== undefined);
     return { data: compact(data), meta: readMeta([profile.ensured, ensured], gap, notes) };
   }
 

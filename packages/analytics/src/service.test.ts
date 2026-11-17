@@ -694,6 +694,80 @@ describe('AnalyticsService thresholds', () => {
     expect(calls).toEqual([]);
   });
 
+  it("downloads Garmin's threshold history once a day and records its changes as garmin-auto", async () => {
+    const fixture = (name: string): unknown =>
+      JSON.parse(fs.readFileSync(path.resolve(import.meta.dirname, '../../client/fixtures', `${name}.json`), 'utf8')) as unknown;
+    const t = setup({
+      fetchOnDemand: true,
+      answers: {
+        getLactateThresholdHeartRate: () => fixture('lactate-threshold-range'),
+        getLactateThresholdSpeed: () => fixture('lactate-threshold-speed-range'),
+        getCyclingFtp: () => ({ ...(fixture('cycling-ftp') as object), calendarDate: '2026-09-20T05:23:27.0' }),
+      },
+    });
+    t.store.markReferenceFetched('profile', NOW);
+    t.daily('daily_summary', '2026-09-01', TODAY, () => ({ resting_hr: 50 }));
+    // Downloaded yesterday: stale today.
+    t.store.setThresholdHistory({ lthr_hr: null, lthr_speed: null, ftp: null, fetched_at: NOW - 86_400_000 });
+    const res = await t.analytics.getThresholds({ history: true });
+    fits(thresholdsOutput, res);
+    expect(thresholdsOutput.safeParse(res).success).toBe(true);
+    expect(t.calls).toEqual(['getLactateThresholdHeartRate', 'getLactateThresholdSpeed', 'getCyclingFtp']);
+    expect(t.args['getLactateThresholdHeartRate']).toEqual(['2025-10-08', TODAY]);
+    expect(res.meta).toMatchObject({ source: 'live' });
+    expect(res.data.effective).toMatchObject({
+      lthr_run: { value: 160, since: '2026-03-08', source: 'garmin-auto' },
+      run_threshold_pace_s_per_km: { value: 286, since: '2026-03-08', source: 'garmin-auto' },
+      ftp_w: { value: 200, since: '2026-09-20', source: 'garmin-auto' },
+    });
+    expect(res.data.history?.filter((r) => r.param === 'lthr_run').map((r) => [r.date, r.value])).toEqual([
+      ['2025-11-17', 146],
+      ['2026-01-27', 159],
+      ['2026-02-28', 157],
+      ['2026-03-01', 160],
+      ['2026-03-07', 158],
+      ['2026-03-08', 160],
+    ]);
+    // Asked again the same day: from the cache, nothing added.
+    const again = await t.analytics.getThresholds({ history: true });
+    expect(t.calls).toHaveLength(3);
+    expect(again.meta).toMatchObject({ source: 'cache' });
+    expect(again.data.history).toEqual(res.data.history);
+  });
+
+  it('keeps a threshold history Garmin does not give as empty for the day, without failing the read', async () => {
+    const t = setup({ fetchOnDemand: true });
+    t.store.markReferenceFetched('profile', NOW);
+    t.daily('daily_summary', '2026-09-01', TODAY, () => ({ resting_hr: 50 }));
+    const res = await t.analytics.getThresholds();
+    expect(t.calls).toEqual(['getLactateThresholdHeartRate', 'getLactateThresholdSpeed', 'getCyclingFtp']);
+    expect(res.meta).toMatchObject({ source: 'live' });
+    expect(t.store.getThresholdHistory()).toEqual({ lthr_hr: null, lthr_speed: null, ftp: null, fetched_at: NOW });
+    await t.analytics.getThresholds();
+    expect(t.calls).toHaveLength(3);
+  });
+
+  it('a backfilled Garmin FTP recomputes the rides from its date on, as a set_threshold row does', async () => {
+    const t = setup();
+    t.store.markReferenceFetched('profile', NOW);
+    const ride = (id: number, date: string) => activity(id, date, { activityType: { typeKey: 'road_biking' }, normPower: 200 });
+    t.activities([ride(1, '2026-09-01'), ride(2, '2026-10-01')], '2026-06-01', TODAY);
+    t.daily('daily_summary', '2026-05-01', TODAY, () => ({ resting_hr: 50 }));
+    t.store.addThreshold({ date: '2026-01-01', param: 'ftp_w', value: 250, source: 'manual', created_at: NOW });
+    const tss = async () => (await t.analytics.getLoad({ from: '2026-09-01', include_activities: true })).data.activities?.map((a) => [a.id, a.load_source, a.tss]);
+    expect(await tss()).toEqual([
+      [1, 'power', 64],
+      [2, 'power', 64],
+    ]);
+    // Downloaded by an earlier read: FTP 240 W since 2026-09-20.
+    t.store.setThresholdHistory({ lthr_hr: null, lthr_speed: null, ftp: { calendarDate: '2026-09-20T05:23:27.0', functionalThresholdPower: 240 }, fetched_at: NOW });
+    expect(await tss()).toEqual([
+      [1, 'power', 64],
+      [2, 'power', 69.4],
+    ]);
+    expect(t.calls).toEqual([]);
+  });
+
   it('lists the HR and power zones of the cached profile per sport, with its download date', async () => {
     const { analytics, store, calls, daily } = setup();
     daily('daily_summary', '2026-09-10', '2026-10-07', () => ({ resting_hr: 50 }));

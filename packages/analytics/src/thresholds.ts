@@ -1,6 +1,6 @@
-import { addDays, dateIn, type IsoDate } from 'garmin-mcp-config';
+import { addDays, dateIn, isIsoDate, type IsoDate } from 'garmin-mcp-config';
 import { round } from 'garmin-mcp-domain';
-import type { NewThreshold, Store, ThresholdParam, ThresholdRow } from 'garmin-mcp-store';
+import type { NewThreshold, Store, ThresholdHistoryCache, ThresholdParam, ThresholdRow } from 'garmin-mcp-store';
 import type { SportGroup } from './sport.js';
 
 /** Used when the history has neither an LTHR nor an HRmax (bpm). */
@@ -232,6 +232,80 @@ export function recordProfileThresholds(store: Store, now: number, timeZone: str
     if (last?.value === value) continue;
     const row: NewThreshold = { date, param, value, source: 'garmin-auto', created_at: now };
     if (store.addThreshold(row).added) added.push(row);
+  }
+  return { added };
+}
+
+/** One dated value of Garmin's threshold history. */
+export interface GarminThresholdChange {
+  date: IsoDate;
+  param: ThresholdParam;
+  value: number;
+}
+
+/** Parameters Garmin's threshold history gives, recorded as `garmin-auto` rows. */
+export const GARMIN_HISTORY_PARAMS = ['lthr_run', 'run_threshold_pace_s_per_km', 'ftp_w'] as const satisfies readonly ThresholdParam[];
+
+const isoDay = (v: unknown): IsoDate | undefined => {
+  const day = typeof v === 'string' ? v.slice(0, 10) : undefined;
+  return day !== undefined && isIsoDate(day) ? day : undefined;
+};
+
+/**
+ * The changes in Garmin's threshold history (`Store.getThresholdHistory`): running LTHR from the
+ * lactate threshold heart rate rows, running threshold pace from the speed rows (through
+ * {@link thresholdPaceFromSpeed}), each dated with the row's `from` day, and the latest cycling FTP
+ * dated with its `calendarDate`. Garmin repeats an unchanged value on many days, so a series keeps
+ * only its first row and the rows whose value differs from the row before; rows without a valid
+ * date or value are left out. Oldest first, per param in {@link GARMIN_HISTORY_PARAMS} order.
+ */
+export function garminThresholdChanges(history: Pick<ThresholdHistoryCache, 'lthr_hr' | 'lthr_speed' | 'ftp'> | undefined): GarminThresholdChange[] {
+  const series = (list: unknown, param: ThresholdParam, value: (v: unknown) => number | undefined): GarminThresholdChange[] => {
+    const rows = (Array.isArray(list) ? list : []).flatMap((r) => {
+      const date = isoDay(obj(r)?.['from']);
+      const v = value(obj(r)?.['value']);
+      return date === undefined || v === undefined ? [] : [{ date, param, value: v }];
+    });
+    return rows.toSorted((a, b) => a.date.localeCompare(b.date)).filter((r, i, all) => i === 0 || all[i - 1]?.value !== r.value);
+  };
+  const positive = (v: unknown): number | undefined => {
+    const n = num(v);
+    return n !== undefined && n > 0 ? n : undefined;
+  };
+  const ftp = obj(history?.ftp);
+  const ftpDate = isoDay(ftp?.['calendarDate']);
+  const ftpValue = positive(ftp?.['functionalThresholdPower']);
+  return [
+    ...series(history?.lthr_hr, 'lthr_run', positive),
+    ...series(history?.lthr_speed, 'run_threshold_pace_s_per_km', (v) => thresholdPaceFromSpeed(num(v))),
+    ...(ftpDate !== undefined && ftpValue !== undefined ? [{ date: ftpDate, param: 'ftp_w' as const, value: ftpValue }] : []),
+  ];
+}
+
+/**
+ * Records Garmin's threshold history (`Store.getThresholdHistory`) as `garmin-auto` rows dated
+ * with Garmin's dates: a change is added unless the `garmin-auto` row in effect on its date
+ * already has that value, or a `test`, `manual` or `import` row of the same param has that date
+ * (that row keeps precedence). Existing rows are never changed. A backdated row recomputes the
+ * activities from its date on, as one from `set_threshold` does. Idempotent and offline; run it
+ * before every analytics read, with {@link recordProfileThresholds} after it.
+ */
+export function recordGarminHistory(store: Store, now: number): { added: NewThreshold[] } {
+  const added: NewThreshold[] = [];
+  const changes = garminThresholdChanges(store.getThresholdHistory());
+  for (const param of GARMIN_HISTORY_PARAMS) {
+    const rows = store.listThresholds(param);
+    const auto = rows.filter((r) => r.source === 'garmin-auto').map((r) => ({ date: r.date, value: r.value }));
+    const own = new Set(rows.filter((r) => r.source !== 'garmin-auto').map((r) => r.date));
+    for (const c of changes.filter((ch) => ch.param === param)) {
+      if (own.has(c.date)) continue;
+      const inEffect = auto.filter((r) => r.date <= c.date).toSorted((a, b) => a.date.localeCompare(b.date)).at(-1);
+      if (inEffect?.value === c.value) continue;
+      const row: NewThreshold = { date: c.date, param, value: c.value, source: 'garmin-auto', created_at: now };
+      if (!store.addThreshold(row).added) continue;
+      added.push(row);
+      auto.push({ date: c.date, value: c.value });
+    }
   }
   return { added };
 }

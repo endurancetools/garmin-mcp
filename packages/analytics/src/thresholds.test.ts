@@ -5,11 +5,13 @@ import { Store, type ThresholdParam } from 'garmin-mcp-store';
 import { describe, expect, it } from 'vitest';
 import {
   ftpEstimate,
+  garminThresholdChanges,
   lt1For,
   lthrFor,
   profileThresholds,
   profileZoneFloors,
   profileZones,
+  recordGarminHistory,
   recordProfileThresholds,
   restingHrOn,
   thresholdOn,
@@ -180,6 +182,114 @@ describe('recordProfileThresholds', () => {
     // A change back to an older value is a change too.
     store.setProfile(profile(168, { vo2: 53 }), Date.parse('2026-10-14T08:00:00Z'));
     expect(recordProfileThresholds(store, T + 6, TZ).added.map((r) => [r.date, r.param, r.value])).toEqual([['2026-10-14', 'lthr_run', 168]]);
+  });
+});
+
+/** Garmin's threshold history as the recordings in garmin-mcp-client's fixtures give it. */
+const history = () => ({
+  lthr_hr: clientFixture('lactate-threshold-range'),
+  lthr_speed: clientFixture('lactate-threshold-speed-range'),
+  ftp: clientFixture('cycling-ftp'),
+  fetched_at: T,
+});
+
+describe('garminThresholdChanges', () => {
+  it('keeps the changes of each series from the recorded fixtures, oldest first', () => {
+    const changes = garminThresholdChanges(history()).map((c) => [c.date, c.param, c.value]);
+    expect(changes).toEqual([
+      // 146 is repeated on seven days up to 2026-01-22: one row.
+      ['2025-11-17', 'lthr_run', 146],
+      ['2026-01-27', 'lthr_run', 159],
+      ['2026-02-28', 'lthr_run', 157],
+      ['2026-03-01', 'lthr_run', 160],
+      ['2026-03-07', 'lthr_run', 158],
+      ['2026-03-08', 'lthr_run', 160],
+      // 0.340141 is 3.40141 m/s, 4:54 per km; 2026-03-07 repeats 2026-03-01.
+      ['2025-11-17', 'run_threshold_pace_s_per_km', 294],
+      ['2026-01-27', 'run_threshold_pace_s_per_km', 296],
+      ['2026-02-28', 'run_threshold_pace_s_per_km', 301],
+      ['2026-03-01', 'run_threshold_pace_s_per_km', 292],
+      ['2026-03-08', 'run_threshold_pace_s_per_km', 286],
+      ['2026-11-03', 'ftp_w', 200],
+    ]);
+  });
+
+  it('leaves out rows without a date or a usable value, and sorts by date', () => {
+    expect(
+      garminThresholdChanges({
+        lthr_hr: [{ from: '2026-03-02', value: 170 }, { from: 'x', value: 171 }, { from: '2026-03-01', value: 0 }, { value: 172 }, null, { from: '2026-02-01', value: 168 }],
+        lthr_speed: [{ from: '2026-03-01', value: 50 }],
+        ftp: { calendarDate: null, functionalThresholdPower: 250 },
+      }),
+    ).toEqual([
+      { date: '2026-02-01', param: 'lthr_run', value: 168 },
+      { date: '2026-03-02', param: 'lthr_run', value: 170 },
+    ]);
+    expect(garminThresholdChanges(undefined)).toEqual([]);
+    expect(garminThresholdChanges({ lthr_hr: null, lthr_speed: {}, ftp: [] })).toEqual([]);
+  });
+});
+
+describe('recordGarminHistory', () => {
+  it("backfills garmin-auto rows with Garmin's dates, once", () => {
+    const store = Store.open(':memory:');
+    expect(recordGarminHistory(store, T)).toEqual({ added: [] });
+    store.setThresholdHistory(history());
+    expect(recordGarminHistory(store, T).added).toHaveLength(12);
+    expect(store.listThresholds('ftp_w')).toMatchObject([{ date: '2026-11-03', value: 200, source: 'garmin-auto', created_at: T }]);
+    expect(thresholdOn(store.listThresholds(), 'run_threshold_pace_s_per_km', '2026-02-28')).toBe(301);
+    expect(thresholdOn(store.listThresholds(), 'lthr_run', '2026-03-07')).toBe(158);
+
+    // The next day's download: the same history again, and a window that no longer reaches the first row.
+    expect(recordGarminHistory(store, T + 1)).toEqual({ added: [] });
+    const later = history();
+    store.setThresholdHistory({ ...later, lthr_hr: (later.lthr_hr as unknown[]).slice(3) });
+    expect(recordGarminHistory(store, T + 2)).toEqual({ added: [] });
+    expect(store.listThresholds().filter((r) => r.source === 'garmin-auto')).toHaveLength(12);
+
+    // The profile then has the latest value already: no profile row either.
+    store.setProfile(profile(160), Date.parse('2026-10-07T23:30:00Z'));
+    expect(recordProfileThresholds(store, T + 3, TZ).added.map((r) => r.param)).not.toContain('lthr_run');
+  });
+
+  it('skips a change the garmin-auto row in effect already has', () => {
+    const store = Store.open(':memory:');
+    // A profile row recorded before the history was downloaded.
+    store.addThreshold({ date: '2025-11-01', param: 'lthr_run', value: 146, source: 'garmin-auto', created_at: T });
+    store.setThresholdHistory(history());
+    const lthr = recordGarminHistory(store, T + 1).added.filter((r) => r.param === 'lthr_run');
+    expect(lthr.map((r) => [r.date, r.value])).toEqual([
+      ['2026-01-27', 159],
+      ['2026-02-28', 157],
+      ['2026-03-01', 160],
+      ['2026-03-07', 158],
+      ['2026-03-08', 160],
+    ]);
+  });
+
+  it('leaves test, manual and import rows as they are; a test on the same date keeps precedence', () => {
+    const store = Store.open(':memory:');
+    store.addThreshold({ date: '2026-03-01', param: 'lthr_run', value: 178, source: 'test', created_at: T });
+    store.addThreshold({ date: '2026-02-28', param: 'run_threshold_pace_s_per_km', value: 270, source: 'manual', created_at: T });
+    store.addThreshold({ date: '2026-11-03', param: 'ftp_w', value: 245, source: 'import', created_at: T });
+    store.setThresholdHistory(history());
+    const added = recordGarminHistory(store, T + 1).added.map((r) => [r.date, r.param]);
+    expect(added).not.toContainEqual(['2026-03-01', 'lthr_run']);
+    expect(added).not.toContainEqual(['2026-02-28', 'run_threshold_pace_s_per_km']);
+    expect(added).not.toContainEqual(['2026-11-03', 'ftp_w']);
+    expect(added).toHaveLength(9);
+    const rows = store.listThresholds();
+    expect(rows.filter((r) => r.source !== 'garmin-auto').map((r) => [r.date, r.param, r.value])).toEqual([
+      ['2026-11-03', 'ftp_w', 245],
+      ['2026-03-01', 'lthr_run', 178],
+      ['2026-02-28', 'run_threshold_pace_s_per_km', 270],
+    ]);
+    expect(thresholdOn(rows, 'lthr_run', '2026-03-01')).toBe(178);
+    expect(thresholdOn(rows, 'run_threshold_pace_s_per_km', '2026-02-28')).toBe(270);
+    expect(thresholdOn(rows, 'ftp_w', '2026-11-03')).toBe(245);
+    // The next change Garmin made applies from its own date.
+    expect(thresholdOn(rows, 'lthr_run', '2026-03-07')).toBe(158);
+    expect(recordGarminHistory(store, T + 2)).toEqual({ added: [] });
   });
 });
 
