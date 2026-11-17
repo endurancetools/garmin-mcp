@@ -642,6 +642,98 @@ describe('GarminService', () => {
     await expect(service.updateActivity(1, {})).rejects.toMatchObject({ code: 'INVALID_INPUT' });
   });
 
+  it('sets the privacy of an activity and reads it back', async () => {
+    const { service, calls, store } = setup({ activities: [summary(1, '2026-10-07')] });
+    await service.getActivities({});
+    const res = await service.updateActivity(1, { privacy: 'followers' });
+    expect(calls.find((c) => c.method === 'updateActivity')?.args[1]).toMatchObject({ privacy: 'followers' });
+    // Garmin's "subscribers" is the tool's "followers".
+    expect(res.data.privacy).toBe('followers');
+    expect(store.getActivity(1)?.raw.privacy).toEqual({ typeId: 3, typeKey: 'subscribers' });
+    expect((await service.updateActivity(1, { privacy: 'private' })).data.privacy).toBe('private');
+  });
+
+  it('corrects the exercise of recorded sets, keeping the times the watch recorded', async () => {
+    const { service, calls, count, store } = setup({ activities: [summary(1, '2026-10-07')] });
+    await service.getActivity(1, 'exercise_sets');
+    const res = await service.updateActivity(1, {
+      exercise_sets: [{ exercise: { category: 'squat', name: 'barbell front-squat' } }, { reps: 7 }, { exercise: { category: 'PULL_UP', name: 'CLOSE_GRIP_CHIN_UP' }, weight_kg: 10 }],
+      keep_timing: true,
+    });
+    const [id, body] = (calls.find((c) => c.method === 'updateActivityExerciseSets')?.args ?? []) as [number, Record<string, unknown>[]];
+    expect(id).toBe(1);
+    // Rest sets, starts and durations stay; a field left out keeps the recorded value.
+    expect(body.map((s) => [s.setType, s.startTime, s.duration])).toEqual([
+      ['ACTIVE', '2026-10-07T05:02:00.0', 42.5],
+      ['REST', '2026-10-07T05:02:42.5', 120],
+      ['ACTIVE', '2026-10-07T05:04:42.5', 38],
+      ['REST', '2026-10-07T05:05:20.5', 150],
+      ['ACTIVE', '2026-10-07T05:07:50.5', 30],
+    ]);
+    expect(body[0]).toMatchObject({ exercises: [{ category: 'SQUAT', name: 'BARBELL_FRONT_SQUAT', probability: 100 }], repetitionCount: 8, weight: 80_000 });
+    expect(body[2]).toMatchObject({ exercises: [{ category: 'SQUAT', name: 'BARBELL_BACK_SQUAT', probability: 99 }], repetitionCount: 7, weight: 90_000 });
+    expect(body[4]).toMatchObject({ exercises: [{ category: 'PULL_UP', name: 'CLOSE_GRIP_CHIN_UP', probability: 100 }], repetitionCount: 10, weight: 10_000 });
+    // The sets before the write, in the shape the tool takes, so they can be written back.
+    expect(res.data.previous_exercise_sets).toEqual([
+      { exercise: { category: 'SQUAT', name: 'BARBELL_BACK_SQUAT' }, reps: 8, weight_kg: 80, duration_s: 42.5, rest_s: 120 },
+      { exercise: { category: 'SQUAT', name: 'BARBELL_BACK_SQUAT' }, reps: 6, weight_kg: 90, duration_s: 38, rest_s: 150 },
+      { exercise: { category: 'PULL_UP' }, reps: 10, duration_s: 30 },
+    ]);
+    expect(res.data.exercise_sets?.sets.map((s) => [s.exercise, s.reps, s.weight_kg])).toEqual([
+      ['barbell_front_squat', 8, 80],
+      ['barbell_back_squat', 7, 90],
+      ['close_grip_chin_up', 10, 10],
+    ]);
+    // The current sets are read live before the write and once after it; the cache holds the new ones.
+    expect(count('getActivityExerciseSets')).toBe(3);
+    expect(count('updateActivity')).toBe(0);
+    expect((await service.getActivity(1, 'exercise_sets')).data.exercise_sets).toEqual(res.data.exercise_sets);
+    expect(count('getActivityExerciseSets')).toBe(3);
+    expect(store.getActivityDetail(1, 'exercise_sets')?.raw).toMatchObject({ exerciseSets: body });
+  });
+
+  it('refuses exercise sets it cannot write before writing anything', async () => {
+    const { service, count } = setup({ activities: [summary(1, '2026-10-07')] });
+    const refused = (patch: Parameters<typeof service.updateActivity>[1], message: RegExp) =>
+      expect(service.updateActivity(1, { name: 'Legs', ...patch })).rejects.toMatchObject({ code: 'INVALID_INPUT', message: expect.stringMatching(message) });
+    await refused({ exercise_sets: [{ reps: 8 }], keep_timing: true }, /^exercise_sets: 1 set given, the activity has 3; keep_timing/);
+    await refused({ exercise_sets: [{ exercise: { category: 'LEGS' }, duration_s: 40 }] }, /^exercise_sets\[0\]\.exercise\.category: unknown exercise category "LEGS"/);
+    await refused({ exercise_sets: [{ duration_s: 40 }, { exercise: { category: 'SQUAT', name: 'SUMO_SQUATTT' }, duration_s: 40 }] }, /^exercise_sets\[1\]\.exercise\.name: unknown exercise "SUMO_SQUATTT" in category SQUAT/);
+    await refused({ exercise_sets: [{ reps: 8, duration_s: 40 }], keep_timing: true }, /^exercise_sets\[0\]\.duration_s: keep_timing keeps/);
+    await refused({ exercise_sets: [{ reps: 8 }] }, /^exercise_sets\[0\]\.duration_s is required without keep_timing/);
+    await refused({ keep_timing: true }, /^keep_timing goes with exercise_sets/);
+    await refused({ exercise_sets: [] }, /^exercise_sets is empty/);
+    await refused({ exercise_sets: [{ duration_s: 40, weight_kg: -5 }] }, /^exercise_sets\[0\]\.weight_kg must be at least 0/);
+    await refused({ exercise_sets: [{ duration_s: 0 }] }, /^exercise_sets\[0\]\.duration_s must be above 0/);
+    await refused({ exercise_sets: [{ duration_s: 40, rest_s: -1 }] }, /^exercise_sets\[0\]\.rest_s must be at least 0/);
+    await refused({ exercise_sets: [{ exercise: { category: 'SQUAT', name: ' ' }, duration_s: 40 }] }, /^exercise_sets\[0\]\.exercise\.name is empty/);
+    expect(count('updateActivity')).toBe(0);
+    expect(count('updateActivityExerciseSets')).toBe(0);
+    // The hint offers the catalogue's names close to the unknown one.
+    await expect(service.updateActivity(1, { exercise_sets: [{ exercise: { category: 'SQUAT', name: 'SUMO_SQUATTT' }, duration_s: 40 }] })).rejects.toMatchObject({
+      hint: expect.stringMatching(/^Exercises of SQUAT with a similar name: .*SUMO_SQUAT/),
+    });
+  });
+
+  it('writes new sets from the start of an activity without recorded sets', async () => {
+    const { service, calls } = setup({ activities: [summary(2, '2026-10-06')] });
+    await service.getActivities({});
+    const res = await service.updateActivity(2, {
+      exercise_sets: [
+        { exercise: { category: 'SQUAT', name: 'BARBELL_BACK_SQUAT' }, reps: 5, weight_kg: 100, duration_s: 30, rest_s: 90 },
+        { exercise: { category: 'PLANK' }, duration_s: 60 },
+      ],
+    });
+    const body = calls.find((c) => c.method === 'updateActivityExerciseSets')?.args[1];
+    expect(body).toEqual([
+      { setType: 'ACTIVE', exercises: [{ category: 'SQUAT', name: 'BARBELL_BACK_SQUAT', probability: 100 }], repetitionCount: 5, weight: 100_000, duration: 30, startTime: '2026-10-06T05:00:00.0', wktStepIndex: null, messageIndex: 0 },
+      { setType: 'REST', exercises: [], repetitionCount: null, weight: null, duration: 90, startTime: '2026-10-06T05:00:30.0', wktStepIndex: null, messageIndex: 1 },
+      { setType: 'ACTIVE', exercises: [{ category: 'PLANK', name: null, probability: 100 }], repetitionCount: null, weight: null, duration: 60, startTime: '2026-10-06T05:02:00.0', wktStepIndex: null, messageIndex: 2 },
+    ]);
+    // Activity 2 had no sets (404), so there is nothing to return as previous.
+    expect(res.data).not.toHaveProperty('previous_exercise_sets');
+  });
+
   it('creates workouts from a typed definition', async () => {
     const { service, calls, store } = setup();
     const res = await service.createWorkout({
@@ -1160,6 +1252,7 @@ describe('GarminService', () => {
     await fits(output.activityOutput, service.getActivity(1, 'full'));
     await fits(output.activityOutput, service.getActivity(1, 'splits'));
     await fits(output.updateActivityOutput, service.updateActivity(1, { name: 'Tempo' }));
+    await fits(output.updateActivityOutput, service.updateActivity(1, { privacy: 'private', exercise_sets: [{ reps: 9 }, {}, {}], keep_timing: true }));
     await fits(output.healthOutput, service.queryHealth(['steps', 'sleep', 'hrv', 'resting_hr', 'calories'], '2026-09-01', '2026-10-08', 'week'));
     await fits(output.healthOutput, service.queryHealth(['calories'], '2026-10-01', '2026-10-08'));
     await fits(output.sleepOutput, service.getSleep({ date: '2026-10-07' }));

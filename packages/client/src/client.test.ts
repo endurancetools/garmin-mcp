@@ -373,6 +373,40 @@ describe('GarminClient', () => {
     expect(body).toEqual({ activityId: 42, eventTypeDTO: { typeId: 1, typeKey: 'race' } });
   });
 
+  it('sends privacy as the access control rule', async () => {
+    const bodies: unknown[] = [];
+    server.use(
+      http.put(`${API}/activity-service/activity/:id`, async ({ request }) => {
+        bodies.push(await request.json());
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+    const { client } = makeClient();
+    await client.updateActivity(42, { privacy: 'private' });
+    await client.updateActivity(42, { privacy: 'followers' });
+    await client.updateActivity(42, { privacy: 'public' });
+    expect(bodies).toEqual([
+      { activityId: 42, accessControlRuleDTO: { typeId: 2, typeKey: 'private' } },
+      { activityId: 42, accessControlRuleDTO: { typeId: 3, typeKey: 'subscribers' } },
+      { activityId: 42, accessControlRuleDTO: { typeId: 1, typeKey: 'public' } },
+    ]);
+    await expect(client.updateActivity(42, { privacy: 'friends' as never })).rejects.toMatchObject({ code: 'INVALID_INPUT' });
+    expect(bodies).toHaveLength(3);
+  });
+
+  it('replaces the exercise sets of an activity', async () => {
+    let call: { id?: string; body?: unknown } = {};
+    server.use(
+      http.put(`${API}/activity-service/activity/:id/exerciseSets`, async ({ request, params }) => {
+        call = { id: String(params.id), body: await request.json() };
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+    const sets = [{ setType: 'ACTIVE', exercises: [{ category: 'SQUAT', name: 'BARBELL_BACK_SQUAT', probability: 100 }], repetitionCount: 8, weight: 80_000, duration: 40 }];
+    await makeClient().client.updateActivityExerciseSets(42, sets);
+    expect(call).toEqual({ id: '42', body: { activityId: 42, exerciseSets: sets } });
+  });
+
   it('puts gear on an activity and takes it off', async () => {
     const calls: string[] = [];
     server.use(

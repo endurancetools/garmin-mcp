@@ -1,4 +1,4 @@
-import type { ActivityType, DownloadFormat, EventType, GarminClient } from 'garmin-mcp-client';
+import { ACTIVITY_PRIVACY, type ActivityPrivacy, type ActivityType, type DownloadFormat, type EventType, type GarminClient } from 'garmin-mcp-client';
 import {
   addDays,
   assertIsoDate,
@@ -23,6 +23,7 @@ import { calendarEvent } from './calendar.js';
 import { CLIMB_RULES } from './climbs.js';
 import { deviceSettings } from './devices.js';
 import { energyBalance } from './energy.js';
+import { checkExerciseSets, exerciseSetsBody, exerciseSetsInput, rawExerciseSets, type ExerciseSetInput } from './exercise-sets.js';
 import { readFitFile, type FitGearChange } from './fit.js';
 import { compact, hms, isFootSport, iso, km, round, speedOrPace } from './format.js';
 import { healthTable, tablesFor, type HealthGranularity, type HealthMetric } from './health.js';
@@ -142,6 +143,18 @@ export interface ActivityEdit {
   feel?: 0 | 25 | 50 | 75 | 100;
   add_gear?: string;
   remove_gear?: string;
+  privacy?: ActivityPrivacy;
+  /** Replaces every strength set of the activity. */
+  exercise_sets?: ExerciseSetInput[];
+  /** With `exercise_sets`: keep the times the watch recorded, change exercise, reps and weight only. */
+  keep_timing?: boolean;
+}
+
+/** `update_activity` privacy of Garmin's access control rule: "subscribers" is "followers"; other rules keep Garmin's key. */
+function privacyKey(rule: unknown): string | undefined {
+  const key = rule && typeof rule === 'object' ? (rule as { typeKey?: unknown }).typeKey : undefined;
+  if (typeof key !== 'string') return undefined;
+  return Object.entries(ACTIVITY_PRIVACY).find(([, r]) => r.typeKey === key)?.[0] ?? key;
 }
 
 /** Keys compared without case, spaces or separators: "Special Event", special_event and specialEvent are one key. */
@@ -835,18 +848,30 @@ export class GarminService {
 
   async updateActivity(id: number, patch: ActivityEdit) {
     if (Object.values(patch).every((v) => v === undefined)) {
-      throw new InputError('Nothing to update', 'Pass at least one of name, type, event_type, description, rpe, feel, add_gear, remove_gear.');
+      throw new InputError('Nothing to update', 'Pass at least one of name, type, event_type, description, rpe, feel, privacy, exercise_sets, add_gear, remove_gear.');
     }
-    // Every key and gear name is resolved before the first write, so a wrong one changes nothing.
+    if (patch.keep_timing !== undefined && patch.exercise_sets === undefined) throw new InputError('keep_timing goes with exercise_sets', 'Pass the sets to write in exercise_sets.');
+    // Every key, gear name and set is checked before the first write, so a wrong one changes nothing.
+    const sets = patch.exercise_sets === undefined ? undefined : await this.#exerciseSetsEdit(id, patch.exercise_sets, patch.keep_timing ?? false);
     const activityType = patch.type === undefined ? undefined : await this.#cachedActivityType(patch.type);
     const eventType = patch.event_type === undefined ? undefined : await this.#eventType(patch.event_type);
     const removed = patch.remove_gear === undefined ? undefined : this.#gearItem(patch.remove_gear);
     const added = patch.add_gear === undefined ? undefined : this.#gearItem(patch.add_gear);
     const at = this.#now();
-    const { add_gear: _add, remove_gear: _remove, event_type: _event, type, ...fields } = patch;
+    const { add_gear: _add, remove_gear: _remove, event_type: _event, exercise_sets: _sets, keep_timing: _keep, type, ...fields } = patch;
+    let privacy: string | undefined;
     if (type !== undefined || eventType !== undefined || Object.values(fields).some((v) => v !== undefined)) {
       await this.client.updateActivity(id, { ...fields, typeKey: type, activityType, eventType });
-      this.store.applyActivityEdit(await this.client.getActivity(id), at);
+      const activity = await this.client.getActivity(id);
+      this.store.applyActivityEdit(activity, at);
+      if (patch.privacy !== undefined) privacy = privacyKey(activity.accessControlRuleDTO) ?? patch.privacy;
+    }
+    let exerciseSets: StrengthSets | undefined;
+    if (sets) {
+      await this.client.updateActivityExerciseSets(id, sets.body);
+      const written = await this.client.getActivityExerciseSets(id);
+      this.store.putActivityDetail(id, 'exercise_sets', written, at);
+      exerciseSets = strengthSets(written);
     }
     if (removed) {
       await this.client.unlinkGear(removed.uuid, id);
@@ -858,7 +883,40 @@ export class GarminService {
     }
     await Promise.all([removed, added].map((g) => g && this.#refreshGearStats(g.uuid)));
     const gear = removed || added ? compact({ added, removed }) : undefined;
-    return this.getActivity(id, 'summary').then((r) => ({ data: compact({ updated: true, activity: r.data, gear }), meta: { source: 'live' as const, fetched_at: iso(at) } }));
+    const previous = sets?.previous;
+    return this.getActivity(id, 'summary').then((r) => ({
+      data: compact({ updated: true, activity: r.data, gear, privacy, exercise_sets: exerciseSets, previous_exercise_sets: previous }),
+      meta: { source: 'live' as const, fetched_at: iso(at) },
+    }));
+  }
+
+  /**
+   * Garmin's new `exerciseSets` for an edit and the sets it replaces. The current sets are read
+   * live (a 404 means none), because the write replaces whatever Garmin has now.
+   */
+  async #exerciseSetsEdit(id: number, input: ExerciseSetInput[], keepTiming: boolean) {
+    const checked = await checkExerciseSets(input, keepTiming);
+    let raw: unknown = null;
+    try {
+      raw = await this.client.getActivityExerciseSets(id);
+    } catch (err) {
+      if (errInfo(err).code !== 'NOT_FOUND') throw err;
+    }
+    const current = rawExerciseSets(raw);
+    let start: string | undefined;
+    if (!keepTiming) {
+      const first = current[0]?.startTime;
+      start = typeof first === 'string' && first !== '' ? first : await this.#activityStartGmt(id);
+    }
+    return { body: exerciseSetsBody(current, checked, keepTiming, start), previous: exerciseSetsInput(raw) };
+  }
+
+  /** Start of an activity in UTC ("2026-10-07 05:00:00"), from the cache or else from Garmin. */
+  async #activityStartGmt(id: number): Promise<string | undefined> {
+    const cached = this.store.getActivity(id)?.raw.startTimeGMT;
+    if (typeof cached === 'string' && cached !== '') return cached;
+    const start = (await this.client.getActivity(id)).summaryDTO?.startTimeGMT;
+    return typeof start === 'string' && start !== '' ? start : undefined;
   }
 
   /**

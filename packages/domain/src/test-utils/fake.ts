@@ -56,6 +56,8 @@ export function setup(
   const updated = new Map<number, Record<string, unknown>>();
   const eventTypes = new Map<number, { typeId?: number; typeKey?: string }>();
   const gearLinks = new Set<string>();
+  const privacy = new Map<number, { typeId: number; typeKey: string }>();
+  const writtenSets = new Map<number, unknown[]>();
   const rec = async <T>(method: string, args: unknown[], value: () => T): Promise<T> => {
     calls.push({ method, args });
     if (opts.delayMs) await new Promise((r) => setTimeout(r, opts.delayMs));
@@ -81,7 +83,8 @@ export function setup(
           description: 'desc',
           activityTypeDTO: { typeKey: 'running' },
           eventTypeDTO: eventTypes.get(id) ?? { typeId: 9, typeKey: 'uncategorized' },
-          summaryDTO: { startTimeLocal: '2026-10-07T07:00:00.0', movingDuration: 2950, directWorkoutRpe: 60 },
+          accessControlRuleDTO: privacy.get(id) ?? { typeId: 4, typeKey: 'groups' },
+          summaryDTO: { startTimeLocal: '2026-10-07T07:00:00.0', startTimeGMT: '2026-10-07T05:00:00.0', movingDuration: 2950, directWorkoutRpe: 60 },
         };
       }),
     getActivitySplits: (id: number) =>
@@ -115,15 +118,17 @@ export function setup(
       }),
     getActivityExerciseSets: (id: number) =>
       rec('getActivityExerciseSets', [id], () => {
+        const written = writtenSets.get(id);
+        if (written) return { activityId: id, exerciseSets: written };
         if (id === 2) throw notFound(`exerciseSets/${id}`);
         return {
           activityId: id,
           exerciseSets: [
-            { setType: 'ACTIVE', exercises: [{ category: 'SQUAT', name: 'BARBELL_BACK_SQUAT', probability: 98 }, { category: 'LUNGE', name: null, probability: 2 }], repetitionCount: 8, weight: 80_000, duration: 42.5 },
-            { setType: 'REST', exercises: [], duration: 120 },
-            { setType: 'ACTIVE', exercises: [{ category: 'SQUAT', name: 'BARBELL_BACK_SQUAT', probability: 99 }], repetitionCount: 6, weight: 90_000, duration: 38 },
-            { setType: 'REST', exercises: [], duration: 150 },
-            { setType: 'ACTIVE', exercises: [{ category: 'PULL_UP', name: null, probability: 90 }], repetitionCount: 10, weight: -1, duration: 30 },
+            { setType: 'ACTIVE', exercises: [{ category: 'SQUAT', name: 'BARBELL_BACK_SQUAT', probability: 98 }, { category: 'LUNGE', name: null, probability: 2 }], repetitionCount: 8, weight: 80_000, duration: 42.5, startTime: '2026-10-07T05:02:00.0', messageIndex: 0 },
+            { setType: 'REST', exercises: [], duration: 120, startTime: '2026-10-07T05:02:42.5', messageIndex: 1 },
+            { setType: 'ACTIVE', exercises: [{ category: 'SQUAT', name: 'BARBELL_BACK_SQUAT', probability: 99 }], repetitionCount: 6, weight: 90_000, duration: 38, startTime: '2026-10-07T05:04:42.5', messageIndex: 2 },
+            { setType: 'REST', exercises: [], duration: 150, startTime: '2026-10-07T05:05:20.5', messageIndex: 3 },
+            { setType: 'ACTIVE', exercises: [{ category: 'PULL_UP', name: null, probability: 90 }], repetitionCount: 10, weight: -1, duration: 30, startTime: '2026-10-07T05:07:50.5', messageIndex: 4 },
           ],
         };
       }),
@@ -132,10 +137,15 @@ export function setup(
         metricDescriptors: [{ metricsIndex: 0, key: 'directTimestamp' }, { metricsIndex: 1, key: 'directHeartRate' }],
         activityDetailMetrics: Array.from({ length: 3000 }, (_, i) => ({ metrics: [1_791_000_000_000 + i * 1000, 120 + (i % 30)] })),
       })),
-    updateActivity: (id: number, patch: { name?: string; eventType?: { typeId?: number; typeKey?: string } }) =>
+    updateActivity: (id: number, patch: { name?: string; eventType?: { typeId?: number; typeKey?: string }; privacy?: 'public' | 'followers' | 'private' }) =>
       rec('updateActivity', [id, patch], () => {
         if (patch.name) names.set(id, patch.name);
         if (patch.eventType) eventTypes.set(id, patch.eventType);
+        if (patch.privacy) privacy.set(id, { public: { typeId: 1, typeKey: 'public' }, private: { typeId: 2, typeKey: 'private' }, followers: { typeId: 3, typeKey: 'subscribers' } }[patch.privacy]);
+      }),
+    updateActivityExerciseSets: (id: number, sets: unknown[]) =>
+      rec('updateActivityExerciseSets', [id, sets], () => {
+        writtenSets.set(id, sets);
       }),
     getEventTypes: () => rec('getEventTypes', [], () => fixture('event-types')),
     listGear: () => rec('listGear', [], () => fixture('gear')),

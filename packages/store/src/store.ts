@@ -333,6 +333,8 @@ export class Store {
         raw.description = activity.description;
         if (activity.activityTypeDTO) raw.activityType = activity.activityTypeDTO;
         if (activity.eventTypeDTO) raw.eventType = activity.eventTypeDTO;
+        // The list calls the activity's access control rule `privacy`.
+        if (activity.accessControlRuleDTO) raw.privacy = activity.accessControlRuleDTO;
         this.db
           .prepare('UPDATE activities SET name = ?, type = COALESCE(?, type), raw = ?, fetched_at = ? WHERE id = ?')
           .run(cols.name ?? null, cols.type ?? null, JSON.stringify(raw), fetchedAt, cols.id);

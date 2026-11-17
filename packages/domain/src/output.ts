@@ -22,6 +22,8 @@ function envelope<S extends z.core.$ZodLooseShape>(data: S) {
   return z.looseObject({ data: z.looseObject(data), meta: responseMetaSchema });
 }
 
+const strengthSets = obj({ sets: list(z.unknown()), total_sets: num, total_reps: num, volume_kg: num });
+
 const activityBrief = {
   id: z.number(),
   date: str,
@@ -111,7 +113,7 @@ const activityDetail = {
     station: str,
     observed_at: str,
   }),
-  exercise_sets: obj({ sets: list(z.unknown()), total_sets: num, total_reps: num, volume_kg: num }),
+  exercise_sets: strengthSets,
   raw_summary: raw,
   stream_summary: obj({
     bucket: str,
@@ -195,7 +197,14 @@ export const activitiesOutput = envelope({
 export const activityOutput = envelope(activityDetail);
 
 const gearRef = obj({ uuid: str, name: str });
-export const updateActivityOutput = envelope({ updated: bool, activity: obj(activityDetail), gear: obj({ added: gearRef, removed: gearRef }) });
+export const updateActivityOutput = envelope({
+  updated: bool,
+  activity: obj(activityDetail),
+  gear: obj({ added: gearRef, removed: gearRef }),
+  privacy: str,
+  exercise_sets: strengthSets,
+  previous_exercise_sets: list(z.looseObject({ exercise: obj({ category: z.string(), name: str }), reps: num, weight_kg: num, duration_s: num, rest_s: num })),
+});
 
 export const downloadOutput = envelope({ path: str, bytes: num, format: str });
 

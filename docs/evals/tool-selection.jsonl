@@ -71,3 +71,7 @@
 {"prompt": "Show me the power curve of ride 21003.", "expect": {"tool": "get_activity", "args_include": {"id": 21003, "detail": "power_curve"}}, "forbid": ["get_activities", "download_activity_file"]}
 {"prompt": "Jaki mam szacunkowy FTP z ostatnich jazd?", "expect": {"tool": "get_thresholds"}, "forbid": ["set_threshold", "get_activities", "download_activity_file"]}
 {"prompt": "Compare the best 20 min power of rides 21003 and 21004.", "expect": {"tool": "compare_activities", "args_include": {"ids": [21003, 21004]}}, "forbid": ["download_activity_file", "garmin_sync"]}
+{"prompt": "Ustaw wczorajszy bieg jako prywatny.", "expect": {"tool": ["get_activities", "update_activity"], "args_include": {"update_activity": {"privacy": "private"}}}, "forbid": ["garmin_sync"]}
+{"prompt": "Make activity 21001 visible to my followers only.", "expect": {"tool": "update_activity", "args_include": {"id": 21001, "privacy": "followers"}}, "forbid": ["garmin_sync"]}
+{"prompt": "Zegarek źle rozpoznał ćwiczenia w treningu siłowym 21005, popraw serie.", "expect": {"tool": "get_activity", "args_include": {"id": 21005, "detail": "exercise_sets"}}, "forbid": ["update_activity", "garmin_sync"]}
+{"prompt": "My watch got the exercises wrong in strength activity 21005: all three sets were barbell back squats (SQUAT, BARBELL_BACK_SQUAT). Fix them and keep the recorded times, I confirm the change.", "expect": {"tool": ["get_activity", "update_activity"], "args_include": {"get_activity": {"id": 21005}, "update_activity": {"id": 21005, "keep_timing": true}}}, "forbid": ["garmin_sync"]}

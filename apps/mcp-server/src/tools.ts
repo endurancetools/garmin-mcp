@@ -19,6 +19,7 @@ import {
   deleteWeighInOutput,
   deleteWorkoutOutput,
   devicesOutput,
+  exerciseSetSchema,
   downloadOutput,
   gearOutput,
   HEALTH_GRANULARITIES,
@@ -185,8 +186,9 @@ export const TOOLS: ToolDef[] = [
     name: 'update_activity',
     title: 'Edit an activity',
     description:
-      'Change an activity in Garmin Connect: name, type, event_type (e.g. race), description (notes), rpe, feel, ' +
+      'Change an activity in Garmin Connect: name, type, event_type (e.g. race), description (notes), rpe, feel, privacy, ' +
       'or the gear used: add_gear puts shoes or a bike on it, remove_gear takes one off (swap: both in one call). ' +
+      'exercise_sets replaces all strength sets (old ones returned); show them to the user and call after they agree. ' +
       'Only call when the user asked for the change. Returns the activity after the edit.',
     input: {
       id: id.describe('Activity id from get_activities'),
@@ -198,6 +200,9 @@ export const TOOLS: ToolDef[] = [
       feel: z.union([z.literal(0), z.literal(25), z.literal(50), z.literal(75), z.literal(100)]).optional().describe('0 very weak, 25 weak, 50 normal, 75 strong, 100 very strong'),
       add_gear: z.string().optional().describe('Gear name (or part of it) or uuid from get_gear'),
       remove_gear: z.string().optional().describe('Gear name or uuid from get_gear'),
+      privacy: z.enum(['public', 'followers', 'private']).optional(),
+      exercise_sets: z.array(exerciseSetSchema).optional(),
+      keep_timing: z.boolean().optional().describe('Keep recorded set times and rests; one entry per set'),
     },
     output: updateActivityOutput,
     annotations: { ...WRITE, idempotentHint: true },

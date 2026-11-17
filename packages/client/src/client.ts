@@ -28,7 +28,21 @@ export interface ActivityPatch {
   rpe?: number;
   /** One of 0, 25, 50, 75, 100 ("very weak" .. "very strong"). */
   feel?: 0 | 25 | 50 | 75 | 100;
+  /** Who sees the activity; sent as Garmin's access control rule. */
+  privacy?: ActivityPrivacy;
 }
+
+/**
+ * Garmin's access control rules (`accessControlRuleDTO`) behind the privacy choices: "followers"
+ * is "My Connections" (`subscribers`). Recordings show `groups` (typeId 4) on read; the other ids
+ * and writing the rule with the activity PUT are not confirmed by a recording yet (E8-30).
+ */
+export const ACTIVITY_PRIVACY = {
+  public: { typeId: 1, typeKey: 'public' },
+  private: { typeId: 2, typeKey: 'private' },
+  followers: { typeId: 3, typeKey: 'subscribers' },
+} as const;
+export type ActivityPrivacy = keyof typeof ACTIVITY_PRIVACY;
 
 export type DownloadFormat = 'fit' | 'gpx' | 'tcx' | 'kml' | 'csv';
 
@@ -232,6 +246,11 @@ export class GarminClient {
       body.activityTypeDTO = { typeId: match.typeId, typeKey: match.typeKey, parentTypeId: match.parentTypeId };
     }
     if (patch.eventType !== undefined) body.eventTypeDTO = { typeId: patch.eventType.typeId, typeKey: patch.eventType.typeKey };
+    if (patch.privacy !== undefined) {
+      const rule = ACTIVITY_PRIVACY[patch.privacy] as (typeof ACTIVITY_PRIVACY)[ActivityPrivacy] | undefined;
+      if (!rule) throw new InputError(`privacy must be one of ${Object.keys(ACTIVITY_PRIVACY).join(', ')}`);
+      body.accessControlRuleDTO = { ...rule };
+    }
     // Only the changed summary fields: sending the full summaryDTO back is rejected (GPS pair).
     const summary: Record<string, number> = {};
     if (patch.rpe !== undefined) {
@@ -244,6 +263,15 @@ export class GarminClient {
     }
     if (Object.keys(summary).length > 0) body.summaryDTO = summary;
     await this.http.request('PUT', `/activity-service/activity/${body.activityId as number}`, { json: body });
+  }
+
+  /**
+   * Replaces every exercise set of a strength activity with `sets` (Garmin's `exerciseSets`
+   * items, rest sets included). Path and body mirror the read; not confirmed by a recording yet (E8-30).
+   */
+  async updateActivityExerciseSets(id: number, sets: readonly Record<string, unknown>[]): Promise<void> {
+    const activityId = positive(id);
+    await this.http.request('PUT', `/activity-service/activity/${activityId}/exerciseSets`, { json: { activityId, exerciseSets: sets } });
   }
 
   async deleteActivity(id: number): Promise<unknown> {

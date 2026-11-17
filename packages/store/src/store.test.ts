@@ -88,6 +88,8 @@ describe('Store', () => {
     store.applyActivityEdit({ activityId: 1, activityName: 'Tempo', description: 'good', activityTypeDTO: { typeKey: 'trail_running' } }, T + 5);
     expect(store.getActivity(1)).toMatchObject({ name: 'Tempo', type: 'trail_running', fetched_at: T + 5 });
     expect(store.getActivityDetail(1, 'summary')?.raw).toMatchObject({ description: 'good' });
+    store.applyActivityEdit({ activityId: 1, activityName: 'Tempo', accessControlRuleDTO: { typeId: 2, typeKey: 'private' } }, T + 6);
+    expect(store.getActivity(1)?.raw.privacy).toEqual({ typeId: 2, typeKey: 'private' });
   });
 
   it('stores daily rows with extracted columns', () => {

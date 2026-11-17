@@ -5,6 +5,7 @@ export * from './body.js';
 export * from './calendar.js';
 export * from './climbs.js';
 export * from './energy.js';
+export * from './exercise-sets.js';
 export * from './fit.js';
 export * from './power-curve.js';
 export * from './format.js';
