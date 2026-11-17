@@ -91,7 +91,7 @@ Measured on a real account after a 90-day sync (433 requests in about an hour): 
 | `get_readiness` | morning GO / MODIFY / REST from HRV, resting HR, sleep hours and load, with Garmin's Training Readiness, Body Battery, stress and sleep score shown, not counted; overridable `rules`, every signal with value, reference and rating |
 | `get_thresholds`, `set_threshold` | threshold history per date (LTHR per sport, LT1, HRmax, FTP, VO2max...; Garmin profile changes recorded automatically), heart rate and power zones per sport from the Garmin profile, and recording a test result, locally only |
 
-`delete_activity`, `delete_workout`, `delete_weigh_in` and overwriting a saved workout (`create_workout` with `workout_id`) are only available with `GARMIN_ENABLE_DESTRUCTIVE=true`.
+`delete_activity`, `delete_workout`, `delete_weigh_in`, overwriting a saved workout (`create_workout` with `workout_id`) and replacing the strength sets of an activity (`update_activity` with `exercise_sets`) are only available with `GARMIN_ENABLE_DESTRUCTIVE=true`.
 
 Resources: `garmin://profile`, `garmin://gear`, `garmin://devices`, `garmin://activity-types`, `garmin://sync-status`, `garmin://today` (today's readiness decision, last night in one line and the workouts planned for today, from the local cache without downloading), and the templates `garmin://activity/{id}` and `garmin://workout/{id}` with id completion. Prompts: `weekly_review`, `plan_next_week`, `sleep_report` (a range of nights, then the worst one hour by hour), `activity_review` (one activity, then the sessions similar to it) and `race_check` (the next race, form and race predictions). Resources and prompts are not part of the tool list, so they add nothing to its context budget.
 
@@ -168,7 +168,7 @@ Precedence: CLI flag > environment > `<data dir>/config.json` > default. `~`, `$
 | `GARMIN_SSO_STRATEGY` | `auto` | `auto` (browser if installed, else terminal), `browser`, `curl`, `fetch`, `import` |
 | `GARMIN_BROWSER_PATH` | detected | Chrome/Edge/Brave/Chromium used for the sign-in window |
 | `GARMIN_ENABLED_TOOLS`, `GARMIN_DISABLED_TOOLS` | | comma-separated allow/deny lists |
-| `GARMIN_ENABLE_DESTRUCTIVE` | `false` | delete tools and workout overwrite |
+| `GARMIN_ENABLE_DESTRUCTIVE` | `false` | delete tools, workout overwrite and strength set replacement |
 | `GARMIN_AUTO_FETCH` | `true` | read tools download missing data themselves; `false`: only explicit syncs |
 | `GARMIN_AUTO_LOGIN` | `true` | the server opens Garmin's sign-in page in your browser when nobody is signed in (stdio only); `false`: sign in with `garmin login` |
 | `GARMIN_REDACT` | `true` | `get_activity` `full` leaves out name, profile/photo URLs, device and sensor serials and GPS; `false`: raw as sent |

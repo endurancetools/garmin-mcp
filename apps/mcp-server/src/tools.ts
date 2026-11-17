@@ -188,7 +188,6 @@ export const TOOLS: ToolDef[] = [
     description:
       'Change an activity in Garmin Connect: name, type, event_type (e.g. race), description (notes), rpe, feel, privacy, ' +
       'or the gear used: add_gear puts shoes or a bike on it, remove_gear takes one off (swap: both in one call). ' +
-      'exercise_sets replaces all strength sets (old ones returned); show them to the user and call after they agree. ' +
       'Without id it adds a manual activity (type, start, duration_min; optional distance_km, name, description, rpe, feel, privacy, default private): ' +
       'show the user these values and call after they agree. ' +
       'Only call when the user asked for the change. Returns the activity after the edit.',
@@ -203,8 +202,6 @@ export const TOOLS: ToolDef[] = [
       add_gear: z.string().optional().describe('Gear name (or part of it) or uuid from get_gear'),
       remove_gear: z.string().optional().describe('Gear name or uuid from get_gear'),
       privacy: z.enum(['public', 'followers', 'private']).optional(),
-      exercise_sets: z.array(exerciseSetSchema).optional(),
-      keep_timing: z.boolean().optional().describe('Keep recorded set times and rests; one entry per set'),
       start: z.string().optional().describe('New activity: local start, YYYY-MM-DDTHH:MM'),
       duration_min: z.number().optional(),
       distance_km: z.number().optional(),
@@ -212,6 +209,15 @@ export const TOOLS: ToolDef[] = [
     output: updateActivityOutput,
     // Without an id every call adds another activity, so the tool is not idempotent.
     annotations: WRITE,
+    // Replacing the sets drops the ones the watch recorded, so it sits behind the same switch as the deletes.
+    destructiveOption: {
+      input: {
+        exercise_sets: z.array(exerciseSetSchema).optional(),
+        keep_timing: z.boolean().optional().describe('Keep recorded set times and rests; one entry per set'),
+      },
+      description: 'exercise_sets replaces all strength sets (old ones returned); show them to the user and call after they agree.',
+      disabledError: 'Replacing strength sets (exercise_sets) is turned off; it needs GARMIN_ENABLE_DESTRUCTIVE=true.',
+    },
     run: (s, { id: activityId, ...patch }) => (activityId === undefined ? s.addActivity(patch) : s.updateActivity(activityId, patch)),
   }),
   tool({

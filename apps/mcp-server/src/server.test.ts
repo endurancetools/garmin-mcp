@@ -104,14 +104,43 @@ describe('MCP server', () => {
     expect(on?.description).toContain('overwrites that saved workout');
   });
 
+  it('lets update_activity replace strength sets only when destructive tools are enabled', async () => {
+    const sets = [{ exercise: { category: 'BENCH_PRESS', name: 'BARBELL_BENCH_PRESS' }, reps: 8, weight_kg: 60 }];
+    const off = await connect(runtime());
+    const tool = (await off.listTools()).tools.find((t) => t.name === 'update_activity');
+    expect(Object.keys(tool?.inputSchema.properties ?? {})).not.toContain('exercise_sets');
+    expect(Object.keys(tool?.inputSchema.properties ?? {})).not.toContain('keep_timing');
+    expect(tool?.description).not.toContain('exercise_sets');
+    expect(tool?.annotations?.destructiveHint).toBe(false);
+    activityWrites.length = 0;
+    for (const args of [{ id: 21_001, exercise_sets: sets }, { id: 21_001, keep_timing: true }]) {
+      const res = await off.callTool({ name: 'update_activity', arguments: args });
+      expect(res.isError).toBe(true);
+      expect(JSON.stringify(res.content)).toContain('Replacing strength sets (exercise_sets) is turned off; it needs GARMIN_ENABLE_DESTRUCTIVE=true.');
+    }
+    expect(activityWrites).toEqual([]);
+    const client = await connect(runtime({ enableDestructive: true }));
+    const on = (await client.listTools()).tools.find((t) => t.name === 'update_activity');
+    expect(Object.keys(on?.inputSchema.properties ?? {})).toEqual(expect.arrayContaining(['exercise_sets', 'keep_timing', 'privacy']));
+    expect(on?.annotations?.destructiveHint).toBe(true);
+    expect(on?.description).toContain('exercise_sets replaces all strength sets (old ones returned)');
+    const res = await client.callTool({ name: 'update_activity', arguments: { id: 21_001, exercise_sets: sets, keep_timing: true } });
+    expect(res.isError).toBeFalsy();
+    expect(activityWrites).toEqual([{ method: 'updateActivity', args: [21_001, { exercise_sets: sets, keep_timing: true }] }]);
+  });
+
   it('update_activity edits with an id and adds an activity without one', async () => {
     const client = await connect(runtime());
     activityWrites.length = 0;
     await client.callTool({ name: 'update_activity', arguments: { id: 21_001, name: 'Tempo' } });
+    // Everything but the strength sets works without GARMIN_ENABLE_DESTRUCTIVE.
+    const edit = { privacy: 'private', rpe: 6, feel: 75, event_type: 'race', description: 'Windy', add_gear: 'Pegasus', remove_gear: 'Vomero' };
+    expect((await client.callTool({ name: 'update_activity', arguments: { id: 21_002, ...edit } })).isError).toBeFalsy();
     const added = await client.callTool({ name: 'update_activity', arguments: { type: 'yoga', start: '2026-10-07T18:30', duration_min: 45 } });
     expect(added.structuredContent).toMatchObject({ data: { created: true } });
     expect(activityWrites).toEqual([
       { method: 'updateActivity', args: [21_001, { name: 'Tempo' }] },
+      { method: 'updateActivity', args: [21_002, edit] },
       { method: 'addActivity', args: [{ type: 'yoga', start: '2026-10-07T18:30', duration_min: 45 }] },
     ]);
   });
@@ -153,11 +182,11 @@ describe('MCP server', () => {
     const overwrite = all.find((t) => t.name === 'create_workout')?.inputSchema;
     // 2020-12 is MCP's default dialect, so no input schema spends context on naming it.
     expect(all.filter((t) => '$schema' in t.inputSchema)).toEqual([]);
-    expect(context(tools)).toBeLessThanOrEqual(39_961);
+    expect(context(tools)).toBeLessThanOrEqual(39_386);
     expect(size(create)).toBeLessThanOrEqual(11_500);
     expect(context(all)).toBeLessThanOrEqual(41_372);
-    expect(size(tools)).toBeLessThanOrEqual(89_199);
-    expect(size(all)).toBeLessThanOrEqual(92_751);
+    expect(size(tools)).toBeLessThanOrEqual(88_624);
+    expect(size(all)).toBeLessThanOrEqual(92_750);
     // Without destructive tools create_workout is a strict object (a stray workout_id fails loudly).
     const { workout_id: _overwrite, ...properties } = overwrite?.properties ?? {};
     expect(create).toEqual({ ...overwrite, properties, additionalProperties: false });

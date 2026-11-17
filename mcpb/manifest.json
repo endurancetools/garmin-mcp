@@ -55,7 +55,7 @@
     "enable_destructive": {
       "type": "boolean",
       "title": "Enable delete tools",
-      "description": "Register delete_activity, delete_workout and delete_weigh_in. Deletions cannot be undone.",
+      "description": "Register delete_activity, delete_workout and delete_weigh_in, and let create_workout overwrite a saved workout and update_activity replace the strength sets of an activity. Deletions cannot be undone.",
       "required": false,
       "default": false
     }
