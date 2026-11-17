@@ -141,17 +141,17 @@ export const TOOLS: ToolDef[] = [
       'Use for "what did I do last week", finding an activity id, or comparing sessions. For one activity in depth use get_activity; ' +
       'for weekly/monthly totals use get_period_summary. Example: {"from":"2026-10-01","type":"running","limit":10}.',
     input: {
-      from: date.optional(),
-      to: date.optional(),
+      from: date.optional().describe('First day, inclusive; default no lower bound'),
+      to: date.optional().describe('Last day, inclusive; default today'),
       type: z.string().optional().describe('Garmin type key, e.g. running, trail_running, cycling, lap_swimming, strength_training; partial match. All keys: resource garmin://activity-types'),
       event_type: z.string().optional().describe('Only activities tagged with this event type, e.g. race'),
       name: z.string().optional().describe('Part of the activity name, any case, e.g. a route'),
-      min_duration_min: z.number().positive().optional(),
-      max_duration_min: z.number().positive().optional(),
+      min_duration_min: z.number().positive().optional().describe('Only activities at least this many minutes long'),
+      max_duration_min: z.number().positive().optional().describe('Only activities at most this many minutes long'),
       pace: z.string().optional().describe('Average pace range per km, e.g. "4:45-5:30"'),
-      limit: z.number().int().min(1).max(100).default(20),
+      limit: z.number().int().min(1).max(100).default(20).describe('Activities per page'),
       cursor: z.string().optional().describe('next_cursor from the previous page'),
-      sort: z.enum(['desc', 'asc']).default('desc'),
+      sort: z.enum(['desc', 'asc']).default('desc').describe('By start time: desc newest first, asc oldest first'),
     },
     output: activitiesOutput,
     annotations: READ,
@@ -188,13 +188,13 @@ export const TOOLS: ToolDef[] = [
       'feel (0 very weak, 25 weak, 50 normal, 75 strong, 100 very strong), or the gear used: add_gear puts shoes or a bike on it, remove_gear takes one off (swap: both in one call). ' +
       'Only call when the user asked for the change. Returns the activity after the edit.',
     input: {
-      id,
-      name: z.string().max(200).optional(),
+      id: id.describe('Activity id from get_activities'),
+      name: z.string().max(200).optional().describe('New activity name'),
       type: z.string().optional().describe('Garmin type key from garmin://activity-types, e.g. trail_running'),
       event_type: z.string().optional().describe('race, training, recreation, special_event, fitness, touring, transportation, geocaching or uncategorized'),
-      description: z.string().max(2000).optional(),
-      rpe: z.number().min(0).max(10).optional(),
-      feel: z.union([z.literal(0), z.literal(25), z.literal(50), z.literal(75), z.literal(100)]).optional(),
+      description: z.string().max(2000).optional().describe('Notes; replaces the current ones'),
+      rpe: z.number().min(0).max(10).optional().describe('Perceived effort 0-10'),
+      feel: z.union([z.literal(0), z.literal(25), z.literal(50), z.literal(75), z.literal(100)]).optional().describe('0 very weak ... 100 very strong'),
       add_gear: z.string().optional().describe('Gear name (or part of it) or uuid from get_gear'),
       remove_gear: z.string().optional().describe('Gear name or uuid from get_gear'),
     },
@@ -209,8 +209,8 @@ export const TOOLS: ToolDef[] = [
       'Save an activity as a file on this machine and return its path: fit (original device file), gpx, tcx, kml or csv (laps). ' +
       'Use when the user wants the file itself, e.g. to import elsewhere.',
     input: {
-      id,
-      format: z.enum(['fit', 'gpx', 'tcx', 'kml', 'csv']).default('fit'),
+      id: id.describe('Activity id from get_activities'),
+      format: z.enum(['fit', 'gpx', 'tcx', 'kml', 'csv']).default('fit').describe('fit: original device file; gpx, tcx, kml: track; csv: laps'),
       output_dir: z
         .string()
         .optional()
@@ -245,8 +245,14 @@ export const TOOLS: ToolDef[] = [
     title: 'Get sleep',
     description:
       'Sleep for one night ({"date":"2026-10-08"}, the morning date) with stages, score, SpO2, respiration and overnight HRV; ' +
-      'or for a range ({"from","to"}) a per-night table with averages and trends.',
-    input: { date: date.optional(), from: date.optional(), to: date.optional() },
+      'or for a range ({"from","to"}, inclusive; no arguments: the last 7 nights) a per-night table with averages and trends. ' +
+      'Use it for sleep stages and the detail of particular nights; for sleep hours next to other daily metrics, or months by week, use query_health. ' +
+      'A night without sleep data comes back as sleep null.',
+    input: {
+      date: date.optional().describe('One night, by the date of the morning; takes precedence over from/to'),
+      from: date.optional().describe('Range start; default 6 days before `to`'),
+      to: date.optional().describe('Range end; default today'),
+    },
     output: sleepOutput,
     annotations: READ,
     run: (s, a) => s.getSleep(a),
@@ -258,8 +264,13 @@ export const TOOLS: ToolDef[] = [
       'Fitness and fatigue: VO2max (running/cycling) with trend, training readiness, remaining recovery time, Garmin training status (productive, maintaining, ...), ' +
       "Garmin acute/chronic load and load focus (aerobic low/high, anaerobic vs. targets), and `garmin_load_model`: CTL/ATL/TSB from Garmin's daily training load (EPOC); the own TSS model (power, pace, HR) is get_load. " +
       '`metrics` holds race predictions (5k to marathon), endurance and hill score, fitness age, personal records and heat/altitude acclimation ' +
-      'as of the newest training sync on or before `to`. Set include_series for the daily load curve.',
-    input: { from: date.optional().describe('Default: 28 days before `to`'), to: date.optional(), include_series: z.boolean().default(false) },
+      'as of the newest training sync on or before `to`. Set include_series for the daily load curve. ' +
+      'Use it for "am I improving", VO2max, race predictions or Garmin\'s status; for a go/no-go today use get_readiness, for a week or month in numbers get_period_summary.',
+    input: {
+      from: date.optional().describe('Default: 28 days before `to`'),
+      to: date.optional().describe('Day the status is read on; default today'),
+      include_series: z.boolean().default(false).describe('true: add the daily Garmin load and CTL/ATL/TSB from `from` to `to`'),
+    },
     output: trainingStatusOutput,
     annotations: READ,
     run: (s, a) => s.getTrainingStatus(a),
@@ -267,8 +278,14 @@ export const TOOLS: ToolDef[] = [
   tool({
     name: 'get_body_composition',
     title: 'Get body composition',
-    description: 'Weigh-ins (kg, body fat %, muscle mass, BMI) in a range with change and trend. Default range: last 90 days.',
-    input: { from: date.optional(), to: date.optional() },
+    description:
+      'Weigh-ins (kg, body fat %, muscle mass, BMI) in a range, each with its time, plus change over the range and trend. ' +
+      'Use it for weight and body composition questions; query_health and get_period_summary carry no weight. ' +
+      'Days without a weigh-in are simply absent; an empty range returns no weigh-ins, not an error.',
+    input: {
+      from: date.optional().describe('First day, inclusive; default 89 days before `to`'),
+      to: date.optional().describe('Last day, inclusive; default today'),
+    },
     output: bodyCompositionOutput,
     annotations: READ,
     run: (s, a) => s.getBodyComposition(a.from, a.to),
@@ -303,8 +320,8 @@ export const TOOLS: ToolDef[] = [
       '(default: today and the next 60 days); any range works, past or future, and months not in the cache yet are downloaded on the way. ' +
       'Example: {"from":"2027-03-01","to":"2027-05-31"} for races next spring.',
     input: {
-      limit: z.number().int().min(1).max(200).default(50),
-      sport: z.string().optional().describe('e.g. running, cycling, strength_training'),
+      limit: z.number().int().min(1).max(200).default(50).describe('Most saved workouts listed in `workouts`'),
+      sport: z.string().optional().describe('Only library workouts of this sport, e.g. running, cycling, strength_training'),
       from: date.optional().describe('Calendar start; default today (or 60 days before `to` when `to` is in the past)'),
       to: date.optional().describe('Calendar end; default 60 days after `from`'),
     },
@@ -318,7 +335,8 @@ export const TOOLS: ToolDef[] = [
     description:
       'Steps of one saved workout from the Garmin library in readable form: name, sport, description and one line per step (warm-up, repeats, ' +
       'duration or distance, target in pace/HR/power/cadence), plus estimated duration and distance. ' +
-      'Use it to show what a planned session contains, or before changing it with create_workout.',
+      'Use it to show what a planned session contains, or before changing it with create_workout; to find workouts or what is on the calendar use list_workouts. ' +
+      'An id that no longer exists in Garmin Connect returns a NOT_FOUND error.',
     input: { id: id.describe('Workout id from list_workouts or workout_id from get_activity') },
     output: workoutOutput,
     annotations: READ,
@@ -376,9 +394,9 @@ export const TOOLS: ToolDef[] = [
     name: 'get_gear',
     title: 'Get gear',
     description:
-      'Shoes, bikes and other gear on the Garmin account: uuid, name, type, status (active or retired), total distance and activity count, ' +
-      'the distance limit set in Garmin, in use since, retired date and notes. Use it for "how many km on my shoes" or "which shoes to replace"; ' +
-      'name or uuid is what update_activity takes as add_gear/remove_gear.',
+      'List the shoes, bikes and other gear on the Garmin account, active first: uuid, name, type, status (active or retired), total distance and activity count, ' +
+      'the distance limit set in Garmin, in use since, retired date and notes. Use it for "how many km on my shoes" or "which shoes to replace", ' +
+      'not for watches and sensors (get_devices); name or uuid is what update_activity takes as add_gear/remove_gear. Returns every item, no paging; none recorded gives an empty list.',
     input: {
       include_activities: z.boolean().default(false).describe('true: add the last 10 activities per item (date, name, distance) to see what the gear was used for'),
     },
@@ -389,7 +407,9 @@ export const TOOLS: ToolDef[] = [
   tool({
     name: 'get_devices',
     title: 'Get devices',
-    description: 'Garmin devices on the account with model, firmware, last sync time and settings (time/date format, units, tones, move and heart-rate alerts, pulse ox during sleep, number of alarms). Comes from the reference sync.',
+    description:
+      'Garmin devices on the account with model, firmware, last sync time and settings (time/date format, units, tones, move and heart-rate alerts, pulse ox during sleep, number of alarms). ' +
+      'Use it for "is my watch up to date" or "when did it last sync"; shoes and bikes are get_gear. Read from the cache, refreshed from Garmin at most hourly; no devices gives an empty list.',
     input: {},
     output: devicesOutput,
     annotations: READ,
@@ -400,23 +420,27 @@ export const TOOLS: ToolDef[] = [
     name: 'get_load',
     title: 'Get training load (own model)',
     description:
-      "Own transparent load model (TSS per activity from power, else pace, else heart rate, else session RPE, with date-dependent thresholds), not Garmin's EPOC load; for Garmin's status and CTL/ATL/TSB from Garmin's load (`garmin_load_model`) use get_training_status. " +
+      'Training load from the server\'s own transparent model: TSS per activity from power, else pace, else heart rate, else session RPE, with the thresholds in effect on each date. ' +
+      'Use it for fitness, fatigue and form trends, ramp rate, weekly volume and intensity distribution (time below LT1, % in Z1, polarisation). ' +
+      "Not Garmin's EPOC load: Garmin's status and CTL/ATL/TSB from Garmin's load are get_training_status, a go/no-go for today get_readiness. " +
       'Returns CTL/ATL/TSB, ACWR, monotony and strain on `to` (`latest`), warning `flags`, ISO weeks per sport (sessions, hours, km, TSS, hrTSS, Garmin load, hours in Z1-2/Z3/Z4-5), ' +
-      'the 3-zone intensity split against LT1/LTHR of the last 28 days (Z1/Z2/Z3 minutes and %; answers time below LT1, % in Z1, polarisation) and the thresholds used. ' +
-      'include_series adds the daily curve, include_activities TSS/IF/load_source/EF (runs with power also ef_power), cadence and running dynamics per activity, include_efficiency the monthly EF trend, ' +
-      'both with aerobic decoupling (% EF drop from first to second half, `decoupling_basis` pa_hr or pw_hr; runs with power also decoupling_pw_pct) of sessions of 60+ min below LTHR with downloaded laps, ' +
-      'include_dynamics monthly cadence, GCT, VO, VR, stride of road runs, also at a reference pace (`_at_ref`), ' +
-      'include_by_sport CTL/ATL/TSB/ACWR per sport group (`by_sport`, plus run_ctl… columns in the series) next to the total, which stays the default. ' +
+      'the 3-zone split against LT1/LTHR of the last 28 days and the thresholds used; the include_* options add detail. ' +
       'Example: {"from":"2026-09-01","to":"2026-09-30","include_activities":true}.',
     input: {
       from: date.optional().describe('Default: 27 days before `to`'),
       to: date.optional().describe('Default: today'),
       source: z.enum(['auto', 'hrtss', 'garmin_load']).default('auto').describe('auto: power, pace, HR, then RPE per activity; hrtss: HR only; garmin_load: Garmin activity training load'),
-      include_series: z.boolean().default(false),
-      include_activities: z.boolean().default(false),
-      include_efficiency: z.boolean().default(false),
-      include_dynamics: z.boolean().default(false),
-      include_by_sport: z.boolean().default(false),
+      include_series: z.boolean().default(false).describe('Add the daily TSS, CTL/ATL/TSB, ACWR, monotony and strain'),
+      include_activities: z
+        .boolean()
+        .default(false)
+        .describe(
+          'Add per activity TSS, IF, load_source, EF (runs with power also ef_power), cadence, running dynamics and, for sessions of 60+ min below LTHR with downloaded laps, ' +
+            'aerobic decoupling (% EF drop from first to second half; decoupling_basis pa_hr or pw_hr, runs with power also decoupling_pw_pct)',
+        ),
+      include_efficiency: z.boolean().default(false).describe('Add the monthly EF trend with decoupling as in include_activities'),
+      include_dynamics: z.boolean().default(false).describe('Add monthly cadence, GCT, VO, VR and stride of road runs, also at a reference pace (`_at_ref`)'),
+      include_by_sport: z.boolean().default(false).describe('Add CTL/ATL/TSB/ACWR per sport group (`by_sport`, plus run_ctl… columns in the series); the total stays the default'),
       flags: z.looseObject({}).optional().describe(`Own flag thresholds, any of (default): ${defaults(DEFAULT_LOAD_FLAGS)}`),
     },
     output: loadOutput,
@@ -429,16 +453,17 @@ export const TOOLS: ToolDef[] = [
     description:
       'Sessions side by side: pace, GAP, HR, power, EF, decoupling, IF, TSS, % Z4-5, cadence and running dynamics, temperature, dew point. `ids` compares those activities; ' +
       '`similar_to` adds stored sessions like it (same type, duration and pace/GAP within tolerance; same_route: start, end and distance; easy_only: <5 % Z4-5), newest first with `match`. ' +
+      'Pass exactly one of `ids` or `similar_to`, otherwise it returns an error; the similar_to filters combine. For one activity in depth use get_activity. ' +
       'E.g. today vs usual easy runs, progress on a route: {"similar_to":23011268235,"same_route":true}.',
     input: {
-      ids: z.array(id).min(2).max(10).optional(),
-      similar_to: id.optional(),
+      ids: z.array(id).min(2).max(10).optional().describe('2-10 activity ids to put side by side'),
+      similar_to: id.optional().describe('Activity id to find stored sessions like'),
       limit: z.number().int().min(1).max(20).default(5).describe('similar_to: most similar sessions returned'),
       from: date.optional().describe('similar_to: earliest date searched (default: 365 days before it)'),
-      duration_pct: z.number().positive().max(100).default(20),
-      pace_s_per_km: z.number().positive().default(20),
-      same_route: z.boolean().default(false),
-      easy_only: z.boolean().default(false),
+      duration_pct: z.number().positive().max(100).default(20).describe('similar_to: duration within ± this % of it'),
+      pace_s_per_km: z.number().positive().default(20).describe('similar_to: pace or GAP within ± this many s/km'),
+      same_route: z.boolean().default(false).describe('similar_to: same start, end and distance'),
+      easy_only: z.boolean().default(false).describe('similar_to: only sessions under 5 % in Z4-5'),
     },
     output: compareOutput,
     annotations: READ,
@@ -490,9 +515,9 @@ export const TOOLS: ToolDef[] = [
     input: {
       date: date.describe('Day of the test, not in the future'),
       param: z.enum(THRESHOLD_PARAMS).describe('Heart rates in bpm, ftp_w/run_ftp_w in W, css_s_per_100m in s per 100 m, run_threshold_pace_s_per_km in s per km'),
-      value: z.number().positive(),
-      source: z.enum(SET_THRESHOLD_SOURCES).default('test'),
-      note: z.string().max(200).optional(),
+      value: z.number().positive().describe('In the unit of `param`'),
+      source: z.enum(SET_THRESHOLD_SOURCES).default('test').describe('test: measured in a field or lab test; manual: a value the user sets without a test'),
+      note: z.string().max(200).optional().describe('e.g. the test protocol'),
     },
     output: setThresholdOutput,
     annotations: LOCAL_WRITE,
