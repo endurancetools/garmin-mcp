@@ -623,7 +623,8 @@ export type DeviceSettings = z.infer<typeof deviceSettingsSchema>;
 
 /*
  * Paths of every stage 8 endpoint but the phased training plan
- * (`getTrainingPlan`) are confirmed by a recording (E8-2): each answered 200.
+ * (`getTrainingPlan`) and the virtual challenges (`getVirtualChallengesInProgress`)
+ * are confirmed by a recording (E8-2): each answered 200.
  * Fields below are the ones the recordings show; schemas stay loose and
  * nullish, so a response of another shape is logged and passed through, never
  * rejected. Recorded empty, so with item shapes still unknown: goals, daily
@@ -795,3 +796,5 @@ export const badgeChallengesSchema = z.array(
     userJoined: bool,
   }),
 );
+/** Virtual challenges in progress. Not recorded yet (E8-28c): items are left untyped. */
+export const virtualChallengesSchema = z.array(z.looseObject({}));

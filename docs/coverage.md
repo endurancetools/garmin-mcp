@@ -161,8 +161,8 @@ Totals for the 111 reads: 75 full, 14 partial, 22 missing.
 | Menstrual data for a day | — | missing | |
 | Menstrual calendar | — | missing | |
 | Earned badges | `garmin://challenges` → `badges` | full | how many are earned and the 10 latest: name, date, points, how many times; downloaded when read (auto fetch) and kept for an hour |
-| Ad-hoc challenges | — | missing | challenges between connections; no recording of the response yet |
-| Available badge challenges | — | missing | challenges you could still join; no recording of the response yet |
+| Ad-hoc challenges | — | missing | not planned: challenges between connections are a contest with friends, not training data |
+| Available badge challenges | — | missing | not planned: a catalogue of challenges to sign up for, not training data |
 | Badge challenges | `garmin://challenges` → `badges` | partial | a completed challenge shows only as the badge it earned; no list of completed challenges |
 | Non-completed badge challenges | `garmin://challenges` → `challenges` | full | joined challenges in progress: name, start and end date, progress in %, value and target in Garmin's unit (`unit_id`) |
 | Virtual challenges in progress | — | missing | no recording of the response yet |

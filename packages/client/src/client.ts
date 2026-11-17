@@ -608,7 +608,7 @@ export class GarminClient {
   }
 
   // ------------------------------------------------------------ training plans, goals, courses, badges
-  // Paths below are confirmed by a recording (E8-2), except the phased plan.
+  // Paths below are confirmed by a recording (E8-2), except the phased plan and the virtual challenges.
 
   /** Training plans of the account (Garmin Coach, adaptive, phased). */
   async listTrainingPlans(): Promise<unknown> {
@@ -682,6 +682,17 @@ export class GarminClient {
     return this.http.request('GET', '/badgechallenge-service/badgeChallenge/non-completed', {
       query: { start: 1, limit: 100 },
       schema: s.badgeChallengesSchema,
+    });
+  }
+
+  /**
+   * Virtual challenges joined and in progress. Path and query follow the known shape of the
+   * Garmin Connect API; not confirmed by a recording yet (E8-28c), so the schema has no fields.
+   */
+  async getVirtualChallengesInProgress(): Promise<unknown> {
+    return this.http.request('GET', '/badgechallenge-service/virtualChallenge/inProgress', {
+      query: { start: 1, limit: 100 },
+      schema: s.virtualChallengesSchema,
     });
   }
 

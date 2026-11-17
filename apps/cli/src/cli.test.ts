@@ -289,10 +289,10 @@ describe('anonymize', () => {
         'activity-typed-splits', 'activity-split-summaries', 'training-plans', 'training-plan', 'adaptive-plan',
         'lactate-threshold-range', 'lactate-threshold-speed-range', 'cycling-ftp', 'hydration-day', 'blood-pressure-range',
         'daily-events', 'goals', 'courses', 'course', 'device-solar', 'nutrition-day', 'menstrual-day', 'earned-badges',
-        'badge-challenges',
+        'badge-challenges', 'virtual-challenges',
       ]),
     );
-    expect(Object.keys(RECORDABLE)).toHaveLength(58);
+    expect(Object.keys(RECORDABLE)).toHaveLength(59);
     // Every stage 8 endpoint is recorded with all text hidden.
     expect(Object.keys(RECORDABLE).slice(-UNKNOWN_SHAPE.size)).toEqual([...UNKNOWN_SHAPE]);
   });
@@ -311,6 +311,7 @@ describe('anonymize', () => {
     const listed = lines.join('').trim().split('\n');
     expect(listed).toEqual(Object.keys(RECORDABLE));
     expect(listed).toContain('earned-badges');
+    expect(listed).toContain('virtual-challenges');
   });
 });
 

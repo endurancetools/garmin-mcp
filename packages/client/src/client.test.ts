@@ -105,7 +105,7 @@ describe('GarminClient', () => {
     expect(results.every((r) => r !== undefined && r !== null)).toBe(true);
   });
 
-  // Recorded in E8-2 (all but the phased plan); this pins what the client sends.
+  // Recorded in E8-2 (all but the phased plan and the virtual challenges); this pins what the client sends.
   it.each<[string, (c: GarminClient) => Promise<unknown>, string, unknown]>([
     ['typed splits', (c) => c.getActivityTypedSplits(20000000002), '/activity-service/activity/20000000002/typedsplits', {}],
     ['split summaries', (c) => c.getActivitySplitSummaries(20000000002), '/activity-service/activity/20000000002/split_summaries', {}],
@@ -148,6 +148,12 @@ describe('GarminClient', () => {
     ['menstrual day', (c) => c.getMenstrualDay('2026-10-07'), '/periodichealth-service/menstrualcycle/dayview/2026-10-07', {}],
     ['earned badges', (c) => c.getEarnedBadges(), '/badge-service/badge/earned', []],
     ['badge challenges', (c) => c.getBadgeChallengesInProgress(), '/badgechallenge-service/badgeChallenge/non-completed?start=1&limit=100', []],
+    [
+      'virtual challenges',
+      (c) => c.getVirtualChallengesInProgress(),
+      '/badgechallenge-service/virtualChallenge/inProgress?start=1&limit=100',
+      [],
+    ],
   ])('requests %s from the expected path', async (_name, call, expected, body) => {
     const seen: string[] = [];
     server.use(

@@ -64,6 +64,8 @@ export const RECORDABLE: Record<string, (c: GarminClient, a: { date: string; id?
   'menstrual-day': (c, a) => c.getMenstrualDay(a.date),
   'earned-badges': (c) => c.getEarnedBadges(),
   'badge-challenges': (c) => c.getBadgeChallengesInProgress(),
+  // Path not confirmed by a recording yet (E8-28c).
+  'virtual-challenges': (c) => c.getVirtualChallengesInProgress(),
 };
 
 /**
@@ -83,7 +85,7 @@ export const UNKNOWN_SHAPE: ReadonlySet<string> = new Set([
   'activity-typed-splits', 'activity-split-summaries', 'training-plans', 'training-plan', 'adaptive-plan',
   'lactate-threshold-range', 'lactate-threshold-speed-range', 'cycling-ftp', 'hydration-day', 'blood-pressure-range',
   'daily-events', 'goals', 'courses', 'course', 'device-solar', 'nutrition-day', 'menstrual-day', 'earned-badges',
-  'badge-challenges',
+  'badge-challenges', 'virtual-challenges',
 ]);
 
 function need<T>(v: T | undefined, flag: string): T {
