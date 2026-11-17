@@ -1,0 +1,22 @@
+{
+  "$schema": "../../node_modules/oxlint/configuration_schema.json",
+  "extends": [
+    "../../.oxlintrc.json"
+  ],
+  "rules": {
+    "no-restricted-imports": [
+      "error",
+      {
+        "patterns": [
+          {
+            "group": [
+              "garmin-mcp-*",
+              "garmin-mcp-*/*"
+            ],
+            "message": "Layer violation: garmin-mcp-fit imports no other garmin-mcp package."
+          }
+        ]
+      }
+    ]
+  }
+}

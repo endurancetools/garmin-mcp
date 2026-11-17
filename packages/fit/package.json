@@ -1,0 +1,49 @@
+{
+  "name": "garmin-mcp-fit",
+  "version": "0.6.3",
+  "description": "FIT activity file reader behind Garmin MCP: 1 Hz records (power, heart rate, cadence, speed, elevation) and gear shifts from a Garmin activity file. Unofficial, not affiliated with Garmin.",
+  "keywords": [
+    "garmin",
+    "garmin-connect",
+    "garmin-mcp",
+    "garmin-mcp-server",
+    "garmin-connect-mcp",
+    "mcp",
+    "mcp-server",
+    "model-context-protocol",
+    "fit",
+    "fit-file",
+    "power-meter",
+    "di2",
+    "cycling"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/endurancetools/garmin-mcp.git",
+    "directory": "packages/fit"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "exports": {
+    ".": {
+      "garmin-mcp-source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "!dist/**/*.test.*",
+    "!dist/**/*.tsbuildinfo",
+    "!dist/test-utils"
+  ],
+  "dependencies": {
+    "fit-file-parser": "^6.2.7"
+  }
+}

@@ -22,6 +22,7 @@ apps/mcp-server    garmin-mcp-server     MCP adapter (@modelcontextprotocol/serv
 apps/cli           garmin-mcp-cli        login, sync, previews, analytics commands, doctor, record
 packages/analytics garmin-mcp-analytics  training analytics: threshold history, TSS from power, pace or HR, CTL/ATL/TSB, ACWR, readiness, CSV import
 packages/domain    garmin-mcp-domain     GarminService use cases, metrics (CTL/ATL/TSB, trends), workout builder, runtime wiring
+packages/fit       garmin-mcp-fit        FIT activity file reader (fit-file-parser): 1 Hz records and gear shifts; no other garmin-mcp package
 packages/store     garmin-mcp-store      SQLite (better-sqlite3, WAL), migrations, TTL rules, Syncer
 packages/client    garmin-mcp-client     typed connectapi client, zod schemas, retries, pool of 4
 packages/auth      garmin-mcp-auth       browser sign-in (DevTools Protocol), mobile SSO + MFA, DI OAuth2, refresh mutex, curl/fetch/import
@@ -38,6 +39,7 @@ flowchart TD
     cli --> domain
     server --> domain[garmin-mcp-domain]
     domain --> store[garmin-mcp-store]
+    domain -. "import() on first use" .-> fit[garmin-mcp-fit]
     store --> client[garmin-mcp-client]
     client --> auth[garmin-mcp-auth]
     auth --> config[garmin-mcp-config]
@@ -47,7 +49,7 @@ flowchart TD
     auth -. "browser (CDP), cuimp" .-> sso[(Garmin sign-in)]
 ```
 
-Imports only go downward (apps → analytics → domain → store → client → auth → config; `analytics` also imports `store` and `config` directly and is computed from the cache only, never from the Garmin client); the diagram shows the direct `dependencies` of each package (every package also depends on the ones below its direct ones). Both oxlint (`no-restricted-imports` per package) and `@nx/enforce-module-boundaries` (tags `scope:*`, `type:*`) fail the lint on a violation. The single exception is `garmin serve` importing `garmin-mcp-server`.
+Imports only go downward (apps → analytics → domain → store → client → auth → config; `analytics` also imports `store` and `config` directly and is computed from the cache only, never from the Garmin client; `fit` imports no other package and `domain` loads it with a dynamic `import()` in `packages/domain/src/fit.ts` only, so starting the server never loads the FIT parser, which `apps/mcp-server/src/lazy-fit.test.ts` checks); the diagram shows the direct `dependencies` of each package (every package also depends on the ones below its direct ones). Both oxlint (`no-restricted-imports` per package) and `@nx/enforce-module-boundaries` (tags `scope:*`, `type:*`) fail the lint on a violation. The single exception is `garmin serve` importing `garmin-mcp-server`.
 
 Checked on 2026-10-08 (oxlint 1.87, ESLint 10.12, Nx 23.3): a deliberate `import { GarminService } from 'garmin-mcp-domain'` in `packages/store/src` makes `pnpm nx lint garmin-mcp-store` exit 1. oxlint reports first (`no-restricted-imports`: "Layer violation: garmin-mcp-store may only import garmin-mcp-client, garmin-mcp-config"); `nx lint` stops there, because the two linters run in sequence. ESLint on its own reports the same import as `@nx/enforce-module-boundaries`: "Circular dependency between garmin-mcp-store and garmin-mcp-domain".
 

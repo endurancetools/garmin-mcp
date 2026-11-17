@@ -41,7 +41,7 @@ This server starts from the questions athletes ask instead, and has {{ site.data
 
 ## The packages
 
-The server is published as eight small npm packages. You only ever install two of them, the rest come along as dependencies.
+The server is published as nine small npm packages. You only ever install two of them, the rest come along as dependencies.
 
 ```mermaid
 flowchart TD
@@ -49,6 +49,7 @@ flowchart TD
     server[garmin-mcp-server<br/>MCP tools, resources, prompts] --> analytics
     analytics[garmin-mcp-analytics<br/>thresholds, load model, readiness] --> domain
     domain[garmin-mcp-domain<br/>metrics, summaries, workout builder] --> store
+    domain -. on first FIT file .-> fit[garmin-mcp-fit<br/>FIT activity files]
     store[garmin-mcp-store<br/>SQLite cache and downloads] --> client
     client[garmin-mcp-client<br/>typed Garmin Connect API] --> auth
     auth[garmin-mcp-auth<br/>sign-in and tokens] --> config
@@ -61,6 +62,7 @@ flowchart TD
 | `garmin-mcp-cli` | The `garmin` command for setup and checks: `login`, `status`, `sync`, `doctor`, `logout`, plus `activities` and `health` for a quick look from the terminal, and the analytics commands `load`, `readiness`, `thresholds` and `import-activities` (see [Training analytics](analytics.md)). |
 | `garmin-mcp-analytics` | Training analytics computed from the local cache: training thresholds with their history, its own load model (TSS from power, pace, heart rate or RPE, CTL/ATL/TSB, ACWR in `get_load`; separate from `garmin_load_model`, the same averages on Garmin's training load), the readiness of the day, and the import of a Garmin Connect CSV export. Formulas and defaults: [Training analytics](analytics.md). |
 | `garmin-mcp-domain` | Turns stored data into answers: `garmin_load_model` (CTL/ATL/TSB from Garmin's training load), trends, period summaries, readable workouts, and the workout builder with its presets. |
+| `garmin-mcp-fit` | Reads a FIT activity file into one record per second (power, heart rate, cadence, speed, elevation) and the gear shifts of electronic groupsets. Loaded only when an answer needs a FIT file, so the server starts without it. Built on [fit-file-parser](https://github.com/jimmykane/fit-parser) (MIT). |
 | `garmin-mcp-store` | The local SQLite database and the download logic: what is already stored, what is missing, how long cached items stay fresh, pacing and the daily request budget. |
 | `garmin-mcp-client` | A typed client for Garmin Connect's API with validation of every response, retries and rate limits. |
 | `garmin-mcp-auth` | Signing in (browser, terminal or imported tokens), token storage and automatic refresh. |

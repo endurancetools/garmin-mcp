@@ -1,0 +1,16 @@
+{
+  "name": "garmin-mcp-fit",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "packages/fit/src",
+  "projectType": "library",
+  "tags": [
+    "scope:fit",
+    "type:lib"
+  ],
+  "targets": {
+    "build": {},
+    "typecheck": {},
+    "lint": {},
+    "test": {}
+  }
+}

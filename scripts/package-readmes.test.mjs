@@ -33,6 +33,7 @@ describe('package-readmes', () => {
       'packages/client',
       'packages/config',
       'packages/domain',
+      'packages/fit',
       'packages/store',
     ]);
     for (const [dir, text] of readmes) expect(relativeLinks(text), dir).toEqual([]);
