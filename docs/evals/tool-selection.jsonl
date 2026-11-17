@@ -84,3 +84,5 @@
 {"prompt": "On trail run 21001, how much time did I spend walking versus running, and where did each walk start?", "expect": {"tool": "get_activity", "args_include": {"id": 21001, "detail": "splits"}}, "forbid": ["get_activities", "download_activity_file"]}
 {"prompt": "Jak zmieniało się moje tempo progowe w biegu w ostatnim roku?", "expect": {"tool": "get_thresholds", "args_include": {"history": true}}, "forbid": ["set_threshold", "get_activities", "get_training_status"]}
 {"prompt": "When did Garmin last change my cycling FTP, and what was it before?", "expect": {"tool": "get_thresholds", "args_include": {"history": true}}, "forbid": ["set_threshold", "get_activities", "get_training_status"]}
+{"prompt": "Ile budzików mam ustawionych na zegarku i ile z nich jest włączonych?", "expect": {"tool": "get_devices"}, "forbid": ["get_sleep", "query_health"]}
+{"prompt": "Do I have any alarms switched on on my watch?", "expect": {"tool": "get_devices"}, "forbid": ["get_sleep", "query_health"]}

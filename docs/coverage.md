@@ -13,7 +13,7 @@ Coverage:
 
 All reads come from the local SQLite cache. Data that garmin-mcp does not sync is not available, even if the client has a method for it.
 
-Totals for the 111 reads: 69 full, 12 partial, 30 missing.
+Totals for the 111 reads: 69 full, 13 partial, 29 missing.
 
 ## Reads
 
@@ -133,8 +133,8 @@ Totals for the 111 reads: 69 full, 12 partial, 30 missing.
 | Device last used | `get_devices` → `last_sync_utc` | full | |
 | Primary training device | `get_devices` → `primary` | full | |
 | Device settings | `get_devices` → `settings` | full | every device, not one by id; time/date format, units, tones, activity tracking alerts, alarm counts |
-| Device alarms | — | missing | part of device settings. |
-| Device solar data | — | missing | |
+| Device alarms | `get_devices` → `settings.alarms`, `settings.alarms_on` | partial | how many alarms are set and how many are on; alarm times and days are not shown until a recording with an alarm set confirms their shape |
+| Device solar data | — | missing | needs a recording of a solar watch's daily gain first; then `get_devices` can show it for devices that charge from the sun |
 | Weigh-ins over a date range | `get_body_composition` `from`, `to` | full | |
 | Weigh-ins of one day | `get_body_composition` `from` = `to` = date | full | |
 
