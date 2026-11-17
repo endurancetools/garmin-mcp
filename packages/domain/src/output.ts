@@ -55,6 +55,19 @@ const runningDynamics = {
   stride_m: num,
 };
 
+/** Numbers of a typed split and of the totals per split type. */
+const splitNumbers = {
+  duration: str,
+  distance_km: num,
+  avg_pace: str,
+  avg_speed_kmh: num,
+  avg_gap_pace: str,
+  avg_hr_bpm: num,
+  max_hr_bpm: num,
+  elevation_gain_m: num,
+  elevation_loss_m: num,
+};
+
 const activityDetail = {
   ...activityBrief,
   description: str,
@@ -98,6 +111,8 @@ const activityDetail = {
       elevation_loss_m: num,
     }),
   ),
+  typed_splits: list(z.looseObject({ type: str, start: str, ...splitNumbers, avg_grade_pct: num, max_grade_pct: num })),
+  split_summaries: list(z.looseObject({ type: str, count: num, ...splitNumbers })),
   hr_zones: list(zoneTime),
   power_zones: list(zoneTime),
   weather: obj({

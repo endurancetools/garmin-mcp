@@ -296,4 +296,18 @@ export const MIGRATIONS: readonly string[] = [
   -- Months cached before skipped plan workouts: the next read fetches them again.
   DELETE FROM meta WHERE key = 'calendar:months';
   `,
+  /* 11 */ `
+  -- Typed splits of an activity (run, walk, stand, ClimbPro climbs...) and their totals per type,
+  -- fetched with the laps on the first question that needs them.
+  CREATE TABLE activity_details_v11 (
+    activity_id INTEGER NOT NULL,
+    kind TEXT NOT NULL CHECK (kind IN ('summary', 'splits', 'hr_zones', 'details', 'weather', 'power_zones', 'exercise_sets', 'power_curve', 'typed_splits', 'split_summaries')),
+    raw TEXT NOT NULL,
+    fetched_at INTEGER NOT NULL,
+    PRIMARY KEY (activity_id, kind)
+  );
+  INSERT INTO activity_details_v11 (activity_id, kind, raw, fetched_at) SELECT activity_id, kind, raw, fetched_at FROM activity_details;
+  DROP TABLE activity_details;
+  ALTER TABLE activity_details_v11 RENAME TO activity_details;
+  `,
 ];

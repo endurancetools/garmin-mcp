@@ -11,8 +11,8 @@ const T = 1_791_400_000_000;
 describe('Store', () => {
   it('migrates a fresh database', () => {
     const store = Store.open(':memory:');
-    expect(schemaVersion(store.db)).toBe(10);
-    expect(store.getMeta('schema_version')).toBe('10');
+    expect(schemaVersion(store.db)).toBe(11);
+    expect(store.getMeta('schema_version')).toBe('11');
   });
 
   it('keeps cached activity details when migration 3 widens the detail kinds', () => {
@@ -241,6 +241,24 @@ describe('Store', () => {
     expect(store.getActivityDetail(1, 'power_curve')).toEqual({ raw: { best: [] }, fetched_at: T });
     store.deleteActivity(1);
     expect(store.getActivityDetail(1, 'power_curve')).toBeUndefined();
+  });
+
+  it('keeps cached activity details when migration 11 adds the typed split kinds', () => {
+    const db = new Database(':memory:');
+    for (const sql of MIGRATIONS.slice(0, 10)) db.exec(sql);
+    db.pragma('user_version = 10');
+    db.prepare(`INSERT INTO activity_details (activity_id, kind, raw, fetched_at) VALUES (1, 'power_curve', '{"best":[]}', ?)`).run(T);
+    expect(() => db.prepare(`INSERT INTO activity_details (activity_id, kind, raw, fetched_at) VALUES (1, 'typed_splits', '{}', ?)`).run(T)).toThrow(/CHECK constraint/);
+    migrate(db);
+    expect(schemaVersion(db)).toBe(MIGRATIONS.length);
+    const store = new Store(db);
+    expect(store.getActivityDetail(1, 'power_curve')).toEqual({ raw: { best: [] }, fetched_at: T });
+    store.putActivityDetail(1, 'typed_splits', { splits: [] }, T);
+    store.putActivityDetail(1, 'split_summaries', null, T);
+    expect(store.getActivityDetail(1, 'typed_splits')).toEqual({ raw: { splits: [] }, fetched_at: T });
+    expect(store.getActivityDetail(1, 'split_summaries')).toEqual({ raw: null, fetched_at: T });
+    store.deleteActivity(1);
+    expect(store.getActivityDetail(1, 'typed_splits')).toBeUndefined();
   });
 
   it('keeps one intraday series per day and kind', () => {

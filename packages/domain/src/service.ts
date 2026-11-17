@@ -17,7 +17,7 @@ import { errInfo, FATAL_CODES, isFresh, SCOPE_DAILY, signInPause, TTL, type Dail
 import fs from 'node:fs';
 import path from 'node:path';
 import { activityBrief, activityListItem, eventTypeKey, periodActivitySummary } from './activities.js';
-import { activityWeather, strengthSets, zoneTimes, type ActivityWeather, type StrengthSets, type ZoneTime } from './activity-extras.js';
+import { activityWeather, splitSummaries, strengthSets, typedSplits, zoneTimes, type ActivityWeather, type SplitSummary, type StrengthSets, type TypedSplit, type ZoneTime } from './activity-extras.js';
 import { gapPace, GPS_STREAM_METRICS, hrSource, motionTime, redactActivityRaw, respiration, runningDynamics, stamina, trainingEffectText, type RunningDynamics } from './activity-metrics.js';
 import { bodyComposition } from './body.js';
 import { calendarEvent } from './calendar.js';
@@ -226,6 +226,8 @@ interface ActivitySections {
     elevation_loss_m?: number;
     avg_respiration_brpm?: number;
   } & RunningDynamics)[];
+  typed_splits?: TypedSplit[];
+  split_summaries?: SplitSummary[];
   hr_zones?: ZoneTime[];
   power_zones?: ZoneTime[];
   weather?: ActivityWeather;
@@ -695,6 +697,20 @@ export class GarminService {
           elevation_loss_m: round(l.elevationLoss, 0),
         }),
       );
+      const sport = row?.type ?? summary.raw.activityTypeDTO?.typeKey ?? undefined;
+      const typed = await this.#detail(id, 'typed_splits', () => this.client.getActivityTypedSplits(id), true);
+      sources.push({ source: typed.live ? 'live' : 'cache' });
+      times.push(typed.fetched_at);
+      extra.typed_splits = typedSplits(typed.raw, sport);
+      // The activity carries the totals per split type itself; only without them they are fetched.
+      if (Array.isArray(summary.raw.splitSummaries)) extra.split_summaries = splitSummaries(summary.raw.splitSummaries, sport);
+      else {
+        const totals = await this.#detail(id, 'split_summaries', () => this.client.getActivitySplitSummaries(id), true);
+        sources.push({ source: totals.live ? 'live' : 'cache' });
+        times.push(totals.fetched_at);
+        const raw = totals.raw as { splitSummaries?: unknown } | null;
+        extra.split_summaries = splitSummaries(raw?.splitSummaries, sport);
+      }
     }
     if (detail === 'hr_zones' || detail === 'full') {
       const zones = await this.#detail(id, 'hr_zones', () => this.client.getActivityHrZones(id));

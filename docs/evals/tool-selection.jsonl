@@ -80,3 +80,5 @@
 {"prompt": "Zmień nazwę aktywności 21001 na „Interwały na bieżni”.", "expect": {"tool": "update_activity", "args_include": {"id": 21001, "name": "Interwały na bieżni"}}, "forbid": ["garmin_sync"]}
 {"prompt": "Co mam w planie w tym tygodniu?", "expect": {"tool": "list_workouts"}, "forbid": ["get_activities", "get_workout", "garmin_sync"]}
 {"prompt": "What does my coach plan say for Saturday?", "expect": {"tool": "list_workouts"}, "forbid": ["get_activities", "get_workout", "garmin_sync"]}
+{"prompt": "Ile czasu szedłem, a ile biegłem na sobotnim trailu 21001? Pokaż też każdy odcinek marszu.", "expect": {"tool": "get_activity", "args_include": {"id": 21001, "detail": "splits"}}, "forbid": ["get_activities", "download_activity_file"]}
+{"prompt": "On trail run 21001, how much time did I spend walking versus running, and where did each walk start?", "expect": {"tool": "get_activity", "args_include": {"id": 21001, "detail": "splits"}}, "forbid": ["get_activities", "download_activity_file"]}

@@ -13,7 +13,7 @@ Coverage:
 
 All reads come from the local SQLite cache. Data that garmin-mcp does not sync is not available, even if the client has a method for it.
 
-Totals for the 111 reads: 66 full, 15 partial, 30 missing.
+Totals for the 111 reads: 68 full, 13 partial, 30 missing.
 
 ## Reads
 
@@ -27,8 +27,8 @@ Totals for the 111 reads: 66 full, 15 partial, 30 missing.
 | Activity count | `garmin://sync-status` → `tables` | partial | counts activities in the local cache, not on the account |
 | Activity summary | `get_activity` `id`, `detail: "summary"` | full | |
 | Activity laps | `get_activity` `detail: "splits"` | full | laps (`lapDTOs`) |
-| Typed splits (run/walk/stand intervals) | `get_activity` `detail: "splits"` | partial | laps only; typed splits are not fetched. |
-| Split summaries | `get_activity` `detail: "splits"` | partial | laps only; split summaries are not fetched. |
+| Typed splits (run/walk/stand intervals) | `get_activity` `detail: "splits"` → `typed_splits` | full | run, walk, stand, ClimbPro climbs and other types with start, time, distance, elevation, grade, pace, GAP, HR; ClimbPro climb sections are left out |
+| Split summaries | `get_activity` `detail: "splits"` → `split_summaries` | full | totals per split type (count, time, distance, elevation, pace, GAP, HR); run/walk/stand shares also in `motion` of the summary |
 | Time in heart rate zones | `get_activity` `detail: "hr_zones"` | full | |
 | Time in power zones | `get_activity` `detail: "power_zones"` | full | |
 | Activity weather | `get_activity` `detail: "weather"` | full | always metric (°C, km/h) |

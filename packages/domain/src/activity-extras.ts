@@ -1,8 +1,8 @@
-import { hms, round } from './format.js';
+import { hms, isFootSport, km, pacePerKm, round, speedOrPace } from './format.js';
 
 /**
  * Pure mappers for the optional activity sections of `get_activity`: time in HR or
- * power zones, weather and strength sets. Inputs are Garmin's raw responses as
+ * power zones, weather, strength sets and typed splits. Inputs are Garmin's raw responses as
  * cached in `activity_details`; every field is read defensively because the
  * client's schemas for these endpoints are lenient and not yet confirmed by
  * recordings, and rows cached before they existed were never validated.
@@ -133,4 +133,87 @@ export function strengthSets(raw: unknown): StrengthSets | undefined {
   const reps = sets.reduce((a, s) => a + (s.reps ?? 0), 0);
   const volume = sets.reduce((a, s) => a + (s.reps ?? 0) * (s.weight_kg ?? 0), 0);
   return { sets, total_sets: sets.length, total_reps: reps || undefined, volume_kg: round(volume, 0) || undefined };
+}
+
+/** Garmin's split types as `get_activity` names them; any other type is its key in lower case. */
+const SPLIT_TYPES: Record<string, string> = { RWD_RUN: 'run', RWD_WALK: 'walk', RWD_STAND: 'stand', CLIMB_PRO_CYCLING_CLIMB: 'climb' };
+/**
+ * ClimbPro cuts every climb into sections (`parentIndex` = the climb); a long trail run has
+ * hundreds of them, so the list keeps the climbs and leaves the sections out.
+ */
+const LEFT_OUT_SPLITS = new Set(['CLIMB_PRO_CYCLING_CLIMB_SECTION']);
+const splitType = (v: unknown) => {
+  const key = str(v);
+  return key === undefined ? undefined : (SPLIT_TYPES[key] ?? key.toLowerCase());
+};
+
+interface SplitNumbers {
+  type?: string;
+  duration?: string;
+  distance_km?: number;
+  avg_pace?: string;
+  avg_speed_kmh?: number;
+  avg_gap_pace?: string;
+  avg_hr_bpm?: number;
+  max_hr_bpm?: number;
+  elevation_gain_m?: number;
+  elevation_loss_m?: number;
+}
+
+export interface TypedSplit extends SplitNumbers {
+  /** Local clock time the split started, "hh:mm:ss". */
+  start?: string;
+  avg_grade_pct?: number;
+  max_grade_pct?: number;
+}
+
+export interface SplitSummary extends SplitNumbers {
+  count?: number;
+}
+
+/** Numbers shared by a typed split and a split summary; standing has no pace. */
+function splitNumbers(s: Obj, type: string | undefined, sport: string | undefined): SplitNumbers {
+  const moving = type !== 'stand';
+  return {
+    type,
+    duration: hms(num(s.duration)),
+    distance_km: km(num(s.distance)),
+    ...(moving ? speedOrPace(sport, num(s.distance), num(s.duration)) : {}),
+    avg_gap_pace: moving && isFootSport(sport) ? pacePerKm(num(s.avgGradeAdjustedSpeed)) : undefined,
+    avg_hr_bpm: round(num(s.averageHR), 0),
+    max_hr_bpm: round(num(s.maxHR), 0),
+    elevation_gain_m: round(num(s.elevationGain), 0),
+    elevation_loss_m: round(num(s.elevationLoss), 0),
+  };
+}
+
+/**
+ * `activity/{id}/typedsplits`: `{ splits: [{ type, startTimeLocal, duration (s), distance (m),
+ * avgGradeAdjustedSpeed (m/s), averageGrade, maxGrade, ... }] }`, in start order. Pace or speed
+ * follows the activity's sport, as for laps.
+ */
+export function typedSplits(raw: unknown, sport: string | undefined): TypedSplit[] {
+  const list = obj(raw)?.splits;
+  return (Array.isArray(list) ? list : [])
+    .map(obj)
+    .filter((s): s is Obj => s !== undefined && !LEFT_OUT_SPLITS.has(str(s.type) ?? ''))
+    .toSorted((a, b) => (str(a.startTimeGMT) ?? '').localeCompare(str(b.startTimeGMT) ?? '') || (num(a.messageIndex) ?? 0) - (num(b.messageIndex) ?? 0))
+    .map((s) => ({
+      type: splitType(s.type),
+      start: str(s.startTimeLocal)?.slice(11, 19),
+      ...splitNumbers(s, splitType(s.type), sport),
+      avg_grade_pct: round(num(s.averageGrade), 1),
+      max_grade_pct: round(num(s.maxGrade), 1),
+    }));
+}
+
+/**
+ * Totals per split type (`splitType`, `noOfSplits`), from `activity/{id}/split_summaries` or the
+ * same `splitSummaries` list of the activity itself.
+ */
+export function splitSummaries(list: unknown, sport: string | undefined): SplitSummary[] {
+  return (Array.isArray(list) ? list : [])
+    .map(obj)
+    .filter((s): s is Obj => s !== undefined)
+    .map((s) => ({ type: splitType(s.splitType), count: num(s.noOfSplits), ...splitNumbers(s, splitType(s.splitType), sport) }));
 }

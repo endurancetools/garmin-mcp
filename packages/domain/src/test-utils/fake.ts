@@ -96,6 +96,17 @@ export function setup(
         if (opts.gone?.has(id)) throw notFound(`activity/${id}/splits`);
         return { lapDTOs: [{ lapIndex: 1, distance: 1000, duration: 300, averageHR: 140 }] };
       }),
+    // Recorded typed splits and their totals (E8-2), whatever the id; activity 2 has none (404).
+    getActivityTypedSplits: (id: number) =>
+      rec('getActivityTypedSplits', [id], () => {
+        if (id === 2) throw notFound(`typedsplits/${id}`);
+        return { ...(fixture('activity-typed-splits') as Record<string, unknown>), activityId: id };
+      }),
+    getActivitySplitSummaries: (id: number) =>
+      rec('getActivitySplitSummaries', [id], () => {
+        if (id === 2) throw notFound(`split_summaries/${id}`);
+        return { ...(fixture('activity-split-summaries') as Record<string, unknown>), activityId: id };
+      }),
     getActivityHrZones: (id: number) => rec('getActivityHrZones', [id], () => [{ zoneNumber: 1, secsInZone: 100, zoneLowBoundary: 100 }, { zoneNumber: 2, secsInZone: 300, zoneLowBoundary: 120 }]),
     // Synthetic shapes (no recorded fixtures yet, E2-8). Activity 2 has none of these (404).
     getActivityPowerZones: (id: number) =>

@@ -270,6 +270,80 @@ describe('GarminService', () => {
     await expect(service.getActivity(1, 'summary')).rejects.toMatchObject({ code: 'NOT_FOUND' });
   });
 
+  it('adds typed splits and their totals per type to the laps, cached for good', async () => {
+    const { service, store, count } = setup({ activities: [summary(1, '2026-10-07'), summary(2, '2026-10-07')] });
+    const res = await service.getActivity(1, 'splits');
+    // ClimbPro climb sections are left out; the rest follows the start time.
+    expect(res.data.typed_splits?.map((t) => [t.type, t.start])).toEqual([
+      ['interval_active', '09:00:03'],
+      ['stand', '09:00:03'],
+      ['climb', '09:00:07'],
+      ['run', '09:00:10'],
+      ['walk', '09:13:02'],
+      ['run', '09:15:41'],
+      ['walk', '09:15:52'],
+      ['run', '09:18:07'],
+      ['walk', '09:18:18'],
+      ['climb', '09:40:28'],
+      ['climb', '10:01:13'],
+      ['stand', '10:44:54'],
+      ['stand', '12:18:54'],
+    ]);
+    expect(res.data.typed_splits?.[2]).toEqual({
+      type: 'climb',
+      start: '09:00:07',
+      duration: '21:02',
+      distance_km: 3,
+      avg_pace: '7:01 /km',
+      avg_gap_pace: '5:17 /km',
+      avg_hr_bpm: 163,
+      max_hr_bpm: 176,
+      elevation_gain_m: 210,
+      elevation_loss_m: 2,
+      avg_grade_pct: 7,
+      max_grade_pct: 30.9,
+    });
+    // Standing has no pace.
+    expect(res.data.typed_splits?.[1]).toEqual({ type: 'stand', start: '09:00:03', duration: '0:07', distance_km: 0.01, avg_hr_bpm: 89, max_hr_bpm: 93, elevation_gain_m: 0, elevation_loss_m: 0 });
+    expect(res.data.split_summaries?.map((t) => [t.type, t.count])).toEqual([
+      ['stand', 22],
+      ['run', 115],
+      ['walk', 128],
+      ['interval_active', 1],
+    ]);
+    expect(res.data.split_summaries?.[1]).toEqual({
+      type: 'run',
+      count: 115,
+      duration: '4:20:56',
+      distance_km: 44.7,
+      avg_pace: '5:50 /km',
+      avg_gap_pace: '5:42 /km',
+      avg_hr_bpm: 159,
+      max_hr_bpm: 175,
+      elevation_gain_m: 780,
+      elevation_loss_m: 1663,
+    });
+    expect(() => output.activityOutput.parse(res)).not.toThrow();
+
+    // `full` carries them too and nothing is asked twice; the summary level does not fetch them.
+    const full = await service.getActivity(1, 'full');
+    expect(full.data).toMatchObject({ typed_splits: res.data.typed_splits, split_summaries: res.data.split_summaries });
+    expect((await service.getActivity(1, 'summary')).data.typed_splits).toBeUndefined();
+    expect(count('getActivityTypedSplits')).toBe(1);
+    expect(count('getActivitySplitSummaries')).toBe(1);
+
+    // A 404 means "no typed splits": cached as empty, the arrays are left out, no note.
+    const none = await service.getActivity(2, 'splits');
+    expect(none.data.typed_splits).toBeUndefined();
+    expect(none.data.split_summaries).toBeUndefined();
+    expect(none.meta.note).toBeUndefined();
+    expect(store.getActivityDetail(2, 'typed_splits')?.raw).toBeNull();
+    expect(store.getActivityDetail(2, 'split_summaries')?.raw).toBeNull();
+    await service.getActivity(2, 'splits');
+    expect(count('getActivityTypedSplits')).toBe(2);
+    expect(count('getActivitySplitSummaries')).toBe(2);
+  });
+
   it('serves power zones, weather and strength sets as detail levels and in full', async () => {
     const { service, store, count } = setup({ activities: [summary(1, '2026-10-07'), summary(2, '2026-10-07')] });
     const p = await service.getActivity(1, 'power_zones');
@@ -407,8 +481,14 @@ describe('GarminService', () => {
         elevation_loss_m: 1,
       },
     ]);
+    // The stored activity carries the totals per split type, so they are not fetched.
+    expect(laps.data.split_summaries).toEqual([
+      { type: 'run', duration: '49:00' },
+      { type: 'walk', duration: '1:00' },
+    ]);
     expect(count('getActivity')).toBe(0);
     expect(count('getActivitySplits')).toBe(0);
+    expect(count('getActivitySplitSummaries')).toBe(0);
   });
 
   it('names the workout step of each lap, a repeat numbered after its steps, with its compliance', async () => {

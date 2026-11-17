@@ -30,8 +30,11 @@ import {
 
 export type DailyKind = 'daily_summary' | 'sleep' | 'hrv' | 'training_status';
 export const DAILY_KINDS: readonly DailyKind[] = ['daily_summary', 'sleep', 'hrv', 'training_status'];
-/** `power_curve` is computed from the activity's FIT file, which itself is not kept. */
-export type DetailKind = 'summary' | 'splits' | 'hr_zones' | 'details' | 'weather' | 'power_zones' | 'exercise_sets' | 'power_curve';
+/**
+ * `power_curve` is computed from the activity's FIT file, which itself is not kept. `typed_splits`
+ * (run, walk, stand, ClimbPro climbs...) and `split_summaries` (their totals per type) sit next to the laps.
+ */
+export type DetailKind = 'summary' | 'splits' | 'hr_zones' | 'details' | 'weather' | 'power_zones' | 'exercise_sets' | 'power_curve' | 'typed_splits' | 'split_summaries';
 export type ReferenceKind = 'profile' | 'gear' | 'devices' | 'workouts' | 'activity_types';
 /** Intraday series kept per day in the `intraday` table; `stress` also carries the Body Battery curve. */
 export const INTRADAY_KINDS = ['heart_rate', 'stress', 'respiration', 'spo2', 'steps', 'body_battery_events', 'daily_events'] as const;
