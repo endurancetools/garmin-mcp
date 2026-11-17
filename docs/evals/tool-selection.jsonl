@@ -69,3 +69,5 @@
 {"prompt": "How did my stress and Body Battery look day by day this week?", "expect": {"tool": "query_health", "args_include": {"metrics": ["stress", "body_battery"]}, "args_exclude": {"granularity": "hour"}}, "forbid": ["garmin_sync"]}
 {"prompt": "Jaka była moja najlepsza moc 20 min na jeździe 21003?", "expect": {"tool": "get_activity", "args_include": {"id": 21003, "detail": "power_curve"}}, "forbid": ["get_activities", "download_activity_file"]}
 {"prompt": "Show me the power curve of ride 21003.", "expect": {"tool": "get_activity", "args_include": {"id": 21003, "detail": "power_curve"}}, "forbid": ["get_activities", "download_activity_file"]}
+{"prompt": "Jaki mam szacunkowy FTP z ostatnich jazd?", "expect": {"tool": "get_thresholds"}, "forbid": ["set_threshold", "get_activities", "download_activity_file"]}
+{"prompt": "Compare the best 20 min power of rides 21003 and 21004.", "expect": {"tool": "compare_activities", "args_include": {"ids": [21003, 21004]}}, "forbid": ["download_activity_file", "garmin_sync"]}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { compareRow, DEFAULT_COMPARE_CRITERIA, haversineM, routeEnds, similarity } from './compare.js';
+import { compareRow, DEFAULT_COMPARE_CRITERIA, haversineM, routeEnds, similarity, storedBestPower } from './compare.js';
 import type { Session } from './session.js';
 
 const session = (extra: Partial<Session> = {}): Session => ({
@@ -63,5 +63,17 @@ describe('compare activities', () => {
     const row = compareRow(session({ gct_ms: 250, ef: 1.533, z4_s: 300 }), { temp_c: 18, dew_point_c: 12, humidity_pct: 70 }, 'reference');
     expect(row).toMatchObject({ id: 1, match: 'reference', duration: '50:00', distance_km: 10, pace: '5:00 /km', gap_pace: '5:00 /km', gct_ms: 250, ef: 1.533, z4_z5_pct: 9, temp_c: 18, dew_point_c: 12 });
     expect(compareRow(session({ type: 'road_biking', sport: 'bike', distance_m: 30_000 }), undefined)).toMatchObject({ avg_speed_kmh: 36, pace: undefined, gap_pace: undefined });
+  });
+
+  it('takes the best 5 and 20 min power from a stored power curve only', () => {
+    const curve = { best: [{ duration_s: 60, power_w: 410, start_s: 0 }, { duration_s: 300, power_w: 331.6, start_s: 120 }, { duration_s: 1200, power_w: 287.4, start_s: 600 }], gear_changes: [] };
+    const ride = session({ type: 'road_biking', sport: 'bike', avg_power_w: 220 });
+    expect(compareRow(ride, undefined, undefined, curve)).toMatchObject({ best_5min_w: 332, best_20min_w: 287 });
+    // Not stored, no FIT file (null), a file without power, a ride shorter than 20 min.
+    expect(compareRow(ride, undefined)).toMatchObject({ best_5min_w: undefined, best_20min_w: undefined });
+    expect(storedBestPower(null, 300)).toBeUndefined();
+    expect(storedBestPower({ best: [], gear_changes: [] }, 300)).toBeUndefined();
+    expect(storedBestPower({ best: [{ duration_s: 300, power_w: 250, start_s: 0 }] }, 1200)).toBeUndefined();
+    expect(storedBestPower({ best: [{ duration_s: 300, power_w: 250, start_s: 0 }] }, 300)).toBe(250);
   });
 });

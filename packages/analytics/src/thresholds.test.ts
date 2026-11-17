@@ -4,6 +4,7 @@ import { addDays, eachDay } from 'garmin-mcp-config';
 import { Store, type ThresholdParam } from 'garmin-mcp-store';
 import { describe, expect, it } from 'vitest';
 import {
+  ftpEstimate,
   lt1For,
   lthrFor,
   profileThresholds,
@@ -288,5 +289,23 @@ describe('restingHrOn', () => {
     expect(restingHrOn(thirteen, [row('2026-01-01', 'rhr', 47)], D)).toEqual({ value: 47 });
     expect(restingHrOn(thirteen, [], D)).toMatchObject({ value: 50, note: expect.stringMatching(/default 50/) });
     expect(restingHrOn([], [], D)).toMatchObject({ value: 50 });
+  });
+});
+
+describe('ftpEstimate', () => {
+  const effort = (activity_id: number, date: string, best_20min_w: number) => ({ activity_id, date, best_20min_w });
+
+  it('is 95 % of the best 20 min power of the 90 days to the date, with its ride', () => {
+    const est = ftpEstimate([effort(1, '2026-07-01', 300), effort(2, '2026-09-20', 280), effort(3, '2026-10-01', 291)], '2026-10-08');
+    expect(est).toMatchObject({ value: 276, best_20min_w: 291, activity_id: 3, date: '2026-10-01' });
+    expect(est?.note).toMatch(/^Estimate, not a test: 95 % of the best 20 min power of the rides from 2026-07-10 to 2026-10-08/);
+    expect(est?.note).toMatch(/set_threshold/);
+  });
+
+  it('counts the first day of the window and the date itself, not later rides; a tie takes the later ride', () => {
+    expect(ftpEstimate([effort(1, '2026-07-10', 300), effort(2, '2026-10-09', 400)], '2026-10-08')).toMatchObject({ value: 285, activity_id: 1 });
+    expect(ftpEstimate([effort(1, '2026-07-09', 300)], '2026-10-08')).toBeUndefined();
+    expect(ftpEstimate([effort(1, '2026-09-01', 260), effort(2, '2026-10-08', 260)], '2026-10-08')).toMatchObject({ value: 247, activity_id: 2, date: '2026-10-08' });
+    expect(ftpEstimate([], '2026-10-08')).toBeUndefined();
   });
 });

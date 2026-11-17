@@ -14,9 +14,9 @@ The defaults below are starting points taken from the literature, not personal p
 | Tool | Question | Main fields |
 | --- | --- | --- |
 | `get_load` | How much have I trained, how fit and how fatigued am I? | `latest` (TSS, CTL, ATL, TSB, ACWR, monotony, strain on `to`), `flags`, `weeks` (ISO week × sport), `intensity` (3-zone split of the last 28 days), `thresholds_used`; optional `series`, `activities`, `efficiency`, `dynamics` |
-| `compare_activities` | How does this session compare with similar ones? | `activities` (one row per session: pace, GAP, HR, power, EF, decoupling, IF, TSS, % in Z4-5, cadence and running dynamics, weather; `match` says how a similar one differs), `reference`, `criteria` |
+| `compare_activities` | How does this session compare with similar ones? | `activities` (one row per session: pace, GAP, HR, power and best 5 and 20 min power when the power curve is stored, EF, decoupling, IF, TSS, % in Z4-5, cadence and running dynamics, weather; `match` says how a similar one differs), `reference`, `criteria` |
 | `get_readiness` | Can I train hard this morning? | `decision` (GO, MODIFY, REST), `counts`, `signals` (value, reference, rating, detail), `partial`, `rules_used`, `recommendation` |
-| `get_thresholds` | Which thresholds apply on a date? | `effective` (value, since, source per parameter), `by_sport` (LTHR and LT1 for run, bike, swim), `hrmax`, `rhr_28d`, `zones` (Garmin profile HR and power zones per sport); optional `history` |
+| `get_thresholds` | Which thresholds apply on a date? | `effective` (value, since, source per parameter), `by_sport` (LTHR and LT1 for run, bike, swim), `hrmax`, `rhr_28d`, `zones` (Garmin profile HR and power zones per sport), `estimates.ftp_w` (FTP estimated from stored power curves, not recorded); optional `history` |
 | `set_threshold` | Record a field test result | `added`, `row`, `effective` (the value in use from now on) |
 
 `get_load` is a model of its own built from power, pace and heart rate. Garmin's status, its EPOC-based load and load focus stay in `get_training_status`, whose `garmin_load_model` runs the same CTL/ATL averages on Garmin's training load instead of TSS (see [Load model](#load-model) for the two models).
@@ -185,7 +185,7 @@ Around 5% is the usual orientation point: below it the session was aerobically s
 
 ## Comparing sessions
 
-`compare_activities` puts sessions side by side, one row each, with the metrics of `include_activities` above, the paces as `m:ss /km`, the share of time in HR zones 4-5 and the temperature, dew point and humidity when the activity's weather was downloaded (`get_activity` with `detail: "weather"`). `ids` takes 2 to 10 activities in that order. `similar_to` takes one activity and adds the stored sessions like it, newest first (`limit`, default 5): the same activity type, duration within ±`duration_pct` (20 %), for running and hiking the pace within ±`pace_s_per_km` (20 s; grade adjusted pace when both sessions have it), with `same_route` start and end within 300 m and the distance within 10 %, and with `easy_only` less than 5 % of the time in zones 4-5. Each similar row says how it differs in `match` (e.g. `duration +3%, GAP -8 s/km, same route`). The search covers 365 days before the reference up to today unless `from` says otherwise. Decoupling needs the laps of each session, as in `get_load`.
+`compare_activities` puts sessions side by side, one row each, with the metrics of `include_activities` above, the paces as `m:ss /km`, the share of time in HR zones 4-5 and the temperature, dew point and humidity when the activity's weather was downloaded (`get_activity` with `detail: "weather"`). `ids` takes 2 to 10 activities in that order. `similar_to` takes one activity and adds the stored sessions like it, newest first (`limit`, default 5): the same activity type, duration within ±`duration_pct` (20 %), for running and hiking the pace within ±`pace_s_per_km` (20 s; grade adjusted pace when both sessions have it), with `same_route` start and end within 300 m and the distance within 10 %, and with `easy_only` less than 5 % of the time in zones 4-5. Each similar row says how it differs in `match` (e.g. `duration +3%, GAP -8 s/km, same route`). The search covers 365 days before the reference up to today unless `from` says otherwise. Decoupling needs the laps of each session, as in `get_load`. `best_5min_w` and `best_20min_w` are the 5 and 20 minute values of the activity's [power curve](#power-curve) when it is already stored; comparing never downloads FIT files, so an activity with power whose curve was not computed yet has no such columns, and one note says how many of them `get_activity` with `detail: "power_curve"` would fill.
 
 ## Climbs
 
@@ -212,6 +212,12 @@ Elevation of the activity stream is what Garmin stored for the activity (correct
 - A duration longer than the activity is left out.
 - **W/kg** uses the same body weight as climbs: the latest weigh-in up to 30 days before the activity, else the weight in the Garmin profile; the note names the source.
 - An activity whose list entry and summary show no power answers `power_curve: null` without downloading the file; so does a file without power records.
+
+### FTP estimate
+
+`get_thresholds` gives `estimates.ftp_w`: **95 %** of the highest best 20 minute power among the rides (sport group bike) from 90 days before `date` up to and including `date` whose power curve is stored, with the date and id of that ride and the 20 minute value it comes from. 95 % of a 20 minute best effort is the usual field estimate of FTP, the power held for about an hour (Allen, Coggan, McGregor 2019); it fits only when that 20 minutes was a maximal effort, so a ride without one gives an estimate that is too low. Only curves that `get_activity` with `detail: "power_curve"` already stored count: nothing is downloaded, and without any a note says how many rides with power have no curve. Running power is left out: running FTP is a parameter of its own (`run_ftp_w`).
+
+The estimate is shown, never recorded: the `ftp_w` threshold, `get_load` and every other computation keep the history as it is until the user agrees to record the value with `set_threshold` (source `manual`). The rules are `FTP_FROM_20MIN` and `FTP_ESTIMATE_DAYS` in `packages/analytics/src/thresholds.ts`.
 
 ## Morning readiness
 

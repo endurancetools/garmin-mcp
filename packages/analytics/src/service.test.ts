@@ -87,6 +87,22 @@ describe('AnalyticsService.compareActivities', () => {
     await expect(t.analytics.compareActivities({ ids: [1, 2], similar_to: 3 })).rejects.toBeInstanceOf(InputError);
     expect(t.calls).toEqual([]);
   });
+
+  it('adds the best 5 and 20 min power from stored power curves only, with one note for the rides without', async () => {
+    const t = trained();
+    const ride = { activityType: { typeId: 2, typeKey: 'road_biking' }, avgPower: 220, distance: 30_000 };
+    t.activities([activity(700, '2026-10-06', ride), activity(701, '2026-10-07', ride)], '2026-10-06', '2026-10-07');
+    t.store.putActivityDetail(700, 'power_curve', { best: [{ duration_s: 300, power_w: 331.6, start_s: 120 }, { duration_s: 1200, power_w: 287.4, start_s: 600 }], gear_changes: [] }, NOW);
+    const res = await t.analytics.compareActivities({ ids: [700, 701, 1] });
+    fits(compareOutput, res);
+    expect(compareOutput.safeParse(res).success).toBe(true);
+    expect(res.data.activities?.[0]).toMatchObject({ id: 700, best_5min_w: 332, best_20min_w: 287 });
+    expect(res.data.activities?.[1]).not.toHaveProperty('best_5min_w');
+    // The run without power needs no curve: only ride 701 is counted.
+    expect(res.data.activities?.[2]).not.toHaveProperty('best_20min_w');
+    expect(res.meta.note).toMatch(/Best 5 and 20 min power is missing for 1 of them until get_activity with detail "power_curve"/);
+    expect(t.calls).toEqual([]);
+  });
 });
 
 describe('AnalyticsService.getLoad', () => {
@@ -547,6 +563,47 @@ describe('AnalyticsService thresholds', () => {
       ['2026-10-07', 171],
       ['2026-10-08', 171],
     ]);
+  });
+
+  it('estimates FTP from the stored ride power curves of 90 days, without recording it or using it in get_load', async () => {
+    const t = trained();
+    const ride = { activityType: { typeId: 2, typeKey: 'road_biking' }, avgPower: 220, distance: 30_000 };
+    const curve = (w20: number) => ({ best: [{ duration_s: 300, power_w: w20 + 40, start_s: 0 }, { duration_s: 1200, power_w: w20, start_s: 0 }], gear_changes: [] });
+    t.activities(
+      [
+        activity(710, '2026-09-01', ride),
+        activity(711, '2026-06-15', ride),
+        activity(712, '2026-10-01', { avgPower: 300 }),
+        activity(713, '2026-10-05', ride),
+      ],
+      '2026-06-01',
+      TODAY,
+    );
+    t.store.putActivityDetail(710, 'power_curve', curve(300.4), NOW);
+    // Older than 90 days, and running power: neither counts.
+    t.store.putActivityDetail(711, 'power_curve', curve(350), NOW);
+    t.store.putActivityDetail(712, 'power_curve', curve(400), NOW);
+    const res = await t.analytics.getThresholds({ date: TODAY });
+    fits(thresholdsOutput, res);
+    expect(thresholdsOutput.safeParse(res).success).toBe(true);
+    expect(res.data.estimates?.ftp_w).toEqual({ value: 285, best_20min_w: 300, activity_id: 710, date: '2026-09-01', note: expect.stringMatching(/^Estimate, not a test: 95 %.*set_threshold/) });
+    expect(t.store.listThresholds('ftp_w')).toEqual([]);
+    const load = await t.analytics.getLoad({ to: TODAY });
+    expect(load.data.thresholds_used.by_sport.bike.ftp).toBeUndefined();
+    // Only for ftp_w or all params.
+    expect((await t.analytics.getThresholds({ date: TODAY, param: 'lthr_run' })).data.estimates).toBeUndefined();
+    expect((await t.analytics.getThresholds({ date: TODAY, param: 'ftp_w' })).data.estimates?.ftp_w?.value).toBe(285);
+    // On the day of the older ride its curve is in the window; before any ride there is no estimate and no note.
+    expect((await t.analytics.getThresholds({ date: '2026-08-31' })).data.estimates?.ftp_w).toMatchObject({ value: 333, activity_id: 711 });
+    const early = await t.analytics.getThresholds({ date: '2026-06-14' });
+    expect(early.data.estimates).toBeUndefined();
+    expect(early.meta.note).not.toMatch(/FTP/);
+    // Without ride 710 nothing is left to estimate from; ride 713 has power but no stored curve.
+    t.store.deleteActivity(710);
+    const missing = await t.analytics.getThresholds({ date: TODAY });
+    expect(missing.data.estimates).toBeUndefined();
+    expect(missing.meta.note).toMatch(/No FTP estimate: 1 rides with power in the 90 days to 2026-10-08 have no stored power curve; get_activity with detail "power_curve"/);
+    expect(t.calls).toEqual([]);
   });
 
   it('keeps an existing row and says when a later row stays in effect', async () => {

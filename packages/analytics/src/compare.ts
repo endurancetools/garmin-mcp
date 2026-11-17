@@ -114,6 +114,9 @@ export interface CompareRow {
   max_hr?: number;
   avg_power_w?: number;
   np_w?: number;
+  /** Best 5 and 20 min average power (W) from the activity's stored power curve. */
+  best_5min_w?: number;
+  best_20min_w?: number;
   ef?: number;
   ef_gap?: number;
   ef_power?: number;
@@ -136,8 +139,24 @@ export interface CompareRow {
   humidity_pct?: number;
 }
 
-/** One table row: the session's metrics, its pace strings and the weather when downloaded. */
-export function compareRow(s: Session, weather: ActivityWeather | undefined, match?: string): CompareRow {
+/**
+ * Best average power (W, rounded) over `duration_s` from a stored power curve (`activity_details`
+ * kind `power_curve`, `{ best: [{ duration_s, power_w }] }`); `undefined` when the curve is not
+ * stored, is `null` (no FIT file), has no power or is shorter than the duration.
+ */
+export function storedBestPower(curve: unknown, durationS: number): number | undefined {
+  const best = (curve && typeof curve === 'object' ? (curve as Obj)['best'] : undefined) as unknown;
+  if (!Array.isArray(best)) return undefined;
+  const hit = best.find((b) => b && typeof b === 'object' && (b as Obj)['duration_s'] === durationS) as Obj | undefined;
+  const w = num(hit?.['power_w']);
+  return w !== undefined && w > 0 ? Math.round(w) : undefined;
+}
+
+/**
+ * One table row: the session's metrics, its pace strings, the weather when downloaded and the
+ * best 5 and 20 min power when its power curve is stored (`curve`, never downloaded here).
+ */
+export function compareRow(s: Session, weather: ActivityWeather | undefined, match?: string, curve?: unknown): CompareRow {
   const foot = FOOT.has(s.sport);
   const z45 = z45Share(s);
   const dist = s.distance_m ?? 0;
@@ -158,6 +177,8 @@ export function compareRow(s: Session, weather: ActivityWeather | undefined, mat
     max_hr: s.max_hr,
     avg_power_w: s.avg_power_w,
     np_w: s.np_w,
+    best_5min_w: storedBestPower(curve, 300),
+    best_20min_w: storedBestPower(curve, 1200),
     ef: s.ef,
     ef_gap: s.ef_gap,
     ef_power: s.ef_power,

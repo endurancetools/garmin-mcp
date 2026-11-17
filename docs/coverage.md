@@ -207,4 +207,6 @@ Not Garmin Connect reads: these are computed by garmin-mcp from data already in 
 | Weekly volume per sport, 3-zone intensity split, efficiency trend | `get_load` `include_activities`, `include_efficiency` | activities (HR zones, speed, grade adjusted speed, normalized power) |
 | Morning GO / MODIFY / REST decision | `get_readiness` | HRV, resting heart rate, hours of sleep, the load model; Body Battery, stress, sleep score and training readiness shown, not counted |
 | Threshold history (LTHR per sport, LT1, HRmax, FTP, VO2max...) | `get_thresholds`, `set_threshold` | Garmin profile values recorded on each change, plus your own test results |
+| FTP estimate: 95 % of the best 20 min ride power of 90 days, shown and not recorded | `get_thresholds` → `estimates.ftp_w` | power curves stored by `get_activity` `detail: "power_curve"` |
+| Best 5 and 20 min power next to the other session metrics | `compare_activities` → `best_5min_w`, `best_20min_w` | power curves stored by `get_activity` `detail: "power_curve"` |
 | Activities from Garmin Connect CSV exports | `garmin import-activities` (CLI) | for dates the synced activities do not cover |

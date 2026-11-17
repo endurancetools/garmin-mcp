@@ -450,7 +450,7 @@ export const TOOLS: ToolDef[] = [
     name: 'compare_activities',
     title: 'Compare activities',
     description:
-      'Sessions side by side: pace, GAP, HR, power, EF, decoupling, IF, TSS, % Z4-5, cadence and running dynamics, temperature, dew point. `ids` compares those activities; ' +
+      'Sessions side by side: pace, GAP, HR, power (best 5/20 min if curve stored), EF, decoupling, IF, TSS, % Z4-5, cadence and running dynamics, temperature, dew point. `ids` compares those activities; ' +
       '`similar_to` adds stored sessions like it (same type, duration and pace/GAP within tolerance; optionally same_route, easy_only), newest first with `match`. ' +
       'Pass exactly one of `ids` or `similar_to`, otherwise it returns an error; the similar_to filters combine. For one activity in depth use get_activity. ' +
       'E.g. today vs usual easy runs, progress on a route: {"similar_to":23011268235,"same_route":true}.',
@@ -492,6 +492,7 @@ export const TOOLS: ToolDef[] = [
       'Thresholds the analytics use on `date` (default today): per param its value, the date it applies since and its source (garmin-auto from the Garmin profile, test, manual, import), ' +
       'by_sport (run, bike, swim: LTHR and LT1 with a note when a fallback, default or approximation), HRmax and the 28-day resting HR. ' +
       'zones has the HR and power zone floors per sport from the Garmin profile (method, HRmax/rest/LTHR or FTP used, fetched date; current, not historical). ' +
+      'estimates.ftp_w: 95 % of best stored 20 min ride power, not saved. ' +
       'history adds every recorded row. Use it to see what get_load and get_readiness compute with; record a new test result with set_threshold. ' +
       'Example: {"param":"lthr_run","history":true}.',
     input: {

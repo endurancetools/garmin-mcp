@@ -12,7 +12,7 @@ import {
   type ThresholdRow,
   type ThresholdSource,
 } from 'garmin-mcp-store';
-import { compareRow, DEFAULT_COMPARE_CRITERIA, routeEnds, similarity, type CompareCriteria, type CompareRow } from './compare.js';
+import { compareRow, DEFAULT_COMPARE_CRITERIA, routeEnds, similarity, storedBestPower, type CompareCriteria, type CompareRow } from './compare.js';
 import { dynamicsTrend, type DynamicsTrend } from './dynamics.js';
 import { efficiencySports, efficiencyTrend, type EfficiencyRow } from './efficiency.js';
 import { intensityDistribution, type IntensityDistribution } from './intensity.js';
@@ -41,8 +41,10 @@ import {
 } from './load.js';
 import { DEFAULT_READINESS_RULES, isReadinessRuleValue, readiness, READINESS_LOAD_SOURCE, READINESS_WINDOW_DAYS, type Readiness } from './readiness.js';
 import { buildSessions, decouplingEligible, sessionFromActivity, sessionFromImported, type Session, type SessionInput } from './session.js';
-import { sportList, type SportGroup } from './sport.js';
+import { sportGroup, sportList, type SportGroup } from './sport.js';
 import {
+  FTP_ESTIMATE_DAYS,
+  ftpEstimate,
   hrmaxOn,
   profileZoneFloors,
   profileZones,
@@ -52,6 +54,7 @@ import {
   RHR_WINDOW_DAYS,
   thresholdOn,
   thresholdsBySport,
+  type FtpEstimate,
   type HrZones,
   type PowerZones,
   type SportThresholds,
@@ -191,6 +194,8 @@ export interface ThresholdsData {
   rhr_28d: { value: number; samples: number; note?: string };
   /** HR and power zones of the cached Garmin profile as of its download; absent without a profile or zones. */
   zones?: ThresholdZones;
+  /** Values estimated from stored data, shown and never recorded: `ftp_w` from the stored power curves of the 90 days to `date`. */
+  estimates?: { ftp_w?: FtpEstimate };
 }
 
 /** The Garmin profile's current HR and power zones per sport (lower-case Garmin sport keys). */
@@ -511,7 +516,9 @@ export class AnalyticsService {
     const notes: string[] = [];
     const byId = new Map(sessions.map((s) => [s.id, s]));
     const units = this.#units();
-    const row = (s: Session, match?: string) => compareRow(s, activityWeather(this.#store.getActivityDetail(Number(s.id), 'weather')?.raw, units), match);
+    const detail = (s: Session, kind: 'weather' | 'power_curve') => (typeof s.id === 'number' ? this.#store.getActivityDetail(s.id, kind) : undefined);
+    // The power curve only when get_activity stored it: comparing never downloads FIT files.
+    const row = (s: Session, match?: string) => compareRow(s, activityWeather(detail(s, 'weather')?.raw, units), match, detail(s, 'power_curve')?.raw);
 
     let rows: CompareRow[];
     let criteria: CompareData['criteria'];
@@ -547,6 +554,8 @@ export class AnalyticsService {
     });
     const noWeather = compared.filter((s) => this.#store.getActivityDetail(Number(s.id), 'weather') === undefined).length;
     if (noWeather > 0) notes.push(`Weather is missing for ${noWeather} of them until get_activity with detail "weather" downloads it.`);
+    const noCurve = compared.filter((s) => ((s.avg_power_w ?? 0) > 0 || (s.np_w ?? 0) > 0) && detail(s, 'power_curve') === undefined).length;
+    if (noCurve > 0) notes.push(`Best 5 and 20 min power is missing for ${noCurve} of them until get_activity with detail "power_curve" stores their power curve.`);
     const withoutLaps = compared.filter((s) => noLaps.has(s.id) && decouplingEligible(s)).length;
     if (withoutLaps > 0) notes.push(decouplingLapsNote(withoutLaps));
     const data: CompareData = { reference: refSession ? Number(refSession.id) : undefined, criteria, activities: rows, not_found: notFound.length > 0 ? notFound : undefined };
@@ -627,6 +636,7 @@ export class AnalyticsService {
     const samples = daily.filter((d) => d.resting_hr !== null && Number.isFinite(d.resting_hr) && d.resting_hr > 0).length;
     const rhr = restingHrOn(daily, rows, date);
     const zones = this.#zones();
+    const ftp = !param || param === 'ftp_w' ? this.#ftpEstimate(date) : {};
     const rhrNote =
       rhr.note ?? (samples < RHR_MIN_SAMPLES ? `Fewer than ${RHR_MIN_SAMPLES} days with a resting HR in the 28 before ${date}; the rhr threshold is used.` : undefined);
     const data: ThresholdsData = {
@@ -637,9 +647,29 @@ export class AnalyticsService {
       hrmax: hrmaxOn(rows, date),
       rhr_28d: { value: rhr.value, samples, note: rhrNote },
       zones: zones.value,
+      estimates: ftp.value ? { ftp_w: ftp.value } : undefined,
     };
     const gap = withProfileGap(this.garmin.coverage('daily', window.from, window.to, ['daily_summary']), profile.gap);
-    return { data: compact(data), meta: readMeta([profile.ensured, ensured], gap, zones.note ? [zones.note] : []) };
+    const notes = [zones.note, ftp.note].filter((n): n is string => n !== undefined);
+    return { data: compact(data), meta: readMeta([profile.ensured, ensured], gap, notes) };
+  }
+
+  /**
+   * FTP estimate from the power curves `get_activity` stored for the rides of [date − 90, date];
+   * nothing is downloaded or recorded. Without one, a note when rides with power lack a curve.
+   */
+  #ftpEstimate(date: IsoDate): { value?: FtpEstimate; note?: string } {
+    const rides = this.#store.queryActivities({ from: addDays(date, -FTP_ESTIMATE_DAYS), to: date }).filter((a) => sportGroup(a.type) === 'bike');
+    const efforts = rides.flatMap((a) => {
+      const w = storedBestPower(this.#store.getActivityDetail(a.id, 'power_curve')?.raw, 1200);
+      return w === undefined || !a.date ? [] : [{ activity_id: a.id, date: a.date as IsoDate, best_20min_w: w }];
+    });
+    const value = ftpEstimate(efforts, date);
+    if (value) return { value };
+    const noCurve = rides.filter((a) => (a.avg_power ?? 0) > 0 && this.#store.getActivityDetail(a.id, 'power_curve') === undefined).length;
+    return noCurve > 0
+      ? { note: `No FTP estimate: ${noCurve} rides with power in the ${FTP_ESTIMATE_DAYS} days to ${date} have no stored power curve; get_activity with detail "power_curve" stores one.` }
+      : {};
   }
 
   /** Zones of the cached profile; none without zone floors in it, a note instead without a profile. */

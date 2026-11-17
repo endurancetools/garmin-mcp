@@ -145,6 +145,8 @@ export const compareOutput = envelope({
       gap_pace: str,
       avg_speed_kmh: num,
       avg_hr: num,
+      best_5min_w: num,
+      best_20min_w: num,
       ef: num,
       decoupling_pct: num,
       tss: num,
@@ -187,6 +189,7 @@ export const thresholdsOutput = envelope({
     power: z.record(z.string(), z.looseObject({ floors: list(z.number()), ftp: num })).optional(),
     note: str,
   }),
+  estimates: obj({ ftp_w: obj({ value: num, best_20min_w: num, activity_id: num, date: str, note: str }) }),
 });
 
 export const setThresholdOutput = envelope({

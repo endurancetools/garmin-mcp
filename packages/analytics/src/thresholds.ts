@@ -357,3 +357,49 @@ export function hrmaxOn(rows: readonly ThresholdPoint[], date: IsoDate): Partial
   if (value !== undefined) return { value };
   return { note: 'No HRmax in the threshold history (Garmin profile or set_threshold); no default is assumed.' };
 }
+
+/** FTP estimate: this share of the best 20 min power. */
+export const FTP_FROM_20MIN = 0.95;
+/** Days before `date` (and `date` itself) whose stored power curves the FTP estimate reads. */
+export const FTP_ESTIMATE_DAYS = 90;
+
+/** Best 20 min power (W) of one ride from its stored power curve. */
+export interface TwentyMinEffort {
+  activity_id: number;
+  date: IsoDate;
+  best_20min_w: number;
+}
+
+/** `estimates.ftp_w` of `get_thresholds`: an estimate shown to the user, never recorded by the server. */
+export interface FtpEstimate {
+  value: number;
+  best_20min_w: number;
+  activity_id: number;
+  date: IsoDate;
+  note: string;
+}
+
+/**
+ * Cycling FTP estimate on `date`: {@link FTP_FROM_20MIN} × the highest best 20 min power among
+ * `efforts` (rounded W; on a tie the later ride). The caller passes the rides of
+ * [date − {@link FTP_ESTIMATE_DAYS}, date] whose power curve is stored; none, no estimate.
+ */
+export function ftpEstimate(efforts: readonly TwentyMinEffort[], date: IsoDate): FtpEstimate | undefined {
+  const from = addDays(date, -FTP_ESTIMATE_DAYS);
+  const top = efforts
+    .filter((e) => e.date >= from && e.date <= date && e.best_20min_w > 0)
+    .reduce<TwentyMinEffort | undefined>(
+      (a, e) => (a === undefined || e.best_20min_w > a.best_20min_w || (e.best_20min_w === a.best_20min_w && e.date > a.date) ? e : a),
+      undefined,
+    );
+  if (!top) return undefined;
+  return {
+    value: Math.round(FTP_FROM_20MIN * top.best_20min_w),
+    best_20min_w: top.best_20min_w,
+    activity_id: top.activity_id,
+    date: top.date,
+    note:
+      `Estimate, not a test: ${Math.round(FTP_FROM_20MIN * 100)} % of the best 20 min power of the rides from ${from} to ${date} with a stored power curve. ` +
+      'Not recorded and not used by get_load; to use it, record it with set_threshold (param ftp_w, source manual) after the user agrees.',
+  };
+}
