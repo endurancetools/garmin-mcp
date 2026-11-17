@@ -2,6 +2,12 @@
 
 All notable changes to Garmin MCP. All `garmin-mcp-*` packages share one version. The same list is on the [documentation site](https://endurancetools.github.io/garmin-mcp/changelog/).
 
+## Unreleased
+
+### Tools
+
+- **Fuller descriptions of `get_workout`, `get_gear` and `get_thresholds`.** Each now says what it returns, when to use it and which tool it pairs with (`get_workout` takes the id from `list_workouts` or the `workout_id` of `get_activity`; the name or uuid from `get_gear` is what `update_activity` takes as `add_gear`/`remove_gear`; `get_thresholds` shows what `get_load` and `get_readiness` compute with, `set_threshold` records a new test). All their parameters have descriptions, so the assistant picks the right tool and arguments more often.
+
 ## 0.6.0 (2026-11-17)
 
 ### Signing in

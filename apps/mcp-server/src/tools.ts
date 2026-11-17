@@ -315,8 +315,11 @@ export const TOOLS: ToolDef[] = [
   tool({
     name: 'get_workout',
     title: 'Get a planned workout',
-    description: 'Steps of a saved workout in readable form (warm-up, repeats, targets in pace/HR/power).',
-    input: { id },
+    description:
+      'Steps of one saved workout from the Garmin library in readable form: name, sport, description and one line per step (warm-up, repeats, ' +
+      'duration or distance, target in pace/HR/power/cadence), plus estimated duration and distance. ' +
+      'Use it to show what a planned session contains, or before changing it with create_workout.',
+    input: { id: id.describe('Workout id from list_workouts or workout_id from get_activity') },
     output: workoutOutput,
     annotations: READ,
     run: (s, a) => s.getWorkout(a.id),
@@ -372,8 +375,13 @@ export const TOOLS: ToolDef[] = [
   tool({
     name: 'get_gear',
     title: 'Get gear',
-    description: 'Shoes, bikes and other gear with total distance, usage since, notes and status. include_activities adds the last 10 activities per item.',
-    input: { include_activities: z.boolean().default(false) },
+    description:
+      'Shoes, bikes and other gear on the Garmin account: uuid, name, type, status (active or retired), total distance and activity count, ' +
+      'the distance limit set in Garmin, in use since, retired date and notes. Use it for "how many km on my shoes" or "which shoes to replace"; ' +
+      'name or uuid is what update_activity takes as add_gear/remove_gear.',
+    input: {
+      include_activities: z.boolean().default(false).describe('true: add the last 10 activities per item (date, name, distance) to see what the gear was used for'),
+    },
     output: gearOutput,
     annotations: READ,
     run: (s, a) => s.getGear(a.include_activities),
@@ -460,11 +468,12 @@ export const TOOLS: ToolDef[] = [
       'Thresholds the analytics use on `date` (default today): per param its value, the date it applies since and its source (garmin-auto from the Garmin profile, test, manual, import), ' +
       'by_sport (run, bike, swim: LTHR and LT1 with a note when a fallback, default or approximation), HRmax and the 28-day resting HR. ' +
       'zones has the HR and power zone floors per sport from the Garmin profile (method, HRmax/rest/LTHR or FTP used, fetched date; current, not historical). ' +
-      'history adds every recorded row. Example: {"param":"lthr_run","history":true}.',
+      'history adds every recorded row. Use it to see what get_load and get_readiness compute with; record a new test result with set_threshold. ' +
+      'Example: {"param":"lthr_run","history":true}.',
     input: {
-      date: date.optional(),
-      param: z.enum(THRESHOLD_PARAMS).optional(),
-      history: z.boolean().default(false),
+      date: date.optional().describe('Day the thresholds are in effect on; default today'),
+      param: z.enum(THRESHOLD_PARAMS).optional().describe('Only this threshold; default all'),
+      history: z.boolean().default(false).describe('true: add all recorded rows (of `param`, if given) with date, value, source and note'),
     },
     output: thresholdsOutput,
     annotations: READ,
