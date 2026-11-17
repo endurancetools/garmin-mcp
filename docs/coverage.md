@@ -13,7 +13,7 @@ Coverage:
 
 All reads come from the local SQLite cache. Data that garmin-mcp does not sync is not available, even if the client has a method for it.
 
-Totals for the 111 reads: 73 full, 13 partial, 25 missing.
+Totals for the 111 reads: 75 full, 14 partial, 22 missing.
 
 ## Reads
 
@@ -160,12 +160,12 @@ Totals for the 111 reads: 73 full, 13 partial, 25 missing.
 | Pregnancy summary | — | missing | |
 | Menstrual data for a day | — | missing | |
 | Menstrual calendar | — | missing | |
-| Earned badges | — | missing | |
-| Ad-hoc challenges | — | missing | |
-| Available badge challenges | — | missing | |
-| Badge challenges | — | missing | |
-| Non-completed badge challenges | — | missing | |
-| Virtual challenges in progress | — | missing | |
+| Earned badges | `garmin://challenges` → `badges` | full | how many are earned and the 10 latest: name, date, points, how many times; downloaded when read (auto fetch) and kept for an hour |
+| Ad-hoc challenges | — | missing | challenges between connections; no recording of the response yet |
+| Available badge challenges | — | missing | challenges you could still join; no recording of the response yet |
+| Badge challenges | `garmin://challenges` → `badges` | partial | a completed challenge shows only as the badge it earned; no list of completed challenges |
+| Non-completed badge challenges | `garmin://challenges` → `challenges` | full | joined challenges in progress: name, start and end date, progress in %, value and target in Garmin's unit (`unit_id`) |
+| Virtual challenges in progress | — | missing | no recording of the response yet |
 | Goals | — | missing | goals. |
 
 ## Writes

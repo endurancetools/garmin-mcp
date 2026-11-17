@@ -1144,6 +1144,41 @@ describe('GarminService', () => {
     expect(off.calls).toEqual([]);
   });
 
+  it('serves earned badges and challenges in progress, fetched once within the reference TTL', async () => {
+    const { service, store, count } = setup();
+    const res = await service.getChallenges();
+    expect(res.data.badges?.count).toBe(5);
+    expect(res.data.badges?.recent[0]).toEqual({ name: 'anon-badgeName', earned_on: '2026-11-05', points: 4, times_earned: 7 });
+    expect(res.data.challenges).toHaveLength(3);
+    expect(res.data.challenges?.[0]).toMatchObject({ start: '2026-10-01', end: '2026-12-31', progress_pct: 58, target: 300000, unit_id: 1 });
+    expect(res.meta.source).toBe('live');
+    expect(res.meta.note).toBeUndefined();
+    expect((await service.getChallenges()).meta.source).toBe('cache');
+    expect(count('getEarnedBadges')).toBe(1);
+    expect(count('getBadgeChallengesInProgress')).toBe(1);
+    store.setBadges('challenges', [], NOW - 2 * 3600_000);
+    await service.getChallenges();
+    expect(count('getEarnedBadges')).toBe(1);
+    expect(count('getBadgeChallengesInProgress')).toBe(2);
+  });
+
+  it('keeps empty lists, leaves out a part that failed with a note, and fetches nothing without auto fetch', async () => {
+    const none = setup({ badges: [], challenges: [] });
+    expect((await none.service.getChallenges()).data).toEqual({ badges: { count: 0, recent: [] }, challenges: [] });
+    const broken = setup({ challenges: new GarminError('NOT_FOUND', 'Garmin returned 404') });
+    const half = await broken.service.getChallenges();
+    expect(half.data.badges?.count).toBe(5);
+    expect(half.data).not.toHaveProperty('challenges');
+    expect(half.meta.note).toBe('Badge challenges could not be downloaded (NOT_FOUND).');
+    const down = setup({ badges: new GarminError('NOT_FOUND', 'Garmin returned 404'), challenges: new GarminError('NOT_FOUND', 'Garmin returned 404') });
+    await expect(down.service.getChallenges()).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    const off = setup({ autoFetch: false });
+    const empty = await off.service.getChallenges();
+    expect(empty.data).toEqual({});
+    expect(empty.meta.note).toBe('Badges and challenges are not downloaded yet: they are fetched only by reading garmin://challenges with auto fetch on (GARMIN_AUTO_FETCH), never by garmin_sync.');
+    expect(off.calls).toEqual([]);
+  });
+
   it('downloads a course as GPX and uploads one, dropping the cached list', async () => {
     const { service, store, calls } = setup();
     expect(await service.downloadCourseGpx(102339772)).toEqual({ name: 'course-102339772.gpx', data: new TextEncoder().encode('<gpx/>') });

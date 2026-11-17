@@ -99,6 +99,12 @@ export interface CourseCache {
   fetched_at: number;
 }
 
+/** Earned badges or the badge challenges in progress as `garmin://challenges` last fetched them; `raw` is null when Garmin did not give them. */
+export interface BadgeCache {
+  raw: unknown;
+  fetched_at: number;
+}
+
 /**
  * Garmin's own threshold history as the analytics reads last fetched it: running lactate
  * threshold heart rate and speed per day, and the latest cycling FTP. A part is null when
@@ -744,6 +750,16 @@ export class Store {
   getCourse(id?: number): CourseCache | undefined {
     const v = this.getMeta(id === undefined ? 'courses' : `course:${id}`);
     return v === undefined ? undefined : (JSON.parse(v) as CourseCache);
+  }
+
+  /** Earned badges or the badge challenges in progress, each kept as one JSON value in `meta` (fetched by `garmin://challenges`, no sync job). */
+  setBadges(kind: 'earned' | 'challenges', raw: unknown, fetchedAt: number): void {
+    this.setMeta(`badges:${kind}`, JSON.stringify({ raw, fetched_at: fetchedAt } satisfies BadgeCache));
+  }
+
+  getBadges(kind: 'earned' | 'challenges'): BadgeCache | undefined {
+    const v = this.getMeta(`badges:${kind}`);
+    return v === undefined ? undefined : (JSON.parse(v) as BadgeCache);
   }
 
   /** Drops the cached course list, so the next read fetches it again (after a course was added). */

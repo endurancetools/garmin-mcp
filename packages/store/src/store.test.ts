@@ -166,6 +166,15 @@ describe('Store', () => {
     expect(store.getTrainingPlan()).toEqual({ id: 48, raw: { name: 'Half' }, fetched_at: T });
   });
 
+  it('keeps earned badges and badge challenges apart', () => {
+    const store = Store.open(':memory:');
+    expect(store.getBadges('earned')).toBeUndefined();
+    store.setBadges('earned', [{ badgeId: 1 }], T);
+    store.setBadges('challenges', null, T + 1);
+    expect(store.getBadges('earned')).toEqual({ raw: [{ badgeId: 1 }], fetched_at: T });
+    expect(store.getBadges('challenges')).toEqual({ raw: null, fetched_at: T + 1 });
+  });
+
   it('keeps the course list and single courses, and forgets the list', () => {
     const store = Store.open(':memory:');
     expect(store.getCourse()).toBeUndefined();

@@ -14,12 +14,13 @@ import {
   type IsoDate,
   type Logger,
 } from 'garmin-mcp-config';
-import { errInfo, FATAL_CODES, isFresh, SCOPE_DAILY, signInPause, TTL, type DailyKind, type DetailKind, type EnsureResult, type ReferenceKind, type Store, type SyncJobProgress, type SyncJobReport, type SyncJobRunner, type SyncScope, type Syncer, type TrainingPlanCache, type CourseCache } from 'garmin-mcp-store';
+import { errInfo, FATAL_CODES, isFresh, SCOPE_DAILY, signInPause, TTL, type DailyKind, type DetailKind, type EnsureResult, type ReferenceKind, type Store, type SyncJobProgress, type SyncJobReport, type SyncJobRunner, type SyncScope, type Syncer, type TrainingPlanCache, type CourseCache, type BadgeCache } from 'garmin-mcp-store';
 import fs from 'node:fs';
 import path from 'node:path';
 import { activityBrief, activityListItem, eventTypeKey, periodActivitySummary } from './activities.js';
 import { activityWeather, MIN_TYPED_SPLIT_S, splitSummaries, strengthSets, typedSplits, zoneTimes, type ActivityWeather, type SplitSummary, type StrengthSets, type TypedSplit, type ZoneTime } from './activity-extras.js';
 import { gapPace, GPS_STREAM_METRICS, hrSource, motionTime, redactActivityRaw, respiration, runningDynamics, stamina, trainingEffectText, type RunningDynamics } from './activity-metrics.js';
+import { badgeSummary, challengeList, type BadgeChallenge, type EarnedBadge } from './badges.js';
 import { bodyComposition } from './body.js';
 import { calendarEvent } from './calendar.js';
 import { CLIMB_RULES } from './climbs.js';
@@ -1700,6 +1701,59 @@ export class GarminService {
     const saved = await this.client.uploadCourseGpx(file, data);
     this.store.forgetCourses();
     return compact({ file: path.basename(file), ...courseBriefFromDetail(saved, this.#courseSport(saved.courseId as number, saved)) });
+  }
+
+  // ------------------------------------------------------------ badges and challenges
+
+  /**
+   * Earned badges or the badge challenges in progress: from the cache while younger than the
+   * reference TTL (1 h), else one request within the daily request limit, made only with auto
+   * fetch on; no sync job fetches them. A failed request leaves what the cache has, with a note
+   * and the error.
+   */
+  async #lazyBadges(kind: 'earned' | 'challenges'): Promise<{ cached?: BadgeCache; result: EnsureResult; note?: string; error?: unknown }> {
+    const cached = this.store.getBadges(kind);
+    const what = kind === 'earned' ? 'earned badges' : 'badge challenges';
+    if (cached && isFresh(cached.fetched_at, TTL.reference, this.#now())) return { cached, result: { source: 'cache' } };
+    if (!(this.#autoSync || this.syncer.fetchOnDemand)) {
+      const note = 'Badges and challenges are not downloaded yet: they are fetched only by reading garmin://challenges with auto fetch on (GARMIN_AUTO_FETCH), never by garmin_sync.';
+      return { cached, result: { source: 'cache' }, note: cached ? undefined : note };
+    }
+    try {
+      const res = await this.syncer.lazyRequest(`badges:${kind}`, () => (kind === 'earned' ? this.client.getEarnedBadges() : this.client.getBadgeChallengesInProgress()));
+      if ('blocked' in res) {
+        const why = res.blocked.reason === 'budget' ? 'The daily Garmin request limit is used up' : 'Syncing with Garmin is paused';
+        return { cached, result: { source: 'cache' }, note: `${why}; ${what} download after ${iso(res.blocked.resume_at)} when asked again.` };
+      }
+      const fresh = { raw: res.value ?? null, fetched_at: this.#now() };
+      this.store.setBadges(kind, fresh.raw, fresh.fetched_at);
+      return { cached: fresh, result: { source: 'live' } };
+    } catch (error) {
+      const kept = cached ? `; this is the copy from ${iso(cached.fetched_at)}` : '';
+      return { cached, result: { source: 'cache' }, note: `${what[0]?.toUpperCase()}${what.slice(1)} could not be downloaded (${errInfo(error).code})${kept}.`, error };
+    }
+  }
+
+  /**
+   * `garmin://challenges`: how many badges are earned and the 10 latest, and the badge
+   * challenges in progress with how far along they are. Either part that cannot be read leaves
+   * the other with a note; both failing with nothing cached is the first error.
+   */
+  async getChallenges() {
+    const earned = await this.#lazyBadges('earned');
+    const challenges = await this.#lazyBadges('challenges');
+    const failed = [earned, challenges].find((g) => !g.cached && g.error);
+    if (!earned.cached && !challenges.cached && failed) throw failed.error;
+    const notes = [earned.note, challenges.note].filter((n): n is string => n !== undefined);
+    // No badges or no challenges is an answer: the empty lists stay; a part never downloaded is left out.
+    const data: { badges?: { count: number; recent: EarnedBadge[] }; challenges?: BadgeChallenge[] } = {};
+    if (earned.cached) {
+      const badges = badgeSummary(earned.cached.raw);
+      data.badges = { count: badges.count, recent: compact(badges.recent) };
+    }
+    if (challenges.cached) data.challenges = compact(challengeList(challenges.cached.raw));
+    const meta = this.#meta([earned.result, challenges.result], [earned.cached?.fetched_at, challenges.cached?.fetched_at]);
+    return { data, meta: notes.length > 0 ? withNote(meta, [...new Set(notes)].join(' ')) : meta };
   }
 
   /**

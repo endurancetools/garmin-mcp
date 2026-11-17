@@ -186,6 +186,12 @@ function registerResources(server: McpServer, getService: () => Promise<GarminSe
     'Courses saved in Garmin Connect, newest first: id, name, sport, distance and elevation gain. Downloaded when read (auto fetch) and kept for an hour.',
     (s) => s.listCourses(),
   );
+  resource(
+    'challenges',
+    'garmin://challenges',
+    "Badges and challenges: how many badges you earned and the 10 latest, and the badge challenges you joined that are in progress, with progress in % (value and target in Garmin's unit). Downloaded when read (auto fetch) and kept for an hour.",
+    (s) => s.getChallenges(),
+  );
   resource('sync-status', 'garmin://sync-status', 'Recent sync runs, date coverage and record counts of the local cache', (s) => s.syncStatus());
   // Read on every new conversation by some clients, so it never downloads: a gap is a note naming the tool that fills it.
   server.registerResource(

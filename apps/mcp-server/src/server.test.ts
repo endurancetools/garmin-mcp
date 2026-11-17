@@ -37,6 +37,7 @@ const fakeService = {
   listCourses: async () => ({ data: { courses: [{ id: 102339772, name: 'Loop' }] }, meta }),
   getCourse: async (id: number) => ({ data: { id, name: 'Loop', profile: [], climbs: [] }, meta }),
   courseIds: () => [102339772, 4242],
+  getChallenges: async () => ({ data: { badges: { count: 602, recent: [{ name: 'Marathon', earned_on: '2026-11-05', points: 4 }] }, challenges: [] }, meta }),
   updateActivity: async (id: number, patch: unknown) => {
     activityWrites.push({ method: 'updateActivity', args: [id, patch] });
     return { data: { updated: true, activity: { id, name: 'Morning Run' } }, meta };
@@ -397,7 +398,12 @@ describe('MCP server', () => {
   it('serves resources and prompts', async () => {
     const client = await connect(runtime());
     const resources = (await client.listResources()).resources.map((r) => r.uri);
-    expect(resources).toEqual(['garmin://profile', 'garmin://gear', 'garmin://devices', 'garmin://activity-types', 'garmin://courses', 'garmin://sync-status', 'garmin://today']);
+    expect(resources).toEqual(['garmin://profile', 'garmin://gear', 'garmin://devices', 'garmin://activity-types', 'garmin://courses', 'garmin://challenges', 'garmin://sync-status', 'garmin://today']);
+    const challenges = await client.readResource({ uri: 'garmin://challenges' });
+    expect(JSON.parse((challenges.contents[0] as { text: string }).text)).toEqual({
+      data: { badges: { count: 602, recent: [{ name: 'Marathon', earned_on: '2026-11-05', points: 4 }] }, challenges: [] },
+      meta,
+    });
     const courses = await client.readResource({ uri: 'garmin://courses' });
     expect(JSON.parse((courses.contents[0] as { text: string }).text)).toEqual({ data: { courses: [{ id: 102339772, name: 'Loop' }] }, meta });
     const types = await client.readResource({ uri: 'garmin://activity-types' });

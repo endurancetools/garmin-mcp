@@ -54,6 +54,9 @@ export function setup(
     raceCourse?: number;
     /** Course details by id; other ids answer 404, the recorded course (102339772) its fixture. */
     courses?: Record<number, unknown>;
+    /** Earned badges and badge challenges in progress (an Error is thrown); the recorded ones (5 badges, 3 challenges) by default. */
+    badges?: unknown;
+    challenges?: unknown;
   } = {},
 ) {
   const now = opts.now ?? NOW;
@@ -67,6 +70,11 @@ export function setup(
   const writtenSets = new Map<number, unknown[]>();
   // Manual activities added through createManualActivity, answered by getActivity as Garmin would.
   const created = new Map<number, Record<string, unknown>>();
+  /** `value`, or the fixture when it is undefined; an Error is thrown as Garmin's failure. */
+  const answer = (value: unknown, name: string): unknown => {
+    if (value instanceof Error) throw value;
+    return value === undefined ? fixture(name) : value;
+  };
   const rec = async <T>(method: string, args: unknown[], value: () => T): Promise<T> => {
     calls.push({ method, args });
     if (opts.delayMs) await new Promise((r) => setTimeout(r, opts.delayMs));
@@ -319,6 +327,8 @@ export function setup(
         if (known === undefined) throw notFound(`course/${id}`);
         return known;
       }),
+    getEarnedBadges: () => rec('getEarnedBadges', [], () => answer(opts.badges, 'earned-badges')),
+    getBadgeChallengesInProgress: () => rec('getBadgeChallengesInProgress', [], () => answer(opts.challenges, 'badge-challenges')),
     downloadCourseGpx: (id: number) => rec('downloadCourseGpx', [id], () => ({ data: new TextEncoder().encode('<gpx/>'), contentType: 'application/gpx+xml', filename: undefined })),
     uploadCourseGpx: (file: string, data: Uint8Array) =>
       rec('uploadCourseGpx', [file, data], () => ({ courseId: 900001, courseName: 'Evening Loop', activityTypePk: 1, distanceMeter: 5230, elevationGainMeter: 84.4 })),

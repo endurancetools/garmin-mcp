@@ -30,9 +30,11 @@ With `GARMIN_ENABLE_DESTRUCTIVE=true` there are also `delete_activity`, `delete_
 
 ## Resources and prompts
 
-Resources the client can read directly: your profile, gear, devices, the list of activity type keys, your courses and the sync status; plus `garmin://activity/{id}`, `garmin://workout/{id}` and `garmin://course/{id}` for one item.
+Resources the client can read directly: your profile, gear, devices, the list of activity type keys, your courses, your badges and challenges and the sync status; plus `garmin://activity/{id}`, `garmin://workout/{id}` and `garmin://course/{id}` for one item.
 
 `garmin://course/{id}` describes a course before you ride or run it: distance, elevation gain and loss, the lowest and highest point, the profile in 20 stretches of equal length and the climbs (found as in `get_activity` with `bucket: "climbs"`). Positions are left out while `GARMIN_REDACT` is on. Courses are downloaded when read and kept for an hour; `list_workouts` adds the course of a race to its event.
+
+`garmin://challenges` gives how many badges you earned and the 10 latest (date, points and how many times, for a badge earned more than once), and the badge challenges you joined that are still in progress, each with its start and end date and progress in %. The value and target of a challenge stay in Garmin's unit (`unit_id`), which Garmin does not name. It is downloaded when read (two requests, auto fetch on) and kept for an hour.
 
 `garmin://today` is the morning at a glance: today's GO / MODIFY / REST decision from `get_readiness` with the rating of each signal, last night in one line (e.g. "23:13-06:48, 7 h 22 min, score 79 (fair), deep 0.8 h, REM 1.6 h, awake 0.2 h, 1 awakening, HRV 34 ms, resting HR 56 bpm") and the workouts on today's calendar. It is read from the local cache only and never downloads anything, so a client can attach it to every conversation; when something is missing, the note names the tool that downloads it (`get_readiness`, `get_sleep` or `list_workouts`).
 

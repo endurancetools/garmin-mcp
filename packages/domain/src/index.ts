@@ -1,6 +1,7 @@
 export * from './activities.js';
 export * from './activity-extras.js';
 export * from './activity-metrics.js';
+export * from './badges.js';
 export * from './body.js';
 export * from './calendar.js';
 export * from './climbs.js';
