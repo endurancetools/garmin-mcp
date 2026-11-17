@@ -13,7 +13,7 @@ Coverage:
 
 All reads come from the local SQLite cache. Data that garmin-mcp does not sync is not available, even if the client has a method for it.
 
-Totals for the 111 reads: 55 full, 16 partial, 40 missing.
+Totals for the 111 reads: 57 full, 14 partial, 40 missing.
 
 ## Reads
 
@@ -80,7 +80,7 @@ Totals for the 111 reads: 55 full, 16 partial, 40 missing.
 
 | Garmin Connect data | garmin-mcp | Coverage | Note |
 | --- | --- | --- | --- |
-| Sleep of one night, full detail | `get_sleep` `date` | partial | stages, score, SpO2, respiration, HRV; no per-minute series () |
+| Sleep of one night, full detail | `get_sleep` `date` → `timeline` | full | stages, score, SpO2, respiration, HRV; `timeline`: stage segments (at most 60), awakenings with times, restless moments, lowest heart rate, HRV and SpO2 with times, Body Battery at the start and end; clock times in the user's time zone |
 | Sleep summary of one night | `get_sleep` `date` | full | |
 | Sleep over a date range | `get_sleep` `from`, `to` | full | adds averages and trend |
 
@@ -92,7 +92,7 @@ Totals for the 111 reads: 55 full, 16 partial, 40 missing.
 | Training load trend | `get_training_status` `from`, `to`, `include_series: true` | full | `garmin_load_model`: CTL/ATL/TSB from Garmin's training load per activity; the own TSS model (power, pace, heart rate, RPE) is `get_load` |
 | Training load balance | `get_training_status` `to` = date → `load_focus` | full | bands with targets and below/within/above |
 | VO2max trend | `get_training_status` `from`, `to` → `vo2max.running_trend` | partial | trend, not the daily series |
-| HRV of one night | `query_health` `metrics: [hrv]` → `hrv_status`, `hrv_baseline_low_ms`, `hrv_baseline_high_ms`; `get_sleep` `date` | partial | last-night average, status and baseline; no readings () |
+| HRV of one night | `query_health` `metrics: [hrv]` → `hrv_status`, `hrv_baseline_low_ms`, `hrv_baseline_high_ms`; `get_sleep` `date` → `timeline.hrv` | full | last-night average, status and baseline; the night's lowest and highest 5-minute reading with times, not the reading series |
 | HRV trend | `query_health` `metrics: [hrv]`, `from`, `to` | full | |
 | Respiration trend | `query_health` `metrics: [respiration]`, `from`, `to` | full | |
 | Progress summary between dates | `get_period_summary` `period: "range"`, `from`, `to`; `get_activities` | full | any range up to 366 days; `period` week or month with `anchor_date` for calendar periods |

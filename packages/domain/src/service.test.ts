@@ -2,10 +2,10 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { GarminError } from 'garmin-mcp-config';
-import { clearSignInPause, TTL } from 'garmin-mcp-store';
+import { clearSignInPause, hrvColumns, sleepColumns, TTL } from 'garmin-mcp-store';
 import { describe, expect, it, vi } from 'vitest';
 import { makeZip } from './test-utils/zip.js';
-import { NOW, setup, summary } from './test-utils/fake.js';
+import { fixture, NOW, setup, summary } from './test-utils/fake.js';
 import * as output from './output.js';
 import { compileWorkout } from './workouts/index.js';
 
@@ -53,6 +53,24 @@ describe('GarminService', () => {
     expect(await ids({ name: 'ślęża' })).toEqual([1]);
     await expect(service.getActivities({ pace: '5:00' })).rejects.toMatchObject({ code: 'INVALID_INPUT' });
     await expect(service.getActivities({ pace: '5-6' })).rejects.toMatchObject({ code: 'INVALID_INPUT' });
+  });
+
+  it('adds the timeline of one night from the cached sleep and HRV JSON, without requests', async () => {
+    const { service, store, calls } = setup();
+    const sleep = fixture('sleep') as Parameters<typeof sleepColumns>[0];
+    const hrv = fixture('hrv') as Parameters<typeof hrvColumns>[0];
+    store.putDaily('sleep', '2026-10-07', sleepColumns(sleep), sleep, NOW);
+    store.putDaily('hrv', '2026-10-07', hrvColumns(hrv), hrv, NOW);
+    const night = await service.getSleep({ date: '2026-10-07' });
+    expect(calls).toEqual([]);
+    expect(output.sleepOutput.safeParse(JSON.parse(JSON.stringify(night))).error).toBeUndefined();
+    const t = (night.data as { timeline?: Record<string, unknown> }).timeline;
+    // setup() runs in UTC; the fixture night starts at 21:13 GMT.
+    expect(t).toMatchObject({ awakenings: { count: 1, at: ['03:47'] }, min_hr: { bpm: 54, at: '00:20' }, hrv: { min_ms: 17, max_ms: 62 }, body_battery: { start: 19, end: 64 } });
+    expect((t?.stages as unknown[] | undefined)?.[0]).toEqual({ from: '21:13', to: '21:32', stage: 'light' });
+    // A range keeps its per-night table without timelines.
+    const range = await service.getSleep({ from: '2026-10-07', to: '2026-10-07' });
+    expect(JSON.stringify(range.data)).not.toContain('timeline');
   });
 
   it('answers a 90-day health question from the cache after the first fetch', async () => {

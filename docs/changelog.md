@@ -7,6 +7,10 @@ What changed in each release. All `garmin-mcp-*` packages share one version; the
 
 ## Unreleased
 
+### Tools
+
+- **`get_sleep` shows how one night went.** For a single night (`date`) the answer has a `timeline`: the sleep stages as segments with start and end (at most 60, short ones merged into their neighbours), awakenings (how many, the longest and when each began), restless moments, the lowest heart rate, the lowest and highest HRV reading and the lowest SpO2 with their times, and Body Battery at the start and end of the night. Clock times are in your time zone. It is read from the sleep and HRV data already downloaded for that night, so it costs no extra requests to Garmin; ranges of nights are unchanged.
+
 ### CLI
 
 - **`garmin record` knows 19 more endpoints**, the ones the next features read: typed splits and split summaries of an activity, training plans (list, phased, adaptive), lactate threshold history (heart rate and speed), cycling FTP, hydration, blood pressure, the day's events, goals, courses, a device's solar gain, nutrition, the menstrual cycle day, earned badges and badge challenges in progress. `garmin record list` shows them. Their paths follow the known shape of the Garmin Connect API and are not confirmed by a recording yet. Recordings of training plans, courses, goals and daily events replace every name, as plan, race, course point and goal names name places; course coordinates are shifted like activity tracks, and encoded polylines are replaced.

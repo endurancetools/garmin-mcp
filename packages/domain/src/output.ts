@@ -215,6 +215,15 @@ export const sleepOutput = envelope({
   avg_overnight_hrv_ms: num,
   resting_hr_bpm: num,
   body_battery_change: num,
+  timeline: obj({
+    stages: list(z.looseObject({ from: str, to: str, stage: str })),
+    awakenings: obj({ count: num, longest_min: num, longest_at: str, at: list(z.string()) }),
+    restless_moments: num,
+    min_hr: obj({ bpm: num, at: str }),
+    hrv: obj({ min_ms: num, min_at: str, max_ms: num, max_at: str }),
+    lowest_spo2: obj({ pct: num, at: str }),
+    body_battery: obj({ start: num, end: num }),
+  }),
   from: str,
   to: str,
   summary: obj({

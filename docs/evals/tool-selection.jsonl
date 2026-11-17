@@ -59,3 +59,5 @@
 {"prompt": "How did I sleep on the night from 7 to 8 October 2026? Show the stages.", "expect": {"tool": "get_sleep", "args_include": {"date": "2026-10-08"}}, "forbid": ["query_health"]}
 {"prompt": "Zapisz aktywność 21001 jako oryginalny plik FIT w podfolderze races.", "expect": {"tool": "download_activity_file", "args_include": {"id": 21001, "format": "fit", "output_dir": "races"}}, "forbid": ["get_activity"]}
 {"prompt": "Which running workouts do I have saved in my Garmin library?", "expect": {"tool": "list_workouts", "args_include": {"sport": "running"}}, "forbid": ["get_activities", "get_workout", "garmin_sync"]}
+{"prompt": "O której się budziłem dziś w nocy?", "expect": {"tool": "get_sleep"}, "forbid": ["query_health", "garmin_sync"]}
+{"prompt": "When did I wake up during last night's sleep, and when was my heart rate lowest?", "expect": {"tool": "get_sleep"}, "forbid": ["query_health", "garmin_sync"]}

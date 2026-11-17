@@ -24,7 +24,7 @@ import { energyBalance } from './energy.js';
 import { compact, hms, isFootSport, iso, km, round, speedOrPace } from './format.js';
 import { healthTable, tablesFor, type HealthMetric } from './health.js';
 import { decodeCursor, encodeCursor, pageBySize } from './paging.js';
-import { sleepNight, sleepRange } from './sleep.js';
+import { sleepNight, sleepRange, sleepTimeline } from './sleep.js';
 import { filterStream, streamSummary, type StreamBucket, type StreamSummary } from './stream.js';
 import { trend } from './stats.js';
 import { trainingOverview } from './training.js';
@@ -882,7 +882,9 @@ export class GarminService {
       const [row] = this.store.getDaily('sleep', date, date);
       if (!row) return { data: { date, sleep: null }, meta: this.#meta([ensured], [], this.#dailyGap('health', ['sleep'], date, date)) };
       if (!row.duration_s) return { data: { date, sleep: null, note: 'No sleep recorded for this date.' }, meta: this.#meta([ensured], [row.fetched_at]) };
-      return { data: compact(sleepNight(row)), meta: this.#meta([ensured], [row.fetched_at]) };
+      // The timeline reads only what the cache already has: no HRV request for a night without a row.
+      const [hrv] = this.store.getDaily('hrv', date, date);
+      return { data: compact({ ...sleepNight(row), timeline: sleepTimeline(row.raw, hrv?.raw, this.#tz) }), meta: this.#meta([ensured], [row.fetched_at]) };
     }
     const { from, to } = this.range(q.from, q.to, 7);
     const historyFrom = addDays(to, -27) < from ? addDays(to, -27) : from;

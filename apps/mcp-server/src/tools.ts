@@ -244,7 +244,7 @@ export const TOOLS: ToolDef[] = [
     name: 'get_sleep',
     title: 'Get sleep',
     description:
-      'Sleep for one night with stages, score, SpO2, respiration and overnight HRV, or for a range a per-night table with averages and trends. ' +
+      'Sleep for one night with stages, score, SpO2, respiration, overnight HRV and a timeline (stage segments, awakenings, lowest HR, HRV and SpO2 with times), or for a range a per-night table with averages and trends. ' +
       'Use it for sleep stages and the detail of particular nights; for sleep hours next to other daily metrics, or months by week, use query_health. ' +
       'A night is named by the date of the morning it ended on: the night of 7 to 8 October is 2026-10-08. ' +
       'No arguments returns the last 7 nights; a range can span up to 3 years, one row per night. ' +
