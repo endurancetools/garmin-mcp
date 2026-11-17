@@ -1,4 +1,4 @@
-import { McpServer, ResourceTemplate, type ServerContext } from '@modelcontextprotocol/server';
+import { McpServer, ResourceTemplate, type ServerContext, type StandardSchemaWithJSON } from '@modelcontextprotocol/server';
 import { InputError } from 'garmin-mcp-config';
 import type { GarminService } from 'garmin-mcp-domain';
 import { readFileSync } from 'node:fs';
@@ -82,10 +82,24 @@ function progressReporter(request: ServerContext, now: () => number = Date.now):
   };
 }
 
+/**
+ * The schema without the `$schema` key in its JSON Schema. MCP reads a schema that names no dialect
+ * as JSON Schema 2020-12, which is what zod emits, so the key only costs context: a client such as
+ * Claude Code passes a tool's inputSchema to the model as it is. Validation stays zod's.
+ */
+function withoutDialect<S extends z.ZodObject>(schema: S): StandardSchemaWithJSON<z.input<S>, z.output<S>> {
+  const std = schema['~standard'];
+  const strip = (io: 'input' | 'output') => (options: Parameters<typeof std.jsonSchema.input>[0]) => {
+    const { $schema: _dialect, ...rest } = std.jsonSchema[io](options);
+    return rest;
+  };
+  return { '~standard': { ...std, jsonSchema: { input: strip('input'), output: strip('output') } } };
+}
+
 function registerTool(server: McpServer, def: ToolDef, getService: () => Promise<GarminService>, runtime: Runtime) {
   server.registerTool(
     def.name,
-    { title: def.title, description: def.description, inputSchema: inputSchema(def), outputSchema: def.output, annotations: def.annotations },
+    { title: def.title, description: def.description, inputSchema: withoutDialect(inputSchema(def)), outputSchema: def.output, annotations: def.annotations },
     async (args: Record<string, unknown>, request: ServerContext) => {
       const started = performance.now();
       const progress = progressReporter(request);

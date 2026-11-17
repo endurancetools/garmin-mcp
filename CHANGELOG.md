@@ -6,7 +6,8 @@ All notable changes to Garmin MCP. All `garmin-mcp-*` packages share one version
 
 ### Tools
 
-- **Shorter tool descriptions, same guidance.** Text that said the same thing twice (in a tool's description and again on its parameter), implementation details that do not change which tool fits, and example calls for tools with flat inputs are gone; "when to use it" and "which tool instead" stay. The tool list the assistant reads with every request is about 4 % smaller (37,568 bytes, about 9,400 tokens).
+- **Shorter tool descriptions, same guidance.** Text that said the same thing twice (in a tool's description and again on its parameter), implementation details that do not change which tool fits, and example calls for tools with flat inputs are gone; "when to use it" and "which tool instead" stay. The tool list the assistant reads with every request is about 4 % smaller.
+- **Tool input schemas no longer carry `$schema`.** MCP reads a schema that names no dialect as JSON Schema 2020-12, which is what the server emits, so the key only took up context in every tool definition. With the shorter descriptions the tool list is now 36,371 bytes (about 9,100 tokens), 7 % less than in 0.6.1.
 
 ## 0.6.1 (2026-11-17)
 
