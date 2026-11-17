@@ -49,3 +49,10 @@
 {"prompt": "Mark activity 21001 as a race.", "expect": {"tool": "update_activity", "args_include": {"id": 21001, "event_type": "race"}}, "forbid": ["garmin_sync", "get_activity"]}
 {"prompt": "Pokaż wszystkie aktywności z tego roku, które oznaczyłem jako zawody.", "expect": {"tool": "get_activities", "args_include": {"event_type": "race"}}, "forbid": ["garmin_sync"]}
 {"prompt": "Załóż buty Trail Shoe 2 na aktywność 21001.", "expect": {"tool": ["update_activity", "get_gear"], "args_include": {"update_activity": {"id": 21001}}}, "forbid": ["garmin_sync", "get_activity"]}
+{"prompt": "Ile pięter pokonywałem dziennie w zeszłym tygodniu?", "expect": {"tool": "query_health", "args_include": {"metrics": ["floors"]}}, "forbid": ["garmin_sync"]}
+{"prompt": "Show my stress and body battery day by day for the last 10 days.", "expect": {"tool": "query_health", "args_include": {"metrics": ["stress", "body_battery"]}}, "forbid": ["get_period_summary", "garmin_sync"]}
+{"prompt": "Is pulse ox during sleep turned on on my watch?", "expect": {"tool": "get_devices"}, "forbid": ["get_sleep", "query_health"]}
+{"prompt": "Which races do I have between 2027-03-01 and 2027-05-31?", "expect": {"tool": "list_workouts", "args_include": {"from": "2027-03-01", "to": "2027-05-31"}}, "forbid": ["get_activities", "garmin_sync"]}
+{"prompt": "Podsumuj tydzień treningowy, w którym wypadał 8 października 2026.", "expect": {"tool": "get_period_summary", "args_include": {"period": "week", "anchor_date": "2026-10-08"}}, "forbid": ["garmin_sync"]}
+{"prompt": "Pokaż TSS każdej aktywności z września 2026.", "expect": {"tool": "get_load", "args_include": {"from": "2026-09-01", "to": "2026-09-30", "include_activities": true}}, "forbid": ["get_activities", "garmin_sync"]}
+{"prompt": "On activity 21001 set my perceived effort to 7 and how I felt to strong.", "expect": {"tool": "update_activity", "args_include": {"id": 21001, "rpe": 7, "feel": 75}}, "forbid": ["get_activity"]}

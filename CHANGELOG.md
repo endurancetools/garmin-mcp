@@ -2,6 +2,12 @@
 
 All notable changes to Garmin MCP. All `garmin-mcp-*` packages share one version. The same list is on the [documentation site](https://endurancetools.github.io/garmin-mcp/changelog/).
 
+## Unreleased
+
+### Tools
+
+- **Shorter tool descriptions, same guidance.** Text that said the same thing twice (in a tool's description and again on its parameter), implementation details that do not change which tool fits, and example calls for tools with flat inputs are gone; "when to use it" and "which tool instead" stay. The tool list the assistant reads with every request is about 4 % smaller (37,568 bytes, about 9,400 tokens).
+
 ## 0.6.1 (2026-11-17)
 
 ### Tools

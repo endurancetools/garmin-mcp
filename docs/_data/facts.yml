@@ -5,10 +5,10 @@
 tools_default: 21
 # Destructive tools, off unless GARMIN_ENABLE_DESTRUCTIVE=true (delete_activity, delete_workout, delete_weigh_in).
 tools_destructive: 3
-# Approximate tokens of the default tools' name + description + inputSchema (DEVELOPMENT.md, "Tool-list budget": 35 132 bytes).
-tool_tokens: "8,800"
+# Approximate tokens of the default tools' name + description + inputSchema (DEVELOPMENT.md, "Tool-list budget": 37 568 bytes).
+tool_tokens: "9,400"
 # Last tool-selection eval (DEVELOPMENT.md, "Evals", last sentence; docs/evals/tool-selection.jsonl has one scenario per line).
-eval_pass: 51
-eval_total: 51
+eval_pass: 58
+eval_total: 58
 # Entries in the References list of analytics.md.
 references: 20
