@@ -371,7 +371,7 @@ export function loadFlags(
   if (!day) return [];
   const out: LoadFlag[] = [];
   if (day.acwr > flags.acwr_high) {
-    out.push({ code: 'acwr_high', text: `ACWR ${day.acwr} > ${flags.acwr_high}: high-risk zone for a load spike.` });
+    out.push({ code: 'acwr_high', text: `ACWR ${day.acwr} > ${flags.acwr_high}: a sudden jump in load against the last 4 weeks (a warning, not an injury prediction).` });
   } else if (day.acwr > flags.acwr_warn) {
     out.push({ code: 'acwr_warn', text: `ACWR ${day.acwr} > ${flags.acwr_warn}: load rising fast, watch recovery.` });
   } else if (day.acwr < flags.acwr_low && day.ctl > ACWR_LOW_MIN_CTL) {
