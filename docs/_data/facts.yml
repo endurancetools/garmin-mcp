@@ -8,7 +8,7 @@ tools_destructive: 3
 # Approximate tokens of the default tools' name + description + inputSchema (DEVELOPMENT.md, "Tool-list budget": 38 753 bytes).
 tool_tokens: "9,700"
 # Last full tool-selection eval (DEVELOPMENT.md, "Evals", last paragraph; docs/evals/tool-selection.jsonl has one scenario per line).
-eval_pass: 94
-eval_total: 94
+eval_pass: 96
+eval_total: 96
 # Entries in the References list of analytics.md.
 references: 20
