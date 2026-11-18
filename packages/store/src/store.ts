@@ -158,6 +158,8 @@ export interface DeviceRow {
   settings: DeviceSettings | null;
   /** Daily sums of `getDeviceSolar` for the last 7 days; null for a device without solar or when the request failed. */
   solar: SolarDaySummary[] | null;
+  /** When `solar` was fetched: with the device list, or later on its own (`setDeviceSolar`); null without solar days. */
+  solar_fetched_at: number | null;
   fetched_at: number;
 }
 
@@ -308,6 +310,9 @@ function calendarEventKey(it: CalendarItem): string | undefined {
   const uuid = (it as { shareableEventUuid?: unknown }).shareableEventUuid;
   return typeof uuid === 'string' && uuid !== '' ? `uuid:${uuid}` : undefined;
 }
+
+/** `meta` key of the time a device's solar days were fetched on their own (`setDeviceSolar`). */
+const solarFetchedAtKey = (id: number): string => `device_solar:${id}:fetched_at`;
 
 function parseRow<T>(row: RawRow | undefined): T | undefined {
   if (!row) return undefined;
@@ -845,11 +850,28 @@ export class Store {
   getDevices(): DeviceRow[] {
     return (
       this.db.prepare('SELECT * FROM devices ORDER BY last_sync_utc DESC NULLS LAST, name').all() as (RawRow & { settings: string | null; solar: string | null })[]
-    ).map((r) => ({
-      ...(parseRow<DeviceRow>(r) as DeviceRow),
-      settings: r.settings === null ? null : (JSON.parse(r.settings) as DeviceSettings),
-      solar: r.solar === null ? null : (JSON.parse(r.solar) as SolarDaySummary[]),
-    }));
+    ).map((r) => {
+      const row = parseRow<DeviceRow>(r) as DeviceRow;
+      const own = this.getMetaNumber(solarFetchedAtKey(row.id)) ?? 0;
+      return {
+        ...row,
+        settings: r.settings === null ? null : (JSON.parse(r.settings) as DeviceSettings),
+        solar: r.solar === null ? null : (JSON.parse(r.solar) as SolarDaySummary[]),
+        // A later device list refresh writes solar days too, so the newer of the two times counts.
+        solar_fetched_at: r.solar === null ? null : Math.max(row.fetched_at, own),
+      };
+    });
+  }
+
+  /**
+   * Fresh solar days of one listed device, fetched on their own (the rest of the device row stays);
+   * the fetch time is kept apart from the device list's (`ref:devices:fetched_at`).
+   */
+  setDeviceSolar(id: number, days: readonly SolarDaySummary[], fetchedAt: number): void {
+    this.db.transaction(() => {
+      this.db.prepare('UPDATE devices SET solar = ? WHERE id = ?').run(JSON.stringify(days), id);
+      this.setMeta(solarFetchedAtKey(id), String(fetchedAt));
+    })();
   }
 
   setProfile(data: ProfileData, fetchedAt: number): void {

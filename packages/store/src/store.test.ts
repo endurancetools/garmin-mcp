@@ -39,7 +39,7 @@ describe('Store', () => {
     db.prepare(`INSERT INTO meta (key, value) VALUES ('ref:devices:fetched_at', ?), ('ref:gear:fetched_at', ?)`).run(String(T), String(T));
     migrate(db);
     const store = new Store(db);
-    expect(store.getDevices()).toEqual([{ id: 7, name: 'FR965', model: null, last_sync_utc: null, raw: { deviceId: 7 }, settings: null, solar: null, fetched_at: T }]);
+    expect(store.getDevices()).toEqual([{ id: 7, name: 'FR965', model: null, last_sync_utc: null, raw: { deviceId: 7 }, settings: null, solar: null, solar_fetched_at: null, fetched_at: T }]);
     expect(store.referenceFetchedAt('devices')).toBeUndefined();
     expect(store.referenceFetchedAt('gear')).toBe(T);
   });
@@ -70,6 +70,22 @@ describe('Store', () => {
     const days = [{ date: '2026-11-15', time_gained_ms: 3, solar_minutes: 163, peak_solar_utilization: 50.29 }];
     store.replaceDevices([{ deviceId: 7, solarChargeCapable: true }, { deviceId: 8 }], null, T, new Map(), new Map([[7, days]]));
     expect(Object.fromEntries(store.getDevices().map((d) => [d.id, d.solar]))).toEqual({ 7: days, 8: null });
+    expect(Object.fromEntries(store.getDevices().map((d) => [d.id, d.solar_fetched_at]))).toEqual({ 7: T, 8: null });
+  });
+
+  it('refreshes the solar days of one device with their own fetch time', () => {
+    const store = Store.open(':memory:');
+    const old = [{ date: '2026-11-08', time_gained_ms: 0, solar_minutes: 2, peak_solar_utilization: 1 }];
+    const fresh = [{ date: '2026-11-15', time_gained_ms: 3, solar_minutes: 163, peak_solar_utilization: 50.29 }];
+    store.replaceDevices([{ deviceId: 7, displayName: 'fenix', solarChargeCapable: true }, { deviceId: 8 }], null, T, new Map([[7, { deviceId: 7 }]]), new Map([[7, old]]));
+    store.markReferenceFetched('devices', T);
+    store.setDeviceSolar(7, fresh, T + 7_200_000);
+    expect(store.getDevices().find((d) => d.id === 7)).toMatchObject({ name: 'fenix', settings: { deviceId: 7 }, solar: fresh, solar_fetched_at: T + 7_200_000, fetched_at: T });
+    // The device list keeps its own time.
+    expect(store.referenceFetchedAt('devices')).toBe(T);
+    // A newer device list refresh brings its own solar days and time.
+    store.replaceDevices([{ deviceId: 7, solarChargeCapable: true }], null, T + 9_000_000, new Map(), new Map([[7, old]]));
+    expect(store.getDevices()[0]).toMatchObject({ solar: old, solar_fetched_at: T + 9_000_000 });
   });
 
   it('sums solar days from the minute readings and keeps no readings', () => {

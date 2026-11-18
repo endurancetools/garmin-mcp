@@ -59,6 +59,8 @@ export function setup(
     challenges?: unknown;
     /** Solar days of a solar device (an Error is thrown); the trimmed E8-8a recording by default. */
     solar?: unknown;
+    /** Daily request limit of the requests a read makes outside sync jobs (`Syncer.lazyRequest`); none by default. */
+    maxRequestsPerDay?: number;
   } = {},
 ) {
   const now = opts.now ?? NOW;
@@ -338,7 +340,7 @@ export function setup(
     downloadActivity: (id: number, format: string) => rec('downloadActivity', [id, format], () => ({ data: opts.zip ?? new Uint8Array([1, 2, 3]), contentType: 'application/zip', filename: undefined })),
   };
   const store = Store.open(':memory:');
-  const syncer = new Syncer(client as unknown as GarminClient, store, { timeZone: 'UTC', now: () => now, fetchOnDemand: opts.autoFetch ?? true });
+  const syncer = new Syncer(client as unknown as GarminClient, store, { timeZone: 'UTC', now: () => now, fetchOnDemand: opts.autoFetch ?? true, maxRequestsPerDay: opts.maxRequestsPerDay });
   const jobs = new SyncJobRunner(syncer, store, { chunkDays: 7, pause: { minMs: 0, maxMs: 0 }, maxRequestsPerDay: 10_000, timeZone: 'UTC', now: () => now });
   const downloadDir = fs.mkdtempSync(path.join(os.tmpdir(), 'garmin-dl-'));
   const service = new GarminService({

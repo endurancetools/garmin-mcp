@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { GarminError } from 'garmin-mcp-config';
-import { clearSignInPause, hrvColumns, sleepColumns, TTL } from 'garmin-mcp-store';
+import { clearSignInPause, hrvColumns, requestCounterKey, sleepColumns, TTL } from 'garmin-mcp-store';
 import { describe, expect, it, vi } from 'vitest';
 import { fitWithPower } from './test-utils/fit.js';
 import { makeZip } from './test-utils/zip.js';
@@ -1390,6 +1390,101 @@ describe('GarminService', () => {
     expect(count('getDeviceSolar')).toBe(1);
     expect(res.data.devices[0]).toMatchObject({ id: 2730757515, settings: { units: 'metric' } });
     expect(res.data.devices[0]).not.toHaveProperty('solar');
+  });
+
+  describe('solar days refreshed on their own', () => {
+    const FENIX = 2730757515;
+    const OLD_DAYS = [{ date: '2026-09-25', time_gained_ms: 0, solar_minutes: 40, peak_solar_utilization: 12 }];
+    const FIXTURE_DAYS = [
+      { date: '2026-11-14', time_gained_ms: 0, solar_minutes: 5, peak_solar_utilization: 1.1 },
+      { date: '2026-11-15', time_gained_ms: 3, solar_minutes: 8, peak_solar_utilization: 50.3 },
+    ];
+    type Opts = Parameters<typeof setup>[0];
+    /** The real server: no fetch on demand, auto fetch through autoSync; the device list was fetched `ageMs` ago. */
+    const seeded = (ageMs: number, opts: Opts = {}, devices = fixture('devices') as { deviceId: number }[]) => {
+      const env = setup({ autoFetch: false, autoSync: true, ...opts });
+      const at = NOW - ageMs;
+      env.store.replaceDevices(devices as never, null, at, new Map(), new Map(devices.filter((d) => d.deviceId === FENIX).map((d) => [d.deviceId, OLD_DAYS])));
+      env.store.markReferenceFetched('devices', at);
+      return { ...env, at };
+    };
+    const fenix = (res: { data: { devices: { id: number }[] } }) => res.data.devices.find((d) => d.id === FENIX);
+
+    it('makes no request while the solar days are younger than an hour', async () => {
+      const { service, count, at } = seeded(30 * 60_000);
+      const res = await service.getDevices();
+      expect(count('getDeviceSolar')).toBe(0);
+      expect(fenix(res)).toMatchObject({ solar: OLD_DAYS });
+      expect(res.meta).toMatchObject({ source: 'cache', fetched_at: new Date(at).toISOString() });
+      expect(res.meta).not.toHaveProperty('note');
+    });
+
+    it('fetches the last 7 days of a solar device in one counted request when they are older', async () => {
+      const { service, store, calls, count, at } = seeded(2 * 3_600_000);
+      const res = await service.getDevices();
+      expect(calls.filter((c) => c.method === 'getDeviceSolar').map((c) => c.args)).toEqual([[FENIX, '2026-10-02', '2026-10-08']]);
+      // Only the solar days: no device list, no settings.
+      expect(calls.map((c) => c.method)).toEqual(['getDeviceSolar']);
+      expect(store.getMeta(requestCounterKey('2026-10-08'))).toBe('1');
+      expect(fenix(res)).toMatchObject({ solar: FIXTURE_DAYS });
+      // The oldest record of the answer is still the device list.
+      expect(res.meta).toMatchObject({ source: 'live', fetched_at: new Date(at).toISOString() });
+      expect(store.getDevices().find((d) => d.id === FENIX)?.solar_fetched_at).toBe(NOW);
+      expect(store.referenceFetchedAt('devices')).toBe(at);
+      expect((await service.getDevices()).meta.source).toBe('cache');
+      expect(count('getDeviceSolar')).toBe(1);
+    });
+
+    it('fetches solar days a device has none of yet', async () => {
+      const { service, store, count } = seeded(10 * 60_000);
+      store.replaceDevices(fixture('devices') as never, null, NOW - 10 * 60_000);
+      const res = await service.getDevices();
+      expect(count('getDeviceSolar')).toBe(1);
+      expect(fenix(res)).toMatchObject({ solar: FIXTURE_DAYS });
+    });
+
+    it('keeps the cached days with a note at the daily request limit', async () => {
+      const { service, store, count, at } = seeded(2 * 3_600_000, { maxRequestsPerDay: 5 });
+      store.setMeta(requestCounterKey('2026-10-08'), '5');
+      const res = await service.getDevices();
+      expect(count('getDeviceSolar')).toBe(0);
+      expect(fenix(res)).toMatchObject({ solar: OLD_DAYS });
+      expect(res.meta.note).toBe(
+        `The daily Garmin request limit is used up; solar days of the fenix 8 - 47mm, Solar (${FENIX}) refresh after 2026-10-09T00:00:00.000Z when asked again; the ones shown are from ${new Date(at).toISOString()}.`,
+      );
+    });
+
+    it('keeps the cached days with a note when syncing is paused or the request fails', async () => {
+      const paused = seeded(2 * 3_600_000);
+      paused.store.setMeta('sync:paused_until', String(NOW + 60_000));
+      const p = await paused.service.getDevices();
+      expect(paused.count('getDeviceSolar')).toBe(0);
+      expect(p.meta.note).toMatch(/^Syncing with Garmin is paused; solar days of .+ refresh after 2026-10-08T12:01:00\.000Z when asked again; the ones shown are from 2026-10-08T10:00:00\.000Z\.$/);
+
+      const failed = seeded(2 * 3_600_000, { solar: Object.assign(new Error('x'), { code: 'SERVER_ERROR' }) });
+      const f = await failed.service.getDevices();
+      expect(failed.count('getDeviceSolar')).toBe(1);
+      expect(fenix(f)).toMatchObject({ solar: OLD_DAYS });
+      expect(f.meta).toMatchObject({ source: 'cache' });
+      expect(f.meta.note).toBe(`Solar days of the fenix 8 - 47mm, Solar (${FENIX}) could not be refreshed (SERVER_ERROR); the ones shown are from 2026-10-08T10:00:00.000Z.`);
+    });
+
+    it('fetches nothing with auto fetch off', async () => {
+      const { service, count } = seeded(2 * 3_600_000, { autoSync: false });
+      const res = await service.getDevices();
+      expect(count('getDeviceSolar')).toBe(0);
+      expect(fenix(res)).toMatchObject({ solar: OLD_DAYS });
+      expect(res.meta).not.toHaveProperty('note');
+    });
+
+    it('makes no request for devices without solar charging', async () => {
+      const devices = (fixture('devices') as { deviceId: number }[]).filter((d) => d.deviceId !== FENIX);
+      const { service, count } = seeded(2 * 3_600_000, {}, devices);
+      const res = await service.getDevices();
+      expect(count('getDeviceSolar')).toBe(0);
+      expect(res.data.devices).toHaveLength(4);
+      expect(res.data.devices.filter((d) => 'solar' in d)).toEqual([]);
+    });
   });
 
   it('lists activity type keys with their parent from the reference sync', async () => {

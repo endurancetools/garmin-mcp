@@ -14,7 +14,7 @@ import {
   type IsoDate,
   type Logger,
 } from 'garmin-mcp-config';
-import { errInfo, FATAL_CODES, isFresh, SCOPE_DAILY, signInPause, TTL, type DailyKind, type DetailKind, type EnsureResult, type ReferenceKind, type Store, type SyncJobProgress, type SyncJobReport, type SyncJobRunner, type SyncScope, type Syncer, type TrainingPlanCache, type CourseCache, type BadgeCache } from 'garmin-mcp-store';
+import { errInfo, FATAL_CODES, isFresh, isSolarDevice, SCOPE_DAILY, solarDays, signInPause, TTL, type DailyKind, type DetailKind, type EnsureResult, type ReferenceKind, type Store, type SyncJobProgress, type SyncJobReport, type SyncJobRunner, type SyncScope, type Syncer, type TrainingPlanCache, type CourseCache, type BadgeCache } from 'garmin-mcp-store';
 import fs from 'node:fs';
 import path from 'node:path';
 import { activityBrief, activityListItem, eventTypeKey, periodActivitySummary } from './activities.js';
@@ -1912,7 +1912,10 @@ export class GarminService {
 
   async getDevices() {
     const ensured = await this.syncer.ensureReference('devices', this.#budget);
+    // A device list fetched just now brought its solar days (or tried to).
+    const solar = ensured.source === 'cache' ? await this.#refreshSolar() : { results: [], notes: [] };
     const rows = this.store.getDevices();
+    const meta = this.#meta([ensured, ...solar.results], [this.store.referenceFetchedAt('devices'), ...rows.map((d) => d.solar_fetched_at ?? undefined)], this.#referenceGap('devices'));
     return {
       data: {
         devices: rows.map((d) =>
@@ -1928,8 +1931,41 @@ export class GarminService {
           }),
         ),
       },
-      meta: this.#meta([ensured], [this.store.referenceFetchedAt('devices')], this.#referenceGap('devices')),
+      meta: solar.notes.length > 0 ? withNote(meta, solar.notes.join(' ')) : meta,
     };
+  }
+
+  /**
+   * Solar days are the last 7 days, so a device list fetched once would keep showing old days:
+   * with auto fetch on, a solar device whose days are missing or older than the reference TTL
+   * (1 h) gets one request for them within the daily request limit. Settings and firmware still
+   * come only with the device list (the reference step of a sync job). The limit, a pause or a
+   * failed request keeps the cached days, with a note saying how old they are.
+   */
+  async #refreshSolar(): Promise<{ results: EnsureResult[]; notes: string[] }> {
+    const results: EnsureResult[] = [];
+    const notes: string[] = [];
+    if (!(this.#autoSync || this.syncer.fetchOnDemand)) return { results, notes };
+    const now = this.#now();
+    const stale = this.store.getDevices().filter((d) => isSolarDevice(d.raw) && !isFresh(d.solar_fetched_at ?? undefined, TTL.reference, now));
+    const today = this.today();
+    for (const d of stale) {
+      const what = `solar days of the ${d.model ?? d.name ?? 'device'} (${d.id})`;
+      const kept = d.solar !== null && d.solar_fetched_at !== null ? `; the ones shown are from ${iso(d.solar_fetched_at)}` : '';
+      try {
+        const res = await this.syncer.lazyRequest(`solar:${d.id}`, () => this.client.getDeviceSolar(d.id, addDays(today, -6), today));
+        if ('blocked' in res) {
+          const why = res.blocked.reason === 'budget' ? 'The daily Garmin request limit is used up' : 'Syncing with Garmin is paused';
+          notes.push(`${why}; ${what} refresh after ${iso(res.blocked.resume_at)} when asked again${kept}.`);
+          continue;
+        }
+        this.store.setDeviceSolar(d.id, solarDays(res.value), this.#now());
+        results.push({ source: 'live' });
+      } catch (err) {
+        notes.push(`${what[0]?.toUpperCase()}${what.slice(1)} could not be refreshed (${errInfo(err).code})${kept}.`);
+      }
+    }
+    return { results, notes };
   }
 
   /**
