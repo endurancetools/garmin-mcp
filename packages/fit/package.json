@@ -1,6 +1,6 @@
 {
   "name": "garmin-mcp-fit",
-  "version": "0.6.3",
+  "version": "0.7.0",
   "description": "FIT file reader and writer behind Garmin MCP: 1 Hz records (power, heart rate, cadence, speed, elevation) and gear shifts from a Garmin activity file, and weight scale files with body fat. Unofficial, not affiliated with Garmin.",
   "keywords": [
     "garmin",
