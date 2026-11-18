@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { expectedTools, firstToolCall, includes, judge, parseScenarios } from './eval-tools.mjs';
+import { allowsNoCall, expectedTools, firstToolCall, includes, judge, parseScenarios } from './eval-tools.mjs';
 
 const fixture = (name) => readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8');
 
@@ -69,7 +69,27 @@ describe('eval-tools', () => {
     expect(judge(sleep, { name: 'get_sleep', input: { from: '2026-10-06', to: '2026-10-12' } }).pass).toBe(true);
 
     expect(() => parseScenarios('{"prompt":"x","expect":{"tool":[]}}')).toThrow('line 1: "expect.tool" must be');
-    expect(() => parseScenarios('{"prompt":"x","expect":{"tool":["create_workout",null]}}')).toThrow('line 1: "expect.tool" must be');
+    expect(() => parseScenarios('{"prompt":"x","expect":{"tool":["create_workout",""]}}')).toThrow('line 1: "expect.tool" must be');
+    expect(() => parseScenarios('{"prompt":"x","expect":{"tool":[null]}}')).toThrow('line 1: "expect.tool" must be');
+  });
+
+  it('accepts no call or a listed tool when expect.tool lists null, and still fails a forbidden call', () => {
+    const [fix] = parseScenarios(
+      '{"prompt":"Popraw serie w treningu 21005","expect":{"tool":[null,"get_activity"],"args_include":{"get_activity":{"id":21005}}},"forbid":["update_activity"]}',
+    );
+    expect(expectedTools(fix)).toEqual(['get_activity']);
+    expect(allowsNoCall(fix)).toBe(true);
+    expect(judge(fix, undefined).pass).toBe(true);
+    expect(judge(fix, { name: 'get_activity', input: { id: 21005, detail: 'exercise_sets' } }).pass).toBe(true);
+    expect(judge(fix, { name: 'get_activity', input: { id: 21004 } }).pass).toBe(false);
+    expect(judge(fix, { name: 'update_activity', input: { id: 21005 } })).toEqual({ pass: false, reason: 'forbidden update_activity' });
+    expect(judge(fix, { name: 'get_activities', input: {} })).toEqual({ pass: false, reason: 'expected no tool | get_activity' });
+
+    const [del] = parseScenarios('{"prompt":"Usuń aktywność 123","expect":{"tool":null}}');
+    expect(allowsNoCall(del)).toBe(true);
+    const [one] = parseScenarios('{"prompt":"x","expect":{"tool":["get_activity"]}}');
+    expect(allowsNoCall(one)).toBe(false);
+    expect(judge(one, undefined)).toEqual({ pass: false, reason: 'expected get_activity' });
   });
 
   it('fails a call whose input contains args_exclude', () => {

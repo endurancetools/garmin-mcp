@@ -28,7 +28,9 @@ const DEFAULT_MIN_PASS = 0.9;
 /**
  * Scenarios from JSON Lines: one `{ prompt, expect: { tool, args_include? }, forbid? }` per line,
  * blank lines and lines starting with `//` skipped. `expect.tool` null means no tool call fits; a
- * list of names means any of them fits. With a list, `args_include` keyed only by listed tool names
+ * list of names means any of them fits, and `null` in the list also accepts no call at all (e.g.
+ * `[null, "get_activity"]`: either no call or a read, with the write kept out by `forbid`). With a
+ * list, `args_include` keyed only by listed tool names
  * is per tool (checked only for a tool that has an entry), any other object applies to every tool.
  * `args_exclude` (same matching as `args_include`, shared by every tool) fails a call whose input
  * contains it, e.g. `{"granularity": "hour"}` for a question about a week.
@@ -48,8 +50,8 @@ export function parseScenarios(text) {
     if (typeof s?.prompt !== 'string' || !s.prompt.trim()) throw new Error(`line ${i + 1}: "prompt" must be a non-empty string`);
     if (typeof s.expect !== 'object' || s.expect === null || !('tool' in s.expect)) throw new Error(`line ${i + 1}: "expect.tool" is required (a tool name or null)`);
     const tool = s.expect.tool;
-    const isList = Array.isArray(tool) && tool.length > 0 && tool.every((t) => typeof t === 'string' && t !== '');
-    if (tool !== null && typeof tool !== 'string' && !isList) throw new Error(`line ${i + 1}: "expect.tool" must be a tool name, a non-empty list of tool names or null`);
+    const isList = Array.isArray(tool) && tool.some((t) => typeof t === 'string') && tool.every((t) => t === null || (typeof t === 'string' && t !== ''));
+    if (tool !== null && typeof tool !== 'string' && !isList) throw new Error(`line ${i + 1}: "expect.tool" must be a tool name, a list of tool names (null in it allows no call) or null`);
     if (s.forbid !== undefined && !(Array.isArray(s.forbid) && s.forbid.every((t) => typeof t === 'string'))) throw new Error(`line ${i + 1}: "forbid" must be a list of tool names`);
     const clash = expectedTools({ expect: { tool } }).find((t) => s.forbid?.includes(t));
     if (clash) throw new Error(`line ${i + 1}: ${clash} is both expected and forbidden`);
@@ -61,13 +63,22 @@ export function parseScenarios(text) {
 }
 
 /**
- * Tool names that fit a scenario (empty when no tool call fits).
- * @param {{ expect: { tool: string | string[] | null } }} scenario
+ * Tool names that fit a scenario (empty when only no tool call fits).
+ * @param {{ expect: { tool: string | (string | null)[] | null } }} scenario
  * @returns {string[]}
  */
 export function expectedTools(scenario) {
   const { tool } = scenario.expect;
-  return tool === null ? [] : Array.isArray(tool) ? tool : [tool];
+  return tool === null ? [] : Array.isArray(tool) ? /** @type {string[]} */ (tool.filter((t) => t !== null)) : [tool];
+}
+
+/**
+ * Whether a reply without any tool call fits: `expect.tool` null, or a list with `null` in it.
+ * @param {{ expect: { tool: string | (string | null)[] | null } }} scenario
+ */
+export function allowsNoCall(scenario) {
+  const { tool } = scenario.expect;
+  return tool === null || (Array.isArray(tool) && tool.includes(null));
 }
 
 /**
@@ -115,7 +126,7 @@ export function judge(scenario, call) {
   const name = call?.name ?? null;
   if (name !== null && scenario.forbid.includes(name)) return { pass: false, reason: `forbidden ${name}` };
   const allowed = expectedTools(scenario);
-  if (name === null ? allowed.length > 0 : !allowed.includes(name)) return { pass: false, reason: `expected ${expectedLabel(scenario)}` };
+  if (name === null ? !allowsNoCall(scenario) : !allowed.includes(name)) return { pass: false, reason: `expected ${expectedLabel(scenario)}` };
   const args = name === null ? undefined : argsFor(scenario, name);
   if (call && args !== undefined && !includes(call.input, args)) {
     return { pass: false, reason: `args lack ${JSON.stringify(args)}` };
@@ -125,10 +136,9 @@ export function judge(scenario, call) {
   return { pass: true, reason: '' };
 }
 
-/** @param {{ expect: { tool: string | string[] | null } }} scenario */
+/** @param {{ expect: { tool: string | (string | null)[] | null } }} scenario */
 function expectedLabel(scenario) {
-  const tools = expectedTools(scenario);
-  return tools.length ? tools.join(' | ') : 'no tool';
+  return [...(allowsNoCall(scenario) ? ['no tool'] : []), ...expectedTools(scenario)].join(' | ');
 }
 
 /**
@@ -244,7 +254,7 @@ async function main() {
       const verdict = error ? { pass: false, reason: `claude error (exit ${code}): ${clip(error || stderr.trim(), 80)}` } : judge(s, call ?? undefined);
       if (verdict.pass) passed++;
       const called = call ? `${call.name} ${JSON.stringify(call.input)}` : '-';
-      rows.push([String(i + 1), verdict.pass ? 'ok' : 'MISS', clip(expectedTools(s).join(' | ') || '(none)', 50), clip(called, 70), clip(s.prompt, 50), verdict.reason]);
+      rows.push([String(i + 1), verdict.pass ? 'ok' : 'MISS', clip(expectedLabel(s), 50), clip(called, 70), clip(s.prompt, 50), verdict.reason]);
     }
     const rate = scenarios.length ? passed / scenarios.length : 0;
     console.log(table(rows));
