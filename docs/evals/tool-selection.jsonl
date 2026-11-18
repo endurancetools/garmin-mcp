@@ -73,6 +73,8 @@
 {"prompt": "Compare the best 20 min power of rides 21003 and 21004.", "expect": {"tool": ["compare_activities", "get_activity"], "args_include": {"compare_activities": {"ids": [21003, 21004]}, "get_activity": {"detail": "power_curve"}}}, "forbid": ["download_activity_file", "garmin_sync"]}
 {"prompt": "Ustaw wczorajszy bieg jako prywatny.", "expect": {"tool": ["get_activities", "update_activity"], "args_include": {"update_activity": {"privacy": "private"}}}, "forbid": ["garmin_sync"]}
 {"prompt": "Make activity 21001 visible to my followers only.", "expect": {"tool": "update_activity", "args_include": {"id": 21001, "privacy": "followers"}}, "forbid": ["garmin_sync"]}
+{"prompt": "Ustaw widoczność aktywności 21001 dla moich połączeń i grup.", "expect": {"tool": "update_activity", "args_include": {"id": 21001, "privacy": "groups"}}, "forbid": ["garmin_sync"]}
+{"prompt": "Set activity 21001 back to visible for my connections and groups.", "expect": {"tool": "update_activity", "args_include": {"id": 21001, "privacy": "groups"}}, "forbid": ["garmin_sync"]}
 {"prompt": "Zegarek źle rozpoznał ćwiczenia w treningu siłowym 21005, popraw serie.", "expect": {"tool": [null, "get_activity"]}, "forbid": ["update_activity"]}
 {"prompt": "My watch got the exercises wrong in strength activity 21005: all three sets were barbell back squats (SQUAT, BARBELL_BACK_SQUAT). Fix them and keep the recorded times, I confirm the change.", "expect": {"tool": [null, "get_activity"]}, "forbid": ["update_activity"]}
 {"prompt": "Dopisz mi jogę z 2026-11-16, zaczęłam o 18:30, trwała 45 minut. Sprawdziłam te dane, zapisz.", "expect": {"tool": "update_activity", "args_include": {"type": "yoga", "duration_min": 45}}, "forbid": ["create_workout", "schedule_workouts", "garmin_sync"]}

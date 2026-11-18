@@ -454,13 +454,16 @@ describe('GarminClient', () => {
     await client.updateActivity(42, { privacy: 'private' });
     await client.updateActivity(42, { privacy: 'followers' });
     await client.updateActivity(42, { privacy: 'public' });
+    // "My Connections and Groups", the rule Garmin gives an activity by default on the account checked live.
+    await client.updateActivity(42, { privacy: 'groups' });
     expect(bodies).toEqual([
       { activityId: 42, accessControlRuleDTO: { typeId: 2, typeKey: 'private' } },
       { activityId: 42, accessControlRuleDTO: { typeId: 3, typeKey: 'subscribers' } },
       { activityId: 42, accessControlRuleDTO: { typeId: 1, typeKey: 'public' } },
+      { activityId: 42, accessControlRuleDTO: { typeId: 4, typeKey: 'groups' } },
     ]);
     await expect(client.updateActivity(42, { privacy: 'friends' as never })).rejects.toMatchObject({ code: 'INVALID_INPUT' });
-    expect(bodies).toHaveLength(3);
+    expect(bodies).toHaveLength(4);
   });
 
   it('replaces the exercise sets of an activity', async () => {

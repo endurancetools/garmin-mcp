@@ -201,7 +201,7 @@ export const TOOLS: ToolDef[] = [
       feel: z.union([z.literal(0), z.literal(25), z.literal(50), z.literal(75), z.literal(100)]).optional().describe('0 very weak, 25 weak, 50 normal, 75 strong, 100 very strong'),
       add_gear: z.string().optional().describe('Gear name (or part of it) or uuid from get_gear'),
       remove_gear: z.string().optional().describe('Gear name or uuid from get_gear'),
-      privacy: z.enum(['public', 'followers', 'private']).optional(),
+      privacy: z.enum(['public', 'followers', 'groups', 'private']).optional(),
       start: z.string().optional().describe('New activity: local start, YYYY-MM-DDTHH:MM'),
       duration_min: z.number().optional(),
       distance_km: z.number().optional(),

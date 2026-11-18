@@ -812,6 +812,16 @@ describe('GarminService', () => {
     expect((await service.updateActivity(1, { privacy: 'private' })).data.privacy).toBe('private');
   });
 
+  it('puts an activity back to connections and groups', async () => {
+    const { service, calls, store } = setup({ activities: [summary(1, '2026-10-07')] });
+    await service.getActivities({});
+    await service.updateActivity(1, { privacy: 'private' });
+    const res = await service.updateActivity(1, { privacy: 'groups' });
+    expect(calls.filter((c) => c.method === 'updateActivity').at(-1)?.args[1]).toMatchObject({ privacy: 'groups' });
+    expect(res.data.privacy).toBe('groups');
+    expect(store.getActivity(1)?.raw.privacy).toEqual({ typeId: 4, typeKey: 'groups' });
+  });
+
   it('corrects the exercise of recorded sets, keeping the times the watch recorded', async () => {
     const { service, calls, count, store } = setup({ activities: [summary(1, '2026-10-07')] });
     await service.getActivity(1, 'exercise_sets');

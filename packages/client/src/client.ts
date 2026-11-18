@@ -34,13 +34,16 @@ export interface ActivityPatch {
 
 /**
  * Garmin's access control rules (`accessControlRuleDTO`) behind the privacy choices: "followers"
- * is "My Connections" (`subscribers`). Recordings show `groups` (typeId 4) on read; the other ids
- * and writing the rule with the activity PUT are not confirmed by a recording yet (E8-30).
+ * is "My Connections" (`subscribers`), "groups" is "My Connections and Groups". Writing the rule
+ * with the activity PUT was confirmed live on 2026-11-18 for `private` (typeId 2) and
+ * `subscribers` (typeId 3), each read back from Garmin; `groups` (typeId 4) is confirmed on read
+ * only (the default rule of every activity on the account checked), `public` (typeId 1) not yet.
  */
 export const ACTIVITY_PRIVACY = {
   public: { typeId: 1, typeKey: 'public' },
   private: { typeId: 2, typeKey: 'private' },
   followers: { typeId: 3, typeKey: 'subscribers' },
+  groups: { typeId: 4, typeKey: 'groups' },
 } as const;
 export type ActivityPrivacy = keyof typeof ACTIVITY_PRIVACY;
 

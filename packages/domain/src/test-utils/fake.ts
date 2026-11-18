@@ -171,16 +171,16 @@ export function setup(
         metricDescriptors: [{ metricsIndex: 0, key: 'directTimestamp' }, { metricsIndex: 1, key: 'directHeartRate' }],
         activityDetailMetrics: Array.from({ length: 3000 }, (_, i) => ({ metrics: [1_791_000_000_000 + i * 1000, 120 + (i % 30)] })),
       })),
-    updateActivity: (id: number, patch: { name?: string; eventType?: { typeId?: number; typeKey?: string }; privacy?: 'public' | 'followers' | 'private' }) =>
+    updateActivity: (id: number, patch: { name?: string; eventType?: { typeId?: number; typeKey?: string }; privacy?: 'public' | 'followers' | 'groups' | 'private' }) =>
       rec('updateActivity', [id, patch], () => {
         if (patch.name) names.set(id, patch.name);
         if (patch.eventType) eventTypes.set(id, patch.eventType);
-        if (patch.privacy) privacy.set(id, { public: { typeId: 1, typeKey: 'public' }, private: { typeId: 2, typeKey: 'private' }, followers: { typeId: 3, typeKey: 'subscribers' } }[patch.privacy]);
+        if (patch.privacy) privacy.set(id, { public: { typeId: 1, typeKey: 'public' }, private: { typeId: 2, typeKey: 'private' }, followers: { typeId: 3, typeKey: 'subscribers' }, groups: { typeId: 4, typeKey: 'groups' } }[patch.privacy]);
       }),
-    createManualActivity: (a: { typeKey: string; activityType?: { typeId?: number; typeKey?: string; parentTypeId?: number }; name: string; startLocal: string; durationS: number; distanceM?: number; privacy: 'public' | 'followers' | 'private' }) =>
+    createManualActivity: (a: { typeKey: string; activityType?: { typeId?: number; typeKey?: string; parentTypeId?: number }; name: string; startLocal: string; durationS: number; distanceM?: number; privacy: 'public' | 'followers' | 'groups' | 'private' }) =>
       rec('createManualActivity', [a], () => {
         const id = 90_001 + created.size;
-        const rule = { public: { typeId: 1, typeKey: 'public' }, private: { typeId: 2, typeKey: 'private' }, followers: { typeId: 3, typeKey: 'subscribers' } }[a.privacy];
+        const rule = { public: { typeId: 1, typeKey: 'public' }, private: { typeId: 2, typeKey: 'private' }, followers: { typeId: 3, typeKey: 'subscribers' }, groups: { typeId: 4, typeKey: 'groups' } }[a.privacy];
         // The service runs in UTC, so the GMT start is the local one.
         const start = `${a.startLocal}.0`;
         created.set(id, {

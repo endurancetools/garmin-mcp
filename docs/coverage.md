@@ -176,7 +176,7 @@ garmin-mcp deliberately has few writes; listed so nothing disappears silently.
 | --- | --- |
 | Activity name, type, description, perceived effort, feel | `update_activity` `name`, `type`, `description`, `rpe`, `feel` |
 | Activity event type (race, training, recreation...) | `update_activity` `event_type` |
-| Activity privacy | `update_activity` `privacy` (`public`, `followers`, `private`) |
+| Activity privacy | `update_activity` `privacy` (`public`, `followers`, `groups`, `private`) |
 | Strength exercise sets (exercise, reps, weight) | `update_activity` `exercise_sets` (opt-in `GARMIN_ENABLE_DESTRUCTIVE`; replaces all sets; `keep_timing: true` keeps the recorded times; the previous sets come back in the answer) |
 | Manual activity | `update_activity` without `id`: `type`, `start` (local time), `duration_min`, optional `distance_km`, `name`, `description`, `rpe`, `feel`, `privacy` (private unless set) |
 | Upload an activity file (FIT, GPX, TCX) | `garmin upload <file...>` (CLI; prints the new activity id and stores the activity in the local cache; a duplicate is reported, not an error) |
