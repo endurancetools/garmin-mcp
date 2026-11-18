@@ -436,6 +436,32 @@ describe('anonymize', () => {
     expect(anonymize({ functionalThresholdPower: 400, zone3Floor: 300 }, NO_SHIFT, { salt: SALT })).toEqual({ functionalThresholdPower: 200, zone3Floor: 150 });
   });
 
+  it('scales the power zone boundaries of an activity and keeps zeros, time in zone and heart rate zones', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'record-'));
+    try {
+      const read = (file: string): unknown => JSON.parse(fs.readFileSync(file, 'utf8'));
+      const zones = [
+        { zoneNumber: 1, secsInZone: 600.5, zoneLowBoundary: 0 },
+        { zoneNumber: 2, secsInZone: 1200, zoneLowBoundary: 250 },
+        { zoneNumber: 3, secsInZone: 900, zoneLowBoundary: 300 },
+        { zoneNumber: 4, secsInZone: 300, zoneLowBoundary: 362 },
+      ];
+      // One factor for the whole list, the lowest non-zero boundary becomes 100 W: b * 100 / 250, rounded.
+      expect(read(writeFixture(dir, 'activity-power-zones', zones, SALT).file)).toEqual([
+        { zoneNumber: 1, secsInZone: 600.5, zoneLowBoundary: 0 },
+        { zoneNumber: 2, secsInZone: 1200, zoneLowBoundary: 100 },
+        { zoneNumber: 3, secsInZone: 900, zoneLowBoundary: 120 },
+        { zoneNumber: 4, secsInZone: 300, zoneLowBoundary: 145 },
+      ]);
+      // Heart rate zones of an activity have the same shape and stay.
+      expect(read(writeFixture(dir, 'activity-hr-zones', zones, SALT).file)).toEqual(zones);
+      // Only for that recording: the same list elsewhere stays.
+      expect(anonymize(zones, NO_SHIFT, { salt: SALT })).toEqual(zones);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   // POSIX modes do not apply on Windows.
   it.skipIf(process.platform === 'win32')('keeps the salt in the data directory, private, and reuses it', () => {
     const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'record-data-'));

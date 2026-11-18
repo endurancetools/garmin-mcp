@@ -253,6 +253,31 @@ function scaleZoneFloors(value: object): object {
   );
 }
 
+/** Recordings whose `zoneLowBoundary` list is in W of the owner's power zones (time in zone of an activity). */
+const POWER_ZONE_BOUNDARIES = new Set(['activity-power-zones']);
+/** The lowest non-zero boundary after scaling, in W. */
+const NEUTRAL_LOWEST_BOUNDARY = 100;
+/**
+ * An activity's power zones (`activity-power-zones`) come without FTP, but their
+ * `zoneLowBoundary` values are the same percentages of it as the profile's
+ * zone floors, so the real FTP could be read back. Every non-zero boundary is
+ * scaled by one factor for the whole list, so that the lowest non-zero one is
+ * NEUTRAL_LOWEST_BOUNDARY: the ratios between zones stay, the absolute value
+ * does not. A zero stays, and so does `secsInZone`. Heart rate zones of an
+ * activity (`activity-hr-zones`) have the same shape and are not passed here.
+ */
+function scaleZoneBoundaries(value: unknown): unknown {
+  if (!Array.isArray(value)) return value;
+  const boundary = (z: unknown): unknown => (z && typeof z === 'object' ? (z as { zoneLowBoundary?: unknown }).zoneLowBoundary : undefined);
+  const nonZero = value.map(boundary).filter((b): b is number => typeof b === 'number' && b > 0);
+  if (nonZero.length === 0) return value;
+  const lowest = Math.min(...nonZero);
+  return value.map((z) => {
+    const b = boundary(z);
+    return typeof b === 'number' && b > 0 ? { ...(z as object), zoneLowBoundary: Math.round((b * NEUTRAL_LOWEST_BOUNDARY) / lowest) } : z;
+  });
+}
+
 /** An enum-like constant such as `RUNNING`, `INTERVAL_ACTIVE` or `5K`. */
 const ENUM_CONSTANT = /^[A-Z0-9_]+$/;
 /** A date or a timestamp: `2026-10-10`, `2026-10-10T06:15:00.0`, `2026-10-10 06:15:00`, with an optional zone. */
@@ -285,7 +310,9 @@ export interface CoordinateShift {
  * Dictionary ids (types, categories, units...; see DICTIONARY_ID) stay. Gear
  * names the owner gave are replaced, and body measurements and the profile's
  * thresholds and VO2max become neutral constants (see BODY_VALUES), power zone
- * floors scaled to the neutral FTP; time series stay.
+ * floors scaled to the neutral FTP, and with `powerZoneBoundaries` an
+ * activity's power zone boundaries scaled too (see scaleZoneBoundaries); time
+ * series stay.
  * A weather station's id and name (e.g. an airport code) would reveal where the
  * activity took place, so every string inside `weatherStationDTO` is replaced.
  * Device serial numbers, MAC addresses, network and device names are replaced
@@ -307,13 +334,14 @@ export function anonymize(
     unknownShape: options.unknownShape ?? false,
     salt: options.salt ?? randomBytes(32).toString('hex'),
   };
-  if (value && typeof value === 'object' && !Array.isArray(value)) {
+  const input = options.powerZoneBoundaries ? scaleZoneBoundaries(value) : value;
+  if (input && typeof input === 'object' && !Array.isArray(input)) {
     const out = Object.fromEntries(
-      Object.entries(scaleZoneFloors(value)).map(([k, v]) => [idAsKey(k, ctx), k === 'id' && typeof v === 'number' ? 90001 : scrub(v, k, ctx, '')]),
+      Object.entries(scaleZoneFloors(input)).map(([k, v]) => [idAsKey(k, ctx), k === 'id' && typeof v === 'number' ? 90001 : scrub(v, k, ctx, '')]),
     );
     return scrubMetricRows(out, shift);
   }
-  return scrub(value, '', ctx, '');
+  return scrub(input, '', ctx, '');
 }
 
 export interface AnonymizeOptions {
@@ -323,6 +351,8 @@ export interface AnonymizeOptions {
   unknownShape?: boolean;
   /** Secret behind the fake ids (`recordSalt`); a random one when left out. */
   salt?: string;
+  /** Scale the `zoneLowBoundary` list of an activity's power zones (see scaleZoneBoundaries). */
+  powerZoneBoundaries?: boolean;
 }
 
 interface Scrub {
@@ -420,7 +450,12 @@ export function writeFixture(dir: string, name: string, data: unknown, salt: str
   fs.mkdirSync(dir, { recursive: true });
   const file = path.join(dir, `${name}.json`);
   const shift = { lat: Math.random(), lon: Math.random() };
-  const anonymized = anonymize(data, shift, { names: NAMED_BY_OWNER.has(name), unknownShape: UNKNOWN_SHAPE.has(name), salt });
+  const anonymized = anonymize(data, shift, {
+    names: NAMED_BY_OWNER.has(name),
+    unknownShape: UNKNOWN_SHAPE.has(name),
+    salt,
+    powerZoneBoundaries: POWER_ZONE_BOUNDARIES.has(name),
+  });
   fs.writeFileSync(file, `${JSON.stringify(anonymized, null, 2)}\n`);
   return { file, textKeys: textKeys(anonymized) };
 }
