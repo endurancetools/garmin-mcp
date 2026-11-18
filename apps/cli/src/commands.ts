@@ -11,7 +11,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { loadMarkdown, parseThresholdsCsv, readinessMarkdown, readJsonObject, setThresholdText, thresholdsCsv, thresholdsMarkdown } from './analytics.js';
 import { err, out, prompt, promptHidden, table } from './io.js';
-import { RECORDABLE, writeFixture } from './record.js';
+import { RECORDABLE, recordSalt, writeFixture } from './record.js';
 
 /** Read from the package's own package.json (src/ in tests, dist/ when installed), so `nx release` bumps it. */
 export const VERSION: string = (JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as { version: string }).version;
@@ -657,8 +657,9 @@ export function buildProgram(deps: ProgramDeps = {}): Command {
       const config = configFrom(cmd);
       const rt: Runtime = createRuntime(config);
       const date = opts.date ?? addDays(new Intl.DateTimeFormat('en-CA', { timeZone: config.timezone }).format(new Date()), -1);
+      const salt = recordSalt(config.dataDir);
       const data = await fn(rt.client, { date, id: opts.id ? Number(opts.id) : undefined, uuid: opts.uuid });
-      const { file, textKeys } = writeFixture(path.resolve(opts.out), endpoint, data);
+      const { file, textKeys } = writeFixture(path.resolve(opts.out), endpoint, data, salt);
       out(`Wrote ${file}`);
       out(textKeys.length ? `Text left under keys (review before committing): ${textKeys.join(', ')}` : 'No text left in the file.');
     });

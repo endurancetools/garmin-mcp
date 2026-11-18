@@ -17,6 +17,7 @@ Everything lives in one data directory, `~/.garmin-mcp` by default (`GARMIN_DATA
 | `garmin-<account>.db` | the local SQLite cache: activities, daily health, sleep, training status, workouts, calendar, gear, devices, threshold history, imported activities. This is health data. |
 | `downloads/` | activity files you asked to download (FIT, GPX, ...) |
 | `config.json` | optional settings |
+| `record-salt` | only after `garmin record` (for contributors): the secret behind the fake ids in recorded test fixtures |
 
 What is never stored: your Garmin password. It is used once, during sign-in, and is not written to disk, logs, the database or error messages. Logs mask `Authorization` headers.
 

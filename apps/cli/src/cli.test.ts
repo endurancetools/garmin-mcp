@@ -12,12 +12,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { readinessMarkdown } from './analytics.js';
 import { buildProgram, VERSION, type ProgramDeps } from './commands.js';
 import { table } from './io.js';
-import { anonymize, RECORDABLE, UNKNOWN_SHAPE, writeFixture } from './record.js';
+import { anonymize, fakeId, RECORD_SALT_FILE, RECORDABLE, recordSalt, UNKNOWN_SHAPE, writeFixture } from './record.js';
 
 const NO_SHIFT = { lat: 0, lon: 0 };
+/** A fixed salt, so fake ids are the same in every run; the real one lives in the data directory. */
+const SALT = 'test-salt';
 
 describe('anonymize', () => {
-  it('scrubs personal fields but keeps data ids and shapes', () => {
+  it('scrubs personal fields and ids but keeps shapes', () => {
     const out = anonymize({
       displayName: 'jan.kowalski',
       fullName: 'Jan Kowalski',
@@ -27,12 +29,12 @@ describe('anonymize', () => {
       note: 'po kontuzji kolana',
       polyline: [{ lat: 52.2297, lon: 21.0122 }],
       nested: { ownerId: 5, garminGUID: 'abc' },
-    }, NO_SHIFT);
+    }, NO_SHIFT, { salt: SALT });
     expect(out).toEqual({
       displayName: 'anon-displayName',
       fullName: 'anon-fullName',
       profileId: 90001,
-      activityId: 99,
+      activityId: fakeId(99, SALT),
       message: 'mail me at anon@example.com',
       note: 'anon-note',
       polyline: [{ lat: 0.2297, lon: 0.0122 }],
@@ -65,13 +67,13 @@ describe('anonymize', () => {
       description: 'Nd 20.09 RANO',
       calendarItems: [{ id: 1, title: 'Example Ultra 50 2026 12/300' }],
       settings: [{ name: 'pl' }],
-    });
+    }, NO_SHIFT, { salt: SALT });
     expect(out).toEqual({
-      activityId: 7,
+      activityId: fakeId(7, SALT),
       activityName: 'anon-activityName',
       workoutName: 'anon-workoutName',
       description: 'anon-description',
-      calendarItems: [{ id: 1, title: 'anon-title' }],
+      calendarItems: [{ id: fakeId(1, SALT), title: 'anon-title' }],
       settings: [{ name: 'pl' }],
     });
   });
@@ -113,7 +115,7 @@ describe('anonymize', () => {
     });
   });
 
-  it('hides device serial numbers, addresses and names but keeps device ids and settings', () => {
+  it('hides device serial numbers, addresses, names and ids but keeps settings', () => {
     const out = anonymize({
       deviceId: 3333,
       serialNumber: '3XY123456',
@@ -122,19 +124,19 @@ describe('anonymize', () => {
       timeFormat: 'time_twenty_four_hr',
       wifiNetworks: [{ ssid: 'Kowalscy-5G', classId: 3 }],
       alarms: [{ alarmId: 501, alarmTime: 375, alarmMessage: 'Trening z Anią' }],
-    });
+    }, NO_SHIFT, { salt: SALT });
     expect(out).toEqual({
-      deviceId: 3333,
+      deviceId: fakeId(3333, SALT),
       serialNumber: 'anon-serialNumber',
       wifiMacAddress: 'anon-wifiMacAddress',
       customDeviceName: 'anon-customDeviceName',
       timeFormat: 'time_twenty_four_hr',
       wifiNetworks: [{ ssid: 'anon-ssid', classId: 3 }],
-      alarms: [{ alarmId: 501, alarmTime: 375, alarmMessage: 'anon-alarmMessage' }],
+      alarms: [{ alarmId: fakeId(501, SALT), alarmTime: 375, alarmMessage: 'anon-alarmMessage' }],
     });
   });
 
-  it('keeps calendar item ids distinct but hides the profile id', () => {
+  it('replaces calendar item ids with distinct fakes of the same length and hides the profile id', () => {
     const out = anonymize({
       year: 2026,
       month: 9,
@@ -142,8 +144,12 @@ describe('anonymize', () => {
         { id: 9900001, itemType: 'workout', date: '2026-10-10', workoutId: 700001 },
         { id: 30000003, itemType: 'event', date: '2026-10-25', location: 'Warszawa' },
       ],
-    }) as { calendarItems: { id: number; location?: string }[] };
-    expect(out.calendarItems.map((i) => i.id)).toEqual([9900001, 30000003]);
+    }, NO_SHIFT, { salt: SALT }) as { calendarItems: { id: number; workoutId?: number; location?: string }[] };
+    const ids = out.calendarItems.map((i) => i.id);
+    expect(ids).toEqual([fakeId(9900001, SALT), fakeId(30000003, SALT)]);
+    expect(ids.map((id) => String(id).length)).toEqual([7, 8]);
+    expect(ids).not.toContain(9900001);
+    expect(out.calendarItems[0]?.workoutId).toBe(fakeId(700001, SALT));
     expect(out.calendarItems[1]?.location).toBe('anon-location');
     expect(anonymize({ id: 123456, profileId: 123456, displayName: 'jan' })).toEqual({
       id: 90001,
@@ -163,8 +169,8 @@ describe('anonymize', () => {
       encodedPolyline: 'o}|~Hcj`}B??',
       flat: 1.25,
     };
-    expect(anonymize(course, shift, { names: true })).toEqual({
-      courseId: 4242,
+    expect(anonymize(course, shift, { names: true, salt: SALT })).toEqual({
+      courseId: fakeId(4242, SALT),
       courseName: 'anon-courseName',
       startPoint: { latitude: 0.8311, longitude: 0.0212, elevation: 85 },
       boundingBox: { lowerLeftLatitude: 0.6, upperRightLongitude: 0.15 },
@@ -173,8 +179,8 @@ describe('anonymize', () => {
       flat: 1.25,
     });
     const plan = { trainingPlanId: 7, name: 'Półmaraton Warszawski - plan', targetEvent: { eventName: 'Bieg Niepodległości', location: 'Warszawa' } };
-    expect(anonymize(plan, shift, { names: true })).toEqual({
-      trainingPlanId: 7,
+    expect(anonymize(plan, shift, { names: true, salt: SALT })).toEqual({
+      trainingPlanId: fakeId(7, SALT),
       name: 'anon-name',
       targetEvent: { eventName: 'anon-eventName', location: 'anon-location' },
     });
@@ -235,7 +241,7 @@ describe('anonymize', () => {
 
   it('keeps no free text in the stage 8 fixtures and leaves the older ones out of the new rules', () => {
     // A stage 8 recording (UNKNOWN_SHAPE) hides all text: anonymizing it again
-    // changes nothing. A zero shift keeps the already shifted coordinates.
+    // leaves every string as it is, except ids, which get their fakes.
     // Re-recording an older endpoint gives the same fixture as before: none of
     // the keys added for notes and food logs occurs in it.
     const fixtures = fileURLToPath(new URL('../../../packages/client/fixtures/', import.meta.url));
@@ -243,9 +249,23 @@ describe('anonymize', () => {
     expect(files.length).toBeGreaterThan(30);
     const recorded = files.filter((f) => UNKNOWN_SHAPE.has(f.replace(/\.json$/, '')));
     expect(recorded.length).toBeGreaterThan(10);
+    const strings = (v: unknown, at = ''): [string, string][] =>
+      Array.isArray(v)
+        ? v.flatMap((x, i) => strings(x, `${at}[${i}]`))
+        : v && typeof v === 'object'
+          ? Object.entries(v).flatMap(([k, x]) => strings(x, `${at}.${k}`))
+          : typeof v === 'string'
+            ? [[at, v]]
+            : [];
     for (const f of recorded) {
       const data: unknown = JSON.parse(fs.readFileSync(path.join(fixtures, f), 'utf8'));
-      expect({ f, data: anonymize(data, { lat: 0, lon: 0 }, { unknownShape: true }) }).toEqual({ f, data });
+      const before = new Map(strings(data));
+      const after = strings(anonymize(data, NO_SHIFT, { unknownShape: true, salt: SALT }));
+      expect(after.map(([at]) => at)).toEqual([...before.keys()]);
+      for (const [at, s] of after) {
+        const was = before.get(at) ?? '';
+        expect({ f, at, kept: s === was || s === fakeId(was, SALT) }).toEqual({ f, at, kept: true });
+      }
     }
     const added = ['note', 'notes', 'comment', 'foodname', 'mealname', 'brandname'];
     for (const f of files.filter((name) => !recorded.includes(name))) {
@@ -267,18 +287,147 @@ describe('anonymize', () => {
   it('writes recordings with names or all text hidden and reports the keys where text is left', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'record-'));
     try {
-      const plans = writeFixture(dir, 'training-plans', { trainingPlanList: [{ trainingPlanId: 1, name: 'Plan na Kraków', level: 'INTERMEDIATE' }] });
-      expect(JSON.parse(fs.readFileSync(plans.file, 'utf8'))).toEqual({ trainingPlanList: [{ trainingPlanId: 1, name: 'anon-name', level: 'INTERMEDIATE' }] });
+      const plans = writeFixture(dir, 'training-plans', { trainingPlanList: [{ trainingPlanId: 1, name: 'Plan na Kraków', level: 'INTERMEDIATE' }] }, SALT);
+      expect(JSON.parse(fs.readFileSync(plans.file, 'utf8'))).toEqual({
+        trainingPlanList: [{ trainingPlanId: fakeId(1, SALT), name: 'anon-name', level: 'INTERMEDIATE' }],
+      });
       expect(plans.textKeys).toEqual(['level']);
-      const meals = writeFixture(dir, 'nutrition-day', { mealDate: '2026-10-10', meals: [{ label: 'Kolacja u Ani', calories: 640 }] });
+      const meals = writeFixture(dir, 'nutrition-day', { mealDate: '2026-10-10', meals: [{ label: 'Kolacja u Ani', calories: 640 }] }, SALT);
       expect(JSON.parse(fs.readFileSync(meals.file, 'utf8'))).toEqual({ mealDate: '2026-10-10', meals: [{ label: 'anon-label', calories: 640 }] });
       expect(meals.textKeys).toEqual(['mealDate']);
       // Older recordings keep the key-based rules: a bare `name` stays.
-      const types = writeFixture(dir, 'activity-types', [{ typeId: 1, typeKey: 'running', name: 'Bieg' }]);
+      const types = writeFixture(dir, 'activity-types', [{ typeId: 1, typeKey: 'running', name: 'Bieg' }], SALT);
       expect(JSON.parse(fs.readFileSync(types.file, 'utf8'))).toEqual([{ typeId: 1, typeKey: 'running', name: 'Bieg' }]);
       expect(types.textKeys).toEqual(['name', 'typeKey']);
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('gives an id the same fake in every recording with the same salt and another with another salt', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'record-'));
+    try {
+      const read = (file: string): unknown => JSON.parse(fs.readFileSync(file, 'utf8'));
+      const activity = read(writeFixture(dir, 'activities', [{ activityId: 50169230546, deviceId: 9206047545 }], SALT).file) as {
+        activityId: number;
+        deviceId: number;
+      }[];
+      // A badge names the activity it was earned in as a string.
+      const badges = read(writeFixture(dir, 'earned-badges', [{ badgeId: 1234, badgeAssocDataId: '50169230546' }], SALT).file) as {
+        badgeAssocDataId: string;
+      }[];
+      const devices = read(writeFixture(dir, 'devices', [{ deviceId: 9206047545, unitId: 9206047545 }], SALT).file) as { deviceId: number }[];
+      expect(activity[0]?.activityId).not.toBe(50169230546);
+      expect(badges[0]?.badgeAssocDataId).toBe(String(activity[0]?.activityId));
+      expect(devices[0]?.deviceId).toBe(activity[0]?.deviceId);
+      // Training status is keyed by device id; short numeric keys may be indices and stay.
+      const status = read(writeFixture(dir, 'training-status', { byDevice: { '9206047545': { deviceId: 9206047545 } }, zones: { '1': 3 } }, SALT).file);
+      expect(status).toEqual({ byDevice: { [String(activity[0]?.deviceId)]: { deviceId: activity[0]?.deviceId } }, zones: { '1': 3 } });
+      const other = read(writeFixture(dir, 'activities', [{ activityId: 50169230546 }], 'other-salt').file) as { activityId: number }[];
+      expect(other[0]?.activityId).not.toBe(activity[0]?.activityId);
+      expect(String(other[0]?.activityId)).toHaveLength(11);
+      // Without a salt every call draws its own, so the ids are still hidden.
+      expect(anonymize({ activityId: 50169230546 })).not.toEqual({ activityId: 50169230546 });
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('keeps the format of fake ids', () => {
+    const ids = [7, 99, 60423393, 2462572813784, 8999999999999999] as const;
+    for (const id of ids) {
+      const fake = fakeId(id, SALT);
+      expect({ id, safe: Number.isSafeInteger(fake), length: String(fake).length }).toEqual({ id, safe: true, length: String(id).length });
+    }
+    expect(fakeId(60423393, SALT)).not.toBe(60423393);
+    expect(fakeId('50169230546', SALT)).toMatch(/^[1-9]\d{10}$/);
+    expect(fakeId('0123', SALT)).toMatch(/^\d{4}$/);
+    const uuid = fakeId('fcc80fba-a8ad-c597-c235-ed77369b3aad', SALT);
+    expect(uuid).toMatch(/^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/);
+    expect(uuid).not.toBe('fcc80fba-a8ad-c597-c235-ed77369b3aad');
+    // The same UUID without dashes or in upper case gets the same fake digits.
+    expect(fakeId('fcc80fbaa8adc597c235ed77369b3aad', SALT)).toBe(uuid.replaceAll('-', ''));
+    expect(fakeId('FCC80FBAA8ADC597C235ED77369B3AAD', SALT)).toBe(uuid.replaceAll('-', '').toUpperCase());
+    expect(fakeId('fd9c450c67ba25e422229c359e4b315a', SALT)).toMatch(/^[\da-f]{32}$/);
+    // Not ids: kept.
+    for (const v of [0, -1, 1.5, 'EasyTrackly', 'anon-uuid', '']) expect(fakeId(v, SALT)).toBe(v);
+  });
+
+  it('keeps dictionary ids: types, categories, statuses, units and the like', () => {
+    const dictionary = {
+      typeId: 1, activityTypeId: 1, parentTypeId: 17, sportTypeId: 1, subTypeId: 12, eventTypeId: 9, stepTypeId: 3,
+      conditionTypeId: 2, strokeTypeId: 0, equipmentTypeId: 0, workoutTargetTypeId: 4, sourceTypeId: 2, deviceTypePk: 33851,
+      activityTypePk: 1, badgeAssocTypeId: 1, badgeCategoryTypeId: 3, sleepQualityTypePK: 2, sleepResultTypePK: 1, weatherTypePk: 4,
+      badgePromotionCodeTypePk: 1, classId: 3, badgeCategoryId: 4, challengeCategoryId: 2, challengeCategoryImageId: 7,
+      statusId: 1, badgeChallengeStatusId: 2, levelId: 2, badgeDifficultyId: 1, badgeUnitId: 2, formatId: 30, dayId: 1,
+      dayOfWeekId: 3, weekId: 2, versionId: 3, timeZoneId: 124, rulePK: 2,
+    };
+    expect(anonymize({ list: [dictionary] }, NO_SHIFT, { salt: SALT })).toEqual({ list: [dictionary] });
+    // An id inside a unit, type, locale, language or version object is a dictionary id too.
+    const nested = {
+      unit: { id: 92, key: 'bpm' },
+      sectionTypeDTO: { id: 4, key: 'RUN' },
+      estimatedDistanceUnit: { unitId: 1 },
+      timeZoneUnitDTO: { unitId: 124 },
+      formatLocale: { id: 1 },
+      supportedLanguages: [{ id: 0 }, { id: 1 }],
+      trainingVersion: { versionId: 3 },
+    };
+    expect(anonymize({ list: [nested] }, NO_SHIFT, { salt: SALT })).toEqual({ list: [nested] });
+    // A bare `unitId` elsewhere is a device's, and lists of ids are replaced too.
+    expect(anonymize([{ unitId: 9206047545, workoutIds: [101, 102] }], NO_SHIFT, { salt: SALT })).toEqual([
+      { unitId: fakeId(9206047545, SALT), workoutIds: [fakeId(101, SALT), fakeId(102, SALT)] },
+    ]);
+  });
+
+  it('replaces gear names, body measurements and profile thresholds but keeps time series', () => {
+    const out = anonymize(
+      {
+        gear: [{ uuid: 'fd9c450c67ba25e422229c359e4b315a', gearPk: 60423393, customMakeModel: 'Daily Trainer 1', gearMakeName: 'ASICS' }],
+        userData: {
+          weight: 70000, height: 175, lactateThresholdHeartRate: 160, lactateThresholdSpeed: 0.38, vo2MaxRunning: 50, vo2MaxCycling: null,
+          vo2MaxRunCapable: true,
+        },
+        previousDateWeight: { samplePk: 2462572813784, weight: 70000, bmi: 23.6, bodyFat: 20, bodyWater: 55, boneMass: 3000, muscleMass: 30000, metabolicAge: 38, weightDelta: -200 },
+        calendarItems: [{ itemType: 'weight', weight: 70000, difference: 0 }],
+        ftp: { functionalThresholdPower: 200, sport: 'CYCLING' },
+        mostRecentVO2Max: { generic: { vo2MaxPreciseValue: 50, vo2MaxValue: 50 } },
+        exerciseSets: [{ weight: 40000, repetitionCount: 10 }],
+        heartRateValues: [[1791580411000, 52], [1791580530000, 54]],
+        hrvSummary: { lastNightAvg: 61 },
+      },
+      NO_SHIFT,
+      { salt: SALT },
+    );
+    expect(out).toEqual({
+      gear: [{ uuid: fakeId('fd9c450c67ba25e422229c359e4b315a', SALT), gearPk: fakeId(60423393, SALT), customMakeModel: 'anon-customMakeModel', gearMakeName: 'ASICS' }],
+      userData: {
+        weight: 70000, height: 175, lactateThresholdHeartRate: 160, lactateThresholdSpeed: 0.35, vo2MaxRunning: 50, vo2MaxCycling: null,
+        vo2MaxRunCapable: true,
+      },
+      previousDateWeight: { samplePk: fakeId(2462572813784, SALT), weight: 70000, bmi: 22.9, bodyFat: 20, bodyWater: 55, boneMass: 3000, muscleMass: 30000, metabolicAge: 35, weightDelta: 0 },
+      calendarItems: [{ itemType: 'weight', weight: 70000, difference: 0 }],
+      ftp: { functionalThresholdPower: 200, sport: 'CYCLING' },
+      mostRecentVO2Max: { generic: { vo2MaxPreciseValue: 50, vo2MaxValue: 50 } },
+      // The load lifted in a set is not the owner's weight.
+      exerciseSets: [{ weight: 40000, repetitionCount: 10 }],
+      heartRateValues: [[1791580411000, 52], [1791580530000, 54]],
+      hrvSummary: { lastNightAvg: 61 },
+    });
+  });
+
+  // POSIX modes do not apply on Windows.
+  it.skipIf(process.platform === 'win32')('keeps the salt in the data directory, private, and reuses it', () => {
+    const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'record-data-'));
+    try {
+      const salt = recordSalt(dataDir);
+      expect(salt).toMatch(/^[\da-f]{64}$/);
+      const file = path.join(dataDir, RECORD_SALT_FILE);
+      expect(fs.statSync(file).mode & 0o777).toBe(0o600);
+      expect(recordSalt(dataDir)).toBe(salt);
+      expect(recordSalt(fs.mkdtempSync(path.join(dataDir, 'other-')))).not.toBe(salt);
+    } finally {
+      fs.rmSync(dataDir, { recursive: true, force: true });
     }
   });
 

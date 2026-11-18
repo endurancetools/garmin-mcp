@@ -78,5 +78,6 @@ Each layer only knows the ones below it, which is why the same core powers both 
 | `~/.garmin-mcp/garmin-<account>.db` | the local database (one per account): activities, daily health, sleep, training status, workouts, calendar, gear, devices; plus the analytics' own tables: `thresholds` (threshold history) and `imported_activities` (activities imported from CSV) |
 | `~/.garmin-mcp/downloads/` | activity files you asked to download (FIT, GPX, ...) |
 | `~/.garmin-mcp/config.json` | optional settings |
+| `~/.garmin-mcp/record-salt` | only after `garmin record` (for contributors): the secret behind the fake ids in recorded test fixtures |
 
 Delete the folder to remove everything; sign in again to start over.

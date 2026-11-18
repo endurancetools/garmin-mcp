@@ -1,5 +1,6 @@
 import type { GarminClient } from 'garmin-mcp-client';
-import { addDays, InputError } from 'garmin-mcp-config';
+import { addDays, assertPrivate, InputError, writePrivateFile } from 'garmin-mcp-config';
+import { createHmac, randomBytes } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -106,6 +107,8 @@ const PERSONAL_STRINGS = new Set(
     'courseName', 'trainingPlanName', 'planName', 'eventName', 'raceName', 'goalName', 'address', 'city',
     // Notes and food log entries.
     'note', 'notes', 'comment', 'foodName', 'mealName', 'brandName',
+    // Gear names the owner gave (`customMakeModel`: "ASICS ... 18", "Old blue bike").
+    'customMakeModel', 'gearName',
   ].map((k) => k.toLowerCase()),
 );
 /**
@@ -137,6 +140,100 @@ const PROFILE_IMAGE = /profileimage|profileimg/i;
 /** Uploaded photos under any key, e.g. a device's `imageUrl`. */
 const UPLOADED_IMAGE = /\/profile_images\//;
 
+/**
+ * Keys of account object ids: activities, workouts and their steps, schedules,
+ * devices (`deviceId`, `unitId`), gear (`uuid`, `gearPk`), courses, calendar
+ * items, badges, plans, records, weigh-ins (`samplePk`) and anything else named
+ * `...Id`, `...Pk`, `...Uuid` (also plural, for lists of ids) or a bare `id`,
+ * `uuid`, `pk`. The rule goes by the key, not by the recording, so it covers
+ * responses of any shape. Case-sensitive, so `valid` or `hybrid` are not ids.
+ */
+const OBJECT_ID = /^(id|uuid|pk)s?$|[a-z0-9](Id|ID|Pk|PK|Uuid|UUID)s?$/;
+/**
+ * Dictionary ids, the same for every account, which stay: types (`typeId`,
+ * `activityTypeId`, `parentTypeId`, `sportTypeId`, `subTypeId`, `eventTypeId`,
+ * `stepTypeId`, `deviceTypePk`, `activityTypePk`, `sleepQualityTypePK`...),
+ * classes, categories and statuses (`badgeCategoryId`, `challengeCategoryImageId`,
+ * `statusId`, `badgeChallengeStatusId`), levels and difficulties (`levelId`,
+ * `badgeDifficultyId`), units (`badgeUnitId`), formats (`formatId`), days and
+ * weeks of a plan (`dayId`, `dayOfWeekId`, `weekId`), plan versions
+ * (`versionId`), time zones (`timeZoneId`), privacy rules (`rulePK`), languages
+ * and locales. A bare `unitId` is a device's and is replaced.
+ */
+const DICTIONARY_ID =
+  /^(type|class|category|status|level|format|day|dayOfWeek|week|version|timeZone|rule|language|locale)(Id|ID|Pk|PK)s?$|(Type|Class|Category|CategoryImage|Status|Level|Difficulty|Format|Unit)(Id|ID|Pk|PK)s?$/;
+/**
+ * An id inside a unit, type, locale, language or version object is a
+ * dictionary id too: `unit: { id: 92 }`, `sectionTypeDTO: { id: 4 }`,
+ * `estimatedDistanceUnit: { unitId: 1 }`, `supportedLanguages: [{ id: 0 }]`.
+ */
+const DICTIONARY_PARENT = /(type|unit|locale|languages?|version)(dto)?$/i;
+const isObjectId = (key: string, parent: string): boolean =>
+  OBJECT_ID.test(key) && !DICTIONARY_ID.test(key) && !DICTIONARY_PARENT.test(parent);
+/** An object keyed by ids, e.g. training status per device (`{ "2730757515": {...} }`); shorter digit keys may be indices. */
+const ID_AS_KEY = /^\d{6,}$/;
+
+/** `n` pseudo-random bytes from the HMAC of `text` under `salt`. */
+function hmacBytes(salt: string, text: string, n: number): number[] {
+  const out: number[] = [];
+  for (let i = 0; out.length < n; i++) out.push(...createHmac('sha256', salt).update(`${i}:${text}`).digest());
+  return out.slice(0, n);
+}
+
+/**
+ * A stable fake for an account object id: the HMAC of the value under the
+ * recording salt, written in the same format. A positive integer keeps its
+ * number of digits (and stays a safe integer), a digit string its length, a
+ * hex string or UUID (8 characters or more) its length, dashes and case. The same
+ * value gives the same fake in every recording made with the same salt, also
+ * when one response has it as a number and another as a string (an activity's
+ * `activityId` and a badge's `badgeAssocDataId`), or a UUID with and without
+ * dashes. Without the salt the real value cannot be recovered. Zero, negative
+ * and fractional numbers and other text are not ids and stay.
+ */
+export function fakeId<T extends number | string>(value: T, salt: string): T {
+  const text = String(value);
+  if (typeof value === 'number' ? Number.isSafeInteger(value) && value > 0 : /^\d+$/.test(text)) {
+    const bytes = hmacBytes(salt, text, text.length);
+    // No leading zero unless the value has one; 16 digits start with 1-8 to stay below 2^53.
+    const [low, span] = text.startsWith('0') ? [0, 10] : [1, text.length >= 16 ? 8 : 9];
+    const digits = bytes.map((b, i) => (i === 0 ? low + (b % span) : b % 10)).join('');
+    return (typeof value === 'number' ? Number(digits) : digits) as T;
+  }
+  if (typeof value === 'string' && value.length >= 8 && /^[\da-f]+(-[\da-f]+)*$/i.test(value)) {
+    const bare = value.replaceAll('-', '').toLowerCase();
+    const bytes = hmacBytes(salt, bare, bare.length);
+    const upper = /[A-F]/.test(value) && !/[a-f]/.test(value);
+    let i = 0;
+    const fake = [...value].map((c) => (c === '-' ? c : ((bytes[i++] ?? 0) % 16).toString(16))).join('');
+    return (upper ? fake.toUpperCase() : fake) as T;
+  }
+  return value;
+}
+
+/**
+ * Body measurements and the profile's single threshold and fitness values,
+ * replaced with neutral constants in the same unit, under the keys of
+ * `user-settings`, `weigh-ins` and `calendar-month`: weight, bone and muscle
+ * mass in grams, height in cm, body fat and water in %, `difference` (a
+ * calendar weigh-in's change) in grams, FTP in W, lactate threshold heart rate
+ * in bpm and speed as Garmin gives it, VO2max. Time series (heart rate, sleep,
+ * HRV, stress) stay.
+ */
+const BODY_VALUES = new Map<string, number>([
+  ['weight', 70000], ['height', 175], ['bmi', 22.9], ['bodyFat', 20], ['bodyWater', 55], ['boneMass', 3000],
+  ['muscleMass', 30000], ['metabolicAge', 35], ['visceralFat', 10], ['physiqueRating', 5], ['weightDelta', 0],
+  ['difference', 0], ['functionalThresholdPower', 200],
+]);
+/** Prefixes for the variants per sport: `vo2MaxRunning`, `vo2MaxPreciseValue`, `lactateThresholdHeartRateCycling`. */
+const BODY_PREFIXES: [RegExp, number][] = [[/^vo2Max/, 50], [/^lactateThresholdHeartRate/, 160], [/^lactateThresholdSpeed/, 0.35]];
+/** In a list of sets (`exerciseSets`), `weight` is the load lifted, not the owner's. */
+const SETS = /sets$/i;
+function bodyValue(key: string, parent: string): number | undefined {
+  if (SETS.test(parent)) return undefined;
+  return BODY_VALUES.get(key) ?? BODY_PREFIXES.find(([re]) => re.test(key))?.[1];
+}
+
 /** An enum-like constant such as `RUNNING`, `INTERVAL_ACTIVE` or `5K`. */
 const ENUM_CONSTANT = /^[A-Z0-9_]+$/;
 /** A date or a timestamp: `2026-10-10`, `2026-10-10T06:15:00.0`, `2026-10-10 06:15:00`, with an optional zone. */
@@ -159,8 +256,17 @@ export interface CoordinateShift {
  * random shift drawn once per recording, so a track keeps its shape near Null
  * Island but neither the whole degrees nor the minutes can be recovered. That
  * includes latitude/longitude columns of activity detail rows, which are
- * positional (`metrics[i]` named by `metricDescriptors`). Activity, workout,
- * device and calendar item ids stay, so fixtures remain internally consistent.
+ * positional (`metrics[i]` named by `metricDescriptors`). Ids of the account's
+ * objects (activities, workouts, devices, gear, courses, calendar items, badges,
+ * plans, records, weigh-ins; see OBJECT_ID) become fakes of the same format
+ * from `fakeId` under `salt`: with the salt of the data directory
+ * (`recordSalt`) every recording gives a real id the same fake, so fixtures
+ * stay consistent with each other; without one, a random salt hides them for
+ * this call only. An object key of six or more digits is taken for an id too.
+ * Dictionary ids (types, categories, units...; see DICTIONARY_ID) stay. Gear
+ * names the owner gave are replaced, and body measurements and the profile's
+ * thresholds and VO2max become neutral constants (see BODY_VALUES); time
+ * series stay.
  * A weather station's id and name (e.g. an airport code) would reveal where the
  * activity took place, so every string inside `weatherStationDTO` is replaced.
  * Device serial numbers, MAC addresses, network and device names are replaced
@@ -176,12 +282,19 @@ export function anonymize(
   shift: CoordinateShift = { lat: Math.random(), lon: Math.random() },
   options: AnonymizeOptions = {},
 ): unknown {
-  const ctx: Scrub = { shift, names: options.names ?? false, unknownShape: options.unknownShape ?? false };
+  const ctx: Scrub = {
+    shift,
+    names: options.names ?? false,
+    unknownShape: options.unknownShape ?? false,
+    salt: options.salt ?? randomBytes(32).toString('hex'),
+  };
   if (value && typeof value === 'object' && !Array.isArray(value)) {
-    const out = Object.fromEntries(Object.entries(value).map(([k, v]) => [k, k === 'id' && typeof v === 'number' ? 90001 : scrub(v, k, ctx)]));
+    const out = Object.fromEntries(
+      Object.entries(value).map(([k, v]) => [idAsKey(k, ctx), k === 'id' && typeof v === 'number' ? 90001 : scrub(v, k, ctx, '')]),
+    );
     return scrubMetricRows(out, shift);
   }
-  return scrub(value, '', ctx);
+  return scrub(value, '', ctx, '');
 }
 
 export interface AnonymizeOptions {
@@ -189,12 +302,15 @@ export interface AnonymizeOptions {
   names?: boolean;
   /** Replace every string but enum-like constants, dates, timestamps and type and unit names. */
   unknownShape?: boolean;
+  /** Secret behind the fake ids (`recordSalt`); a random one when left out. */
+  salt?: string;
 }
 
 interface Scrub {
   shift: CoordinateShift;
   names: boolean;
   unknownShape: boolean;
+  salt: string;
 }
 
 function coordinate(value: number, key: string, shift: CoordinateShift): number {
@@ -219,24 +335,35 @@ function scrubMetricRows(out: Record<string, unknown>, shift: CoordinateShift): 
   };
 }
 
-function scrub(value: unknown, key: string, ctx: Scrub): unknown {
+const idAsKey = (key: string, ctx: Scrub): string => (ID_AS_KEY.test(key) ? fakeId(key, ctx.salt) : key);
+
+/** `parent` is the key of the object (or list) holding `key`; '' at the top. */
+function scrub(value: unknown, key: string, ctx: Scrub, parent: string): unknown {
   const { shift } = ctx;
-  if (Array.isArray(value)) return value.map((v) => scrub(v, key, ctx));
+  if (Array.isArray(value)) return value.map((v) => scrub(v, key, ctx, parent));
   if (key === 'weatherStationDTO' && value && typeof value === 'object') {
     return Object.fromEntries(
-      Object.entries(value).map(([k, v]) => [k, typeof v === 'string' ? 'anon-weatherStation' : scrub(v, k, ctx)]),
+      Object.entries(value).map(([k, v]) => [k, typeof v === 'string' ? 'anon-weatherStation' : scrub(v, k, ctx, key)]),
     );
   }
   if (value && typeof value === 'object') {
-    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, scrub(v, k, ctx)]));
+    return Object.fromEntries(Object.entries(value).map(([k, v]) => [idAsKey(k, ctx), scrub(v, k, ctx, key)]));
   }
   if (typeof value === 'string' && (POLYLINE.test(key) || (ctx.names && key === 'name'))) return `anon-${key}`;
   if (DEVICE_IDENTIFIERS.test(key) && (typeof value === 'string' || typeof value === 'number')) return typeof value === 'number' ? 90002 : `anon-${key}`;
   if (typeof value === 'string' && PERSONAL_STRINGS.has(key.toLowerCase())) return key === 'birthDate' ? '1990-01-01' : `anon-${key}`;
   if (typeof value === 'string' && (PROFILE_IMAGE.test(key) || UPLOADED_IMAGE.test(value))) return `anon-${key}`;
+  if (typeof value === 'number' && PERSONAL_IDS.has(key)) return 90001;
+  if ((typeof value === 'number' || typeof value === 'string') && isObjectId(key, parent)) {
+    const fake = fakeId(value, ctx.salt);
+    if (fake !== value) return fake;
+  }
   if (typeof value === 'string' && ctx.unknownShape && !keepsText(key, value)) return `anon-${key}`;
   if (typeof value === 'string' && /[\w.+-]+@[\w-]+\.[\w.]+/.test(value)) return value.replaceAll(/[\w.+-]+@[\w-]+\.[\w.]+/g, 'anon@example.com');
-  if (typeof value === 'number' && PERSONAL_IDS.has(key)) return 90001;
+  if (typeof value === 'number') {
+    const body = bodyValue(key, parent);
+    if (body !== undefined) return body;
+  }
   if (typeof value === 'number' && isCoordinate(key)) return coordinate(value, key, shift);
   return value;
 }
@@ -253,12 +380,28 @@ export function textKeys(value: unknown): string[] {
   return [...keys].toSorted();
 }
 
+/** File in the data directory with the secret behind the fake ids of recordings; never in the repository. */
+export const RECORD_SALT_FILE = 'record-salt';
+
+/** The salt for fake ids, read from the data directory or created there (0600) by the first recording. */
+export function recordSalt(dataDir: string): string {
+  const file = path.join(dataDir, RECORD_SALT_FILE);
+  if (fs.existsSync(file)) {
+    assertPrivate(file, 'file');
+    const salt = fs.readFileSync(file, 'utf8').trim();
+    if (salt) return salt;
+  }
+  const salt = randomBytes(32).toString('hex');
+  writePrivateFile(file, `${salt}\n`);
+  return salt;
+}
+
 /** Write an anonymized recording; returns the file and the keys where text is left, for review before committing. */
-export function writeFixture(dir: string, name: string, data: unknown): { file: string; textKeys: string[] } {
+export function writeFixture(dir: string, name: string, data: unknown, salt: string): { file: string; textKeys: string[] } {
   fs.mkdirSync(dir, { recursive: true });
   const file = path.join(dir, `${name}.json`);
   const shift = { lat: Math.random(), lon: Math.random() };
-  const anonymized = anonymize(data, shift, { names: NAMED_BY_OWNER.has(name), unknownShape: UNKNOWN_SHAPE.has(name) });
+  const anonymized = anonymize(data, shift, { names: NAMED_BY_OWNER.has(name), unknownShape: UNKNOWN_SHAPE.has(name), salt });
   fs.writeFileSync(file, `${JSON.stringify(anonymized, null, 2)}\n`);
   return { file, textKeys: textKeys(anonymized) };
 }
