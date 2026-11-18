@@ -23,8 +23,8 @@ export const ATL_DAYS = 7;
 /**
  * CTL/ATL/TSB from per-activity Garmin training load (EPOC based), as exponentially
  * weighted moving averages with 42 and 7 day time constants. Days without
- * activities count as zero load. History before `from` warms the averages up;
- * pass at least ~90 days of it for meaningful CTL.
+ * activities count as zero load. History before `from` warms the averages up; the
+ * service passes the whole stored history, so a date's CTL does not depend on `from`.
  */
 export function trainingLoadSeries(activities: readonly LoadInput[], from: IsoDate, to: IsoDate): LoadPoint[] {
   const daily = new Map<string, number>();

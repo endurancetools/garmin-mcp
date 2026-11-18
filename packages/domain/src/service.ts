@@ -1377,6 +1377,16 @@ export class GarminService {
     };
   }
 
+  /**
+   * Garmin training load of every stored activity up to `to` (second recordings of a multisport
+   * leg left out), the input of `garmin_load_model`. The whole history is used, as `get_load`
+   * does, so CTL on a date is the same whichever tool or range asks; the 120 days before `from`
+   * that the tools download only make sure that history is there.
+   */
+  #garminLoadInputs(to: IsoDate): { date: IsoDate; training_load: number | null }[] {
+    return withoutLegCopies(this.store.queryActivities({ to, sort: 'asc' })).flatMap((a) => (a.date ? [{ date: a.date, training_load: a.training_load }] : []));
+  }
+
   async getTrainingStatus(q: { from?: string; to?: string; include_series?: boolean }) {
     const { from, to } = this.range(q.from, q.to, 28);
     const warmup = addDays(from, -120);
@@ -1386,9 +1396,8 @@ export class GarminService {
       this.syncer.ensureTrainingMetrics(to, this.#budget),
     ]);
     const statusRows = this.store.getDaily('training_status', addDays(to, -89) < from ? addDays(to, -89) : from, to);
-    const activities = withoutLegCopies(this.store.queryActivities({ from: warmup, to, sort: 'asc' })).map((a) => ({ date: a.date ?? '', training_load: a.training_load }));
     const metrics = this.store.latestTrainingMetrics(to);
-    const overview = trainingOverview(statusRows, activities, from, to, q.include_series ?? false, metrics);
+    const overview = trainingOverview(statusRows, this.#garminLoadInputs(to), from, to, q.include_series ?? false, metrics);
     const gap = this.#dailyGap('training', ['training_status'], from, to);
     // Race predictions, scores and records are fetched by a training sync that reaches today.
     const metricsGap = metrics ? {} : this.#gap('training', addDays(this.today(), -6), this.today(), 'race predictions, endurance/hill score, fitness age, personal records and acclimation');
@@ -1443,8 +1452,7 @@ export class GarminService {
     const daily = this.store.getDaily('daily_summary', from, to);
     const metrics: HealthMetric[] = ['sleep', 'resting_hr', 'hrv', 'steps', 'stress', 'body_battery'];
     const table = healthTable(metrics, { daily, sleep: this.store.getDaily('sleep', from, to), hrv: this.store.getDaily('hrv', from, to) }, from, to, 'day');
-    const loadActs = withoutLegCopies(this.store.queryActivities({ from: warmup, to, sort: 'asc' })).map((a) => ({ date: a.date ?? '', training_load: a.training_load }));
-    const load = trainingOverview([], loadActs, from, to, false).garmin_load_model;
+    const load = trainingOverview([], this.#garminLoadInputs(to), from, to, false).garmin_load_model;
     const energy = energyBalance(daily);
     // Without synced activities an empty period would read as "no sessions, every day a rest day".
     const activitiesMissing = this.syncer.activityGaps(from, to).length > 0;

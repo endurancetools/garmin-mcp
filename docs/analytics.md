@@ -118,7 +118,7 @@ Each activity gets one training stress `tss` from the first candidate that gives
 There are two CTL/ATL/TSB models, with the same averages and different daily stress:
 
 - **`get_load`**: the own model below, from TSS per activity (power, pace, heart rate, RPE) with your thresholds. Use it for "what is my form", TSB, ACWR and load flags; the readiness `load` signal uses it with `source: "hrtss"`.
-- **`garmin_load_model`** in `get_training_status` (and at the end of a `get_period_summary` period): the same 42/7-day averages on Garmin's per-activity training load (EPOC), with form bands scaled to CTL because EPOC is not in TSS points. Use it next to Garmin's own status, acute/chronic load and load focus. `get_load` with `source: "garmin_load"` gives the same input with the own flags.
+- **`garmin_load_model`** in `get_training_status` (and at the end of a `get_period_summary` period): the same 42/7-day averages on Garmin's per-activity training load (EPOC) over the whole stored history, so both tools give the same values on a date, with form bands scaled to CTL because EPOC is not in TSS points. Use it next to Garmin's own status, acute/chronic load and load focus. `get_load` with `source: "garmin_load"` gives the same input with the own flags.
 
 The two read differently in absolute numbers; compare directions, not values.
 

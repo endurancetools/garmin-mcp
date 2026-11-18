@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { GarminError } from 'garmin-mcp-config';
+import { eachDay, GarminError } from 'garmin-mcp-config';
 import { clearSignInPause, hrvColumns, requestCounterKey, sleepColumns, TTL } from 'garmin-mcp-store';
 import { describe, expect, it, vi } from 'vitest';
 import { fitWithPower } from './test-utils/fit.js';
@@ -1761,6 +1761,19 @@ describe('GarminService', () => {
     const expected = (await alone.getTrainingStatus({ to: '2026-10-08' })).data.garmin_load_model;
     expect((await service.getTrainingStatus({ to: '2026-10-08' })).data.garmin_load_model).toEqual(expected);
     expect(week.data.garmin_load_model).toEqual((await alone.getPeriodSummary('week', { anchor_date: '2026-10-07' })).data.garmin_load_model);
+  });
+
+  it('gives the same Garmin load model on a date whichever tool and range ask', async () => {
+    // Weekly runs since March: older than the 120 days before either tool's range.
+    const runs = eachDay('2026-03-02', '2026-10-07').filter((_, i) => i % 7 === 0).map((d, i) => summary(100 + i, d));
+    const { service, store } = setup({ activities: runs });
+    store.upsertActivities(runs, NOW);
+    const status = (await service.getTrainingStatus({ to: '2026-10-08' })).data.garmin_load_model;
+    const week = (await service.getPeriodSummary('week', { anchor_date: '2026-10-07' })).data.garmin_load_model;
+    const month = (await service.getPeriodSummary('month', { anchor_date: '2026-10-07' })).data.garmin_load_model;
+    expect(status).toMatchObject({ date: '2026-10-08' });
+    expect(week).toEqual(status);
+    expect(month).toEqual(status);
   });
 
   it('summarises an arbitrary range like a week', async () => {
