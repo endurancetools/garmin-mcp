@@ -17,6 +17,9 @@
     "sharedGlobals": [
       "{workspaceRoot}/tsconfig.base.json",
       "{workspaceRoot}/pnpm-lock.yaml"
+    ],
+    "clientFixtures": [
+      "{workspaceRoot}/packages/client/fixtures/**/*"
     ]
   },
   "targetDefaults": {
@@ -82,7 +85,8 @@
       "inputs": [
         "default",
         "^production",
-        "{workspaceRoot}/vitest.shared.ts"
+        "{workspaceRoot}/vitest.shared.ts",
+        "clientFixtures"
       ],
       "cache": true
     }
