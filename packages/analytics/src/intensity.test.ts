@@ -52,15 +52,15 @@ describe('intensityDistribution', () => {
     // zone 1 (89–127) is below LT1 144
     expect(at(zones(600, 0, 0, 0, 0))).toEqual([10, 0, 0]);
     // zone 2 (127–146) crosses LT1: 17/19 Z1, 2/19 Z2
-    expect(at(zones(0, 1200, 0, 0, 0))).toEqual([17, 3, 0]);
+    expect(at(zones(0, 1140, 0, 0, 0))).toEqual([17, 2, 0]);
     // zone 3 (146–154) lies between LT1 and LTHR
     expect(at(zones(0, 0, 600, 0, 0))).toEqual([0, 10, 0]);
     // zone 4 (154–165) crosses LTHR 160: 6/11 Z2, 5/11 Z3
-    expect(at(zones(0, 0, 0, 660, 0))).toEqual([0, 5, 6]);
+    expect(at(zones(0, 0, 0, 660, 0))).toEqual([0, 6, 5]);
     // zone 5 (165–175) is above LTHR
     expect(at(zones(0, 0, 0, 0, 600))).toEqual([0, 0, 10]);
     const d = intensityDistribution([sess('2026-05-04', { lthr_used: 160, ...zones(0, 0, 600, 1320, 600) })], THR_P, '2026-05-01', '2026-05-31', 75, FLOORS);
-    expect(minutes(d)).toEqual([0, 20, 22]);
+    expect(minutes(d)).toEqual([0, 22, 20]);
     expect(d.sessions_with_zones).toBe(1);
     expect(d.note).toBeUndefined();
   });
@@ -68,17 +68,17 @@ describe('intensityDistribution', () => {
   it('cycling uses the CYCLING zone bounds and the cycling LT1 of the date', () => {
     // bike LT1 = 144 − 7 = 137, LTHR 160; zone 4 (150–158) is Z2, zone 5 (158–175) 2/17 Z2 and 15/17 Z3
     const d = intensityDistribution(
-      [sess('2026-05-04', { sport: 'bike', lthr_used: 160, ...zones(0, 0, 600, 480, 0) })],
+      [sess('2026-05-04', { sport: 'bike', lthr_used: 160, ...zones(0, 0, 0, 480, 1020) })],
       THR_P,
       '2026-05-01',
       '2026-05-31',
       75,
       FLOORS,
     );
-    expect(minutes(d)).toEqual([0, 11, 7]);
+    expect(minutes(d)).toEqual([0, 10, 15]);
     // without CYCLING bounds the DEFAULT ones are used
     const def = intensityDistribution(
-      [sess('2026-05-04', { sport: 'bike', lthr_used: 160, ...zones(0, 0, 540, 0, 0) })],
+      [sess('2026-05-04', { sport: 'bike', lthr_used: 160, ...zones(0, 0, 0, 660, 0) })],
       THR_P,
       '2026-05-01',
       '2026-05-31',
@@ -86,7 +86,7 @@ describe('intensityDistribution', () => {
       { DEFAULT: FLOORS.DEFAULT },
     );
     // zone 4 (154–165) against LT1 137 and LTHR 160: 6/11 Z2, 5/11 Z3
-    expect(minutes(def)).toEqual([0, 6, 3]);
+    expect(minutes(def)).toEqual([0, 6, 5]);
   });
 
   it('notes the fixed mapping only when a session with zones had no bounds', () => {
@@ -136,12 +136,12 @@ describe('intensityDistribution', () => {
     // avg HR 140: below the running LT1 144 (cycling would use 137 and give Z2)
     const row = sess('2026-05-05', { sport: 'row', lthr_used: 160, avg_hr: 140, duration_s: 1800 });
     const d = intensityDistribution([nordic, row], THR_P, '2026-05-01', '2026-05-31', 75, FLOORS);
-    expect(minutes(d)).toEqual([30, 5, 6]);
+    expect(minutes(d)).toEqual([30, 6, 5]);
     expect(d).toMatchObject({ sessions_with_zones: 1, sessions_by_avg_hr: 1 });
   });
 
   it('counts hike only when on the sport list, with the DEFAULT zone bounds and the running LT1 and LTHR', () => {
-    // a week of one tempo run (avg 160: Z2) and a mountain walk below LT1 151
+    // a week of one tempo run (avg 150: Z2) and a mountain walk below LT1 144
     const run = sess('2026-05-04', { lthr_used: 160, avg_hr: 150 });
     // zone 2 (127–146): 17/19 Z1, 2/19 Z2; zone 4 (154–165): 6/11 Z2, 5/11 Z3
     const hike = sess('2026-05-06', { sport: 'hike', lthr_used: 160, duration_s: 7200, ...zones(0, 1140, 0, 660, 0) });
@@ -150,9 +150,9 @@ describe('intensityDistribution', () => {
     expect(without).toEqual(intensityDistribution([run], THR_P, '2026-05-01', '2026-05-31', 75, FLOORS));
     expect([...minutes(without), without.z1_pct]).toEqual([0, 60, 0, 0]);
     const withHike = intensityDistribution([run, hike, walk], THR_P, '2026-05-01', '2026-05-31', 75, FLOORS, ['run', 'bike', 'nordic', 'row', 'hike']);
-    expect(minutes(withHike)).toEqual([77, 68, 6]);
-    expect(withHike).toMatchObject({ z1_pct: 51, sessions_with_zones: 1, sessions_by_avg_hr: 2, z1_below_target: true });
-    expect(minutes(intensityDistribution([run, hike, walk], THR_P, '2026-05-01', '2026-05-31', 75, FLOORS, ['hike']))).toEqual([77, 8, 6]);
+    expect(minutes(withHike)).toEqual([77, 68, 5]);
+    expect(withHike).toMatchObject({ z1_pct: 51.3, sessions_with_zones: 1, sessions_by_avg_hr: 2, z1_below_target: true });
+    expect(minutes(intensityDistribution([run, hike, walk], THR_P, '2026-05-01', '2026-05-31', 75, FLOORS, ['hike']))).toEqual([77, 8, 5]);
   });
 
   it('only run, bike, nordic and row inside the range; skips sessions with neither zones nor HR', () => {

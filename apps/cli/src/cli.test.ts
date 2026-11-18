@@ -416,12 +416,15 @@ describe('anonymize', () => {
     });
   });
 
-  it('scales power zone floors to the neutral FTP and keeps zeros and heart rate zones', () => {
+  it('scales power zone floors to the neutral FTP, heart rate zone floors to the neutral HRmax, and keeps zeros', () => {
     const out = anonymize(
       [
         { sport: 'CYCLING', functionalThresholdPower: 250, zone1Floor: 0, zone2Floor: 138, zone3Floor: 188, zone4Floor: 225, zone5Floor: 263, zone6Floor: 300, zone7Floor: 375 },
         { sport: 'RUNNING', functionalThresholdPower: 300, zone1Floor: 195, zone2Floor: 236, zone6Floor: 0, zone7Floor: 0 },
-        { sport: 'DEFAULT', trainingMethod: 'HR_MAX', maxHeartRateUsed: 190, zone1Floor: 95, zone2Floor: 114, zone5Floor: 171 },
+        {
+          sport: 'DEFAULT', trainingMethod: 'HR_MAX', restingHeartRateUsed: 45, lactateThresholdHeartRateUsed: 180,
+          zone1Floor: 102, zone2Floor: 126, zone3Floor: 150, zone4Floor: 174, zone5Floor: 192, maxHeartRateUsed: 210,
+        },
       ],
       NO_SHIFT,
       { salt: SALT },
@@ -430,10 +433,43 @@ describe('anonymize', () => {
       // floor * 200 / FTP, rounded: the real FTP cannot be read back from the floors.
       { sport: 'CYCLING', functionalThresholdPower: 200, zone1Floor: 0, zone2Floor: 110, zone3Floor: 150, zone4Floor: 180, zone5Floor: 210, zone6Floor: 240, zone7Floor: 300 },
       { sport: 'RUNNING', functionalThresholdPower: 200, zone1Floor: 130, zone2Floor: 157, zone6Floor: 0, zone7Floor: 0 },
-      { sport: 'DEFAULT', trainingMethod: 'HR_MAX', maxHeartRateUsed: 190, zone1Floor: 95, zone2Floor: 114, zone5Floor: 171 },
+      // floor * 175 / HRmax; HRmax, resting heart rate and LTHR become neutral constants.
+      {
+        sport: 'DEFAULT', trainingMethod: 'HR_MAX', restingHeartRateUsed: 50, lactateThresholdHeartRateUsed: 160,
+        zone1Floor: 85, zone2Floor: 105, zone3Floor: 125, zone4Floor: 145, zone5Floor: 160, maxHeartRateUsed: 175,
+      },
     ]);
     // A single zone set at the top of a recording too.
     expect(anonymize({ functionalThresholdPower: 400, zone3Floor: 300 }, NO_SHIFT, { salt: SALT })).toEqual({ functionalThresholdPower: 200, zone3Floor: 150 });
+    // Floors without FTP or HRmax stay.
+    expect(anonymize({ sport: 'DEFAULT', zone1Floor: 95 }, NO_SHIFT, { salt: SALT })).toEqual({ sport: 'DEFAULT', zone1Floor: 95 });
+  });
+
+  it('scales a threshold history so that its latest value is the neutral one, and keeps VO2max of max-metrics neutral', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'record-'));
+    try {
+      const read = (file: string): unknown => JSON.parse(fs.readFileSync(file, 'utf8'));
+      const entry = (from: string, value: number) => ({ from, until: from, series: 'LT', value, updatedDate: from });
+      const lthr = [entry('2026-01-01', 150), entry('2026-02-01', 165), entry('2026-03-01', 0), entry('2026-04-01', 180)];
+      // One factor for the whole list (160 / 180), dates and the zero stay.
+      expect(read(writeFixture(dir, 'lactate-threshold-range', lthr, SALT).file)).toEqual([
+        entry('2026-01-01', 133),
+        entry('2026-02-01', 147),
+        entry('2026-03-01', 0),
+        entry('2026-04-01', 160),
+      ]);
+      // Speed as Garmin gives it (0.35 / 0.4), six decimals.
+      const speed = [entry('2026-01-01', 0.38), entry('2026-04-01', 0.4)];
+      expect((read(writeFixture(dir, 'lactate-threshold-speed-range', speed, SALT).file) as { value: number }[]).map((e) => e.value)).toEqual([0.3325, 0.35]);
+      // Only for those recordings: the same list elsewhere stays.
+      expect(anonymize(lthr, NO_SHIFT, { salt: SALT })).toEqual(lthr);
+      const vo2 = [{ calendarDate: '2026-10-07', generic: { calendarDate: '2026-10-07', vo2MaxPreciseValue: 47.3, vo2MaxValue: 47, fitnessAge: null }, cycling: null }];
+      expect(read(writeFixture(dir, 'max-metrics', vo2, SALT).file)).toEqual([
+        { calendarDate: '2026-10-07', generic: { calendarDate: '2026-10-07', vo2MaxPreciseValue: 50, vo2MaxValue: 50, fitnessAge: null }, cycling: null },
+      ]);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it('scales the power zone boundaries of an activity and keeps zeros, time in zone and heart rate zones', () => {

@@ -214,17 +214,19 @@ export function fakeId<T extends number | string>(value: T, salt: string): T {
 /**
  * Body measurements and the profile's single threshold and fitness values,
  * replaced with neutral constants in the same unit, under the keys of
- * `user-settings`, `weigh-ins` and `calendar-month`: weight, bone and muscle
- * mass in grams, height in cm, body fat and water in %, `difference` (a
- * calendar weigh-in's change) in grams, FTP in W, lactate threshold heart rate
- * in bpm and speed as Garmin gives it, VO2max. Power zone floors are scaled
- * to the neutral FTP (see scaleZoneFloors). Time series (heart rate, sleep,
- * HRV, stress) and heart rate zones stay.
+ * `user-settings`, `weigh-ins`, `calendar-month` and `heart-rate-zones`:
+ * weight, bone and muscle mass in grams, height in cm, body fat and water in %,
+ * `difference` (a calendar weigh-in's change) in grams, FTP in W, HRmax and
+ * resting heart rate of the zones in bpm, lactate threshold heart rate in bpm
+ * and speed as Garmin gives it, VO2max (also in `max-metrics`). Zone floors are
+ * scaled to the neutral FTP or HRmax (see scaleZoneFloors), and a threshold's
+ * history to the neutral value (see THRESHOLD_HISTORY). Time series (heart
+ * rate, sleep, HRV, stress) stay.
  */
 const BODY_VALUES = new Map<string, number>([
   ['weight', 70000], ['height', 175], ['bmi', 22.9], ['bodyFat', 20], ['bodyWater', 55], ['boneMass', 3000],
   ['muscleMass', 30000], ['metabolicAge', 35], ['visceralFat', 10], ['physiqueRating', 5], ['weightDelta', 0],
-  ['difference', 0], ['functionalThresholdPower', 200],
+  ['difference', 0], ['functionalThresholdPower', 200], ['maxHeartRateUsed', 175], ['restingHeartRateUsed', 50],
 ]);
 /** Prefixes for the variants per sport: `vo2MaxRunning`, `vo2MaxPreciseValue`, `lactateThresholdHeartRateCycling`. */
 const BODY_PREFIXES: [RegExp, number][] = [[/^vo2Max/, 50], [/^lactateThresholdHeartRate/, 160], [/^lactateThresholdSpeed/, 0.35]];
@@ -235,22 +237,48 @@ function bodyValue(key: string, parent: string): number | undefined {
   return BODY_VALUES.get(key) ?? BODY_PREFIXES.find(([re]) => re.test(key))?.[1];
 }
 
-/** `zone1Floor`..`zone7Floor` of a power zone set (`power-zones`), in W. */
+/** `zone1Floor`..`zone7Floor` of a power zone set (`power-zones`) in W, of a heart rate zone set (`heart-rate-zones`) in bpm. */
 const ZONE_FLOOR = /^zone\d+Floor$/;
+/** What the floors of a zone set are relative to: FTP for power zones, HRmax for heart rate zones. */
+const ZONE_ANCHORS = ['functionalThresholdPower', 'maxHeartRateUsed'];
 /**
- * Power zone floors are percentages of FTP in W, so the real FTP could be read
- * back from them (zone 5 starts at about 105 %). In an object with a numeric
- * `functionalThresholdPower`, every non-zero floor is scaled to the neutral FTP
- * of BODY_VALUES; a zero (a zone the sport does not use) stays. Heart rate zones
- * have no FTP and stay.
+ * Zone floors are percentages of FTP (power) or of HRmax (heart rate), so the
+ * real value could be read back from them (power zone 5 starts at about
+ * 105 % FTP). In an object with a numeric `functionalThresholdPower`, or else
+ * `maxHeartRateUsed`, every non-zero floor is scaled by the neutral value of
+ * BODY_VALUES over the real one; a zero (a zone the sport does not use) stays.
+ * An object with neither stays.
  */
 function scaleZoneFloors(value: object): object {
-  const ftp = (value as { functionalThresholdPower?: unknown }).functionalThresholdPower;
-  if (typeof ftp !== 'number' || !(ftp > 0)) return value;
-  const neutral = BODY_VALUES.get('functionalThresholdPower') as number;
+  const record = value as Record<string, unknown>;
+  const anchor = ZONE_ANCHORS.find((k) => {
+    const v = record[k];
+    return typeof v === 'number' && v > 0;
+  });
+  if (anchor === undefined) return value;
+  const factor = (BODY_VALUES.get(anchor) as number) / (record[anchor] as number);
   return Object.fromEntries(
-    Object.entries(value).map(([k, v]) => [k, ZONE_FLOOR.test(k) && typeof v === 'number' && v !== 0 ? Math.round((v * neutral) / ftp) : v]),
+    Object.entries(value).map(([k, v]) => [k, ZONE_FLOOR.test(k) && typeof v === 'number' && v !== 0 ? Math.round(v * factor) : v]),
   );
+}
+
+/**
+ * Scale the non-zero numbers under `key` in a list by one factor, so that the
+ * one `anchor` picks becomes `neutral`: the ratios between them stay, the
+ * absolute values do not. Whole numbers stay whole, others keep six decimals.
+ * Anything else stays.
+ */
+function scaleList(value: unknown, key: string, anchor: (values: number[]) => number, neutral: number): unknown {
+  if (!Array.isArray(value)) return value;
+  const of = (item: unknown): unknown => (item && typeof item === 'object' ? (item as Record<string, unknown>)[key] : undefined);
+  const nonZero = value.map(of).filter((v): v is number => typeof v === 'number' && v > 0);
+  if (nonZero.length === 0) return value;
+  const factor = neutral / anchor(nonZero);
+  const round = Number.isInteger(neutral) ? Math.round : (v: number) => Math.round(v * 1e6) / 1e6;
+  return value.map((item) => {
+    const v = of(item);
+    return typeof v === 'number' && v > 0 ? { ...(item as object), [key]: round(v * factor) } : item;
+  });
 }
 
 /** Recordings whose `zoneLowBoundary` list is in W of the owner's power zones (time in zone of an activity). */
@@ -266,17 +294,20 @@ const NEUTRAL_LOWEST_BOUNDARY = 100;
  * does not. A zero stays, and so does `secsInZone`. Heart rate zones of an
  * activity (`activity-hr-zones`) have the same shape and are not passed here.
  */
-function scaleZoneBoundaries(value: unknown): unknown {
-  if (!Array.isArray(value)) return value;
-  const boundary = (z: unknown): unknown => (z && typeof z === 'object' ? (z as { zoneLowBoundary?: unknown }).zoneLowBoundary : undefined);
-  const nonZero = value.map(boundary).filter((b): b is number => typeof b === 'number' && b > 0);
-  if (nonZero.length === 0) return value;
-  const lowest = Math.min(...nonZero);
-  return value.map((z) => {
-    const b = boundary(z);
-    return typeof b === 'number' && b > 0 ? { ...(z as object), zoneLowBoundary: Math.round((b * NEUTRAL_LOWEST_BOUNDARY) / lowest) } : z;
-  });
-}
+const scaleZoneBoundaries = (value: unknown): unknown => scaleList(value, 'zoneLowBoundary', (b) => Math.min(...b), NEUTRAL_LOWEST_BOUNDARY);
+
+/**
+ * Recordings of a threshold's history (a list of `{ from, value }`, oldest
+ * first) with the neutral value of their threshold: lactate threshold heart
+ * rate in bpm and speed as Garmin gives it (see BODY_PREFIXES). Every value is
+ * scaled by one factor, so that the latest one is the neutral value, as in the
+ * profile: dates, number of entries and the direction of each change stay.
+ */
+const THRESHOLD_HISTORY = new Map([
+  ['lactate-threshold-range', bodyValue('lactateThresholdHeartRate', '') as number],
+  ['lactate-threshold-speed-range', bodyValue('lactateThresholdSpeed', '') as number],
+]);
+const scaleThresholdHistory = (value: unknown, neutral: number): unknown => scaleList(value, 'value', (v) => v.at(-1) as number, neutral);
 
 /** An enum-like constant such as `RUNNING`, `INTERVAL_ACTIVE` or `5K`. */
 const ENUM_CONSTANT = /^[A-Z0-9_]+$/;
@@ -309,10 +340,11 @@ export interface CoordinateShift {
  * this call only. An object key of six or more digits is taken for an id too.
  * Dictionary ids (types, categories, units...; see DICTIONARY_ID) stay. Gear
  * names the owner gave are replaced, and body measurements and the profile's
- * thresholds and VO2max become neutral constants (see BODY_VALUES), power zone
- * floors scaled to the neutral FTP, and with `powerZoneBoundaries` an
- * activity's power zone boundaries scaled too (see scaleZoneBoundaries); time
- * series stay.
+ * thresholds and VO2max become neutral constants (see BODY_VALUES), power and
+ * heart rate zone floors scaled to the neutral FTP and HRmax, with
+ * `powerZoneBoundaries` an activity's power zone boundaries scaled too (see
+ * scaleZoneBoundaries) and with `thresholdHistory` a threshold's history (see
+ * THRESHOLD_HISTORY); time series stay.
  * A weather station's id and name (e.g. an airport code) would reveal where the
  * activity took place, so every string inside `weatherStationDTO` is replaced.
  * Device serial numbers, MAC addresses, network and device names are replaced
@@ -334,7 +366,8 @@ export function anonymize(
     unknownShape: options.unknownShape ?? false,
     salt: options.salt ?? randomBytes(32).toString('hex'),
   };
-  const input = options.powerZoneBoundaries ? scaleZoneBoundaries(value) : value;
+  let input = options.powerZoneBoundaries ? scaleZoneBoundaries(value) : value;
+  if (options.thresholdHistory !== undefined) input = scaleThresholdHistory(input, options.thresholdHistory);
   if (input && typeof input === 'object' && !Array.isArray(input)) {
     const out = Object.fromEntries(
       Object.entries(scaleZoneFloors(input)).map(([k, v]) => [idAsKey(k, ctx), k === 'id' && typeof v === 'number' ? 90001 : scrub(v, k, ctx, '')]),
@@ -353,6 +386,8 @@ export interface AnonymizeOptions {
   salt?: string;
   /** Scale the `zoneLowBoundary` list of an activity's power zones (see scaleZoneBoundaries). */
   powerZoneBoundaries?: boolean;
+  /** Scale a threshold's history so that its latest `value` is this one (see THRESHOLD_HISTORY). */
+  thresholdHistory?: number;
 }
 
 interface Scrub {
@@ -455,6 +490,7 @@ export function writeFixture(dir: string, name: string, data: unknown, salt: str
     unknownShape: UNKNOWN_SHAPE.has(name),
     salt,
     powerZoneBoundaries: POWER_ZONE_BOUNDARIES.has(name),
+    thresholdHistory: THRESHOLD_HISTORY.get(name),
   });
   fs.writeFileSync(file, `${JSON.stringify(anonymized, null, 2)}\n`);
   return { file, textKeys: textKeys(anonymized) };
