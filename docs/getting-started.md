@@ -43,4 +43,4 @@ Nothing is downloaded until a question needs it, and the first question about a 
 npx -y garmin-mcp-cli sync --scope all --from 2026-07-01 --to 2026-09-30
 ```
 
-Downloads are gentle with Garmin: 7-day chunks, short random pauses, at most 600 requests a day. A 90-day history takes about an hour and happens only once; stored days are never downloaded again.
+Downloads are gentle with Garmin: 7-day chunks, short random pauses, at most 600 requests a day. A 90-day history is about 430 requests, takes a few minutes and happens only once; stored days are never downloaded again.

@@ -11,7 +11,7 @@ No. Garmin MCP is an unofficial, open-source project, not affiliated with or end
 
 ## Can my Garmin account get in trouble?
 
-It might, and there is no guarantee either way. Garmin MCP signs in and reads data through the same unofficial endpoints that Garmin's own website and app use; Garmin does not offer them to third-party tools and can change, rate-limit or block them at any time. To stay gentle, it downloads only the days a question needs and never downloads a stored day again unless you force it. Long ranges go in 7-day chunks with a random 1-11 s pause, at most 600 requests a day, and a rate limit (HTTP 429) or a Cloudflare challenge pauses all downloads for 6 hours. A first sync of 90 days took 433 requests over about an hour on a real account. If you want to decide yourself when it downloads, set `GARMIN_AUTO_FETCH=false` ([Configuration](configuration.md)).
+It might, and there is no guarantee either way. Garmin MCP signs in and reads data through the same unofficial endpoints that Garmin's own website and app use; Garmin does not offer them to third-party tools and can change, rate-limit or block them at any time. To stay gentle, it downloads only the days a question needs and never downloads a stored day again unless you force it. Long ranges go in 7-day chunks with a random 1-11 s pause, at most 600 requests a day, and a rate limit (HTTP 429) or a Cloudflare challenge pauses all downloads for 6 hours. A first sync of 90 days took 433 requests on a real account; with today's pause, 433 requests take under 4 minutes. If you want to decide yourself when it downloads, set `GARMIN_AUTO_FETCH=false` ([Configuration](configuration.md)).
 
 ## Where does my data go?
 

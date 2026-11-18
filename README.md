@@ -65,7 +65,7 @@ To stay gentle with Garmin, long ranges go in 7-day chunks, newest first, with a
 
 With `GARMIN_AUTO_FETCH=false` nothing is downloaded unless you run `garmin sync` or the `garmin_sync` tool; read tools then return the missing range in `meta.sync_hint` and the model asks you first.
 
-Measured on a real account after a 90-day sync (433 requests in about an hour): answers come from the local database in 1-110 ms.
+Measured on a real account: a 90-day sync took 433 requests. It took about an hour with the 5-minute pause between chunks used before the first release, almost all of it waiting; with today's 1-11 s pause, a sync of 433 requests took under 4 minutes. Answers come from the local database in 1-110 ms.
 
 ## Tools
 
