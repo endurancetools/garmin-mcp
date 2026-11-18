@@ -5,6 +5,18 @@ nav_order: 11
 ---
 What changed in each release. All `garmin-mcp-*` packages share one version; the Claude Desktop extension of every version is attached to its [GitHub release](https://github.com/endurancetools/garmin-mcp/releases).
 
+## Unreleased
+
+### Training analytics
+
+- **Triathlons count in the load model, leg by leg.** Garmin lists a triathlon or duathlon as one multisport activity without average heart rate, power or pace, so `get_load` gave it no TSS: a middle-distance race added nothing to fitness and fatigue. A sync now downloads the summary of each leg once (one request for the multisport activity and one per leg, within the daily request limit), and the swim, the transitions, the bike and the run each count as an activity of their own sport with their own load source (power, pace or heart rate), so `include_by_sport` puts the bike hours on the bike and the run on the run. Each leg has `parent_id`, the id of the multisport activity. Garmin gives every leg the load accumulated since the start, so a leg's Garmin load is its increase over the leg before, and with `source: "garmin_load"` a race day adds up to Garmin's load of the whole activity. Multisport activities synced before this release are scored by their legs after `garmin sync --scope activities` for their dates; until then the answer's note names them. How it works: [Training analytics](analytics.md#load-sources).
+- **A second recording of a leg is counted once.** An activity recorded inside a multisport activity's time window by another device, such as a bike computer next to the watch, is the same effort as the leg and is left out of the load, so the bike leg of a race no longer counts twice.
+- **The `acwr_high` flag reads as a warning.** Its text is now "a sudden jump in load against the last 4 weeks (a warning, not an injury prediction)" instead of "high-risk zone for a load spike", in line with [the limits of ACWR](methods.md#acutechronic-workload-ratio-acwr).
+
+### Documentation
+
+- **How long a first sync takes.** The README, the FAQ and Getting started said a 90-day sync of 433 requests takes about an hour. That was measured with the 5-minute pause between chunks used before the first release; with the 1-11 s pause, 433 requests take under 4 minutes.
+
 ## 0.7.0 (2026-11-18)
 
 ### Tools
