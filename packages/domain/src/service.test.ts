@@ -248,7 +248,7 @@ describe('GarminService', () => {
     const { service, count } = setup({ activities: [summary(1, '2026-10-07')] });
     const res = await service.getTrainingStatus({});
     expect(res.data).toMatchObject({
-      vo2max: { running: 53.9 },
+      vo2max: { running: 50 },
       recovery: { remaining_h: 10, as_of: '2026-10-08T10:00:00.0' },
       load_focus: {
         feedback: 'aerobic high shortage',
@@ -1683,7 +1683,7 @@ describe('GarminService', () => {
     store.replaceGear([shoe(OLD, 'Trail Shoe 2', 'retired'), shoe(NEW, 'Trail Shoe 2 new'), shoe('3d5b2fe936d68c9f4f566bfe08b268bb', 'Light Trainer v4')], NOW);
     store.setActivityGear([1], OLD);
 
-    const res = await service.updateActivity(1, { remove_gear: OLD, add_gear: 'speedgoat' });
+    const res = await service.updateActivity(1, { remove_gear: OLD, add_gear: 'trail shoe' });
     expect(calls.filter((c) => c.method.endsWith('Gear')).map((c) => [c.method, ...c.args])).toEqual([
       ['unlinkGear', OLD, 1],
       ['linkGear', NEW, 1],

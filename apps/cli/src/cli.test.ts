@@ -385,13 +385,13 @@ describe('anonymize', () => {
       {
         gear: [{ uuid: 'fd9c450c67ba25e422229c359e4b315a', gearPk: 60423393, customMakeModel: 'Daily Trainer 1', gearMakeName: 'ASICS' }],
         userData: {
-          weight: 70000, height: 175, lactateThresholdHeartRate: 160, lactateThresholdSpeed: 0.38, vo2MaxRunning: 50, vo2MaxCycling: null,
+          weight: 81200, height: 168, lactateThresholdHeartRate: 171, lactateThresholdSpeed: 0.41, vo2MaxRunning: 47, vo2MaxCycling: null,
           vo2MaxRunCapable: true,
         },
-        previousDateWeight: { samplePk: 2462572813784, weight: 70000, bmi: 23.6, bodyFat: 20, bodyWater: 55, boneMass: 3000, muscleMass: 30000, metabolicAge: 38, weightDelta: -200 },
-        calendarItems: [{ itemType: 'weight', weight: 70000, difference: 0 }],
-        ftp: { functionalThresholdPower: 200, sport: 'CYCLING' },
-        mostRecentVO2Max: { generic: { vo2MaxPreciseValue: 50, vo2MaxValue: 50 } },
+        previousDateWeight: { samplePk: 2462572813784, weight: 81200, bmi: 28.8, bodyFat: 24.5, bodyWater: 52.7, boneMass: 4100, muscleMass: 33900, metabolicAge: 41, weightDelta: 300 },
+        calendarItems: [{ itemType: 'weight', weight: 81500, difference: 300 }],
+        ftp: { functionalThresholdPower: 251, sport: 'CYCLING' },
+        mostRecentVO2Max: { generic: { vo2MaxPreciseValue: 46.6, vo2MaxValue: 47 } },
         exerciseSets: [{ weight: 40000, repetitionCount: 10 }],
         heartRateValues: [[1791580411000, 52], [1791580530000, 54]],
         hrvSummary: { lastNightAvg: 61 },
@@ -747,8 +747,8 @@ describe('garmin thresholds', () => {
     const md = (await run(deps, 'thresholds')).stdout;
     expect(md).toContain('## Zones (Garmin profile, fetched 2026-10-08)');
     expect(md).toContain('| zones | sport | method | floors | hrmax | rhr | lthr | ftp |');
-    expect(md).toContain('| hr | default | HR_MAX | 94 / 134 / 154 / 163 / 174 | 185 | 55 | 168 |  |');
-    expect(md).toContain('| power | running |  | 260 / 317 / 361 / 399 / 458 |  |  |  | 404 |');
+    expect(md).toContain('| hr | default | HR_MAX | 89 / 127 / 146 / 154 / 165 | 175 | 50 | 160 |  |');
+    expect(md).toContain('| power | running |  | 129 / 157 / 179 / 198 / 227 |  |  |  | 200 |');
     expect(md).toMatch(/not a history/);
   });
 
