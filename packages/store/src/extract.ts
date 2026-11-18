@@ -114,6 +114,41 @@ export function multisportLegIds(summaryRaw: unknown): number[] | undefined {
   return out.length > 0 ? out : undefined;
 }
 
+/** Slack at both ends when an activity is matched to the window of a multisport activity (ms). */
+const MULTISPORT_SLACK_MS = 60_000;
+
+type TimedActivity = { id: number; start_time_utc: string | null; duration_s: number | null; raw: unknown };
+
+/** Start and end of a stored activity in epoch ms; `undefined` without a UTC start or a duration. */
+function activitySpan(a: TimedActivity): [number, number] | undefined {
+  const start = a.start_time_utc ? Date.parse(a.start_time_utc) : Number.NaN;
+  const d = a.duration_s;
+  return Number.isFinite(start) && typeof d === 'number' && d > 0 ? [start, start + d * 1000] : undefined;
+}
+
+/**
+ * Activities recorded inside the time window of a multisport activity, mapped to its id: a
+ * second device (a bike computer next to the watch) records one leg again as an activity of
+ * its own. The multisport activity already holds that effort (its legs, its Garmin load), so
+ * the copy is left out of load and volume sums. Multisport activities themselves never are.
+ */
+export function multisportDuplicates(rows: readonly TimedActivity[]): Map<number, number> {
+  const windows = rows.flatMap((p) => {
+    const w = isMultisportParent(p.raw) ? activitySpan(p) : undefined;
+    return w ? [{ id: p.id, w }] : [];
+  });
+  const out = new Map<number, number>();
+  if (windows.length === 0) return out;
+  for (const a of rows) {
+    if (isMultisportParent(a.raw)) continue;
+    const w = activitySpan(a);
+    if (!w) continue;
+    const p = windows.find(({ w: pw }) => w[0] >= pw[0] - MULTISPORT_SLACK_MS && w[1] <= pw[1] + MULTISPORT_SLACK_MS);
+    if (p) out.set(a.id, p.id);
+  }
+  return out;
+}
+
 export function dailySummaryColumns(d: DailySummary | null) {
   const moderate = n(d?.moderateIntensityMinutes);
   const vigorous = n(d?.vigorousIntensityMinutes);

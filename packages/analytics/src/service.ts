@@ -3,6 +3,7 @@ import { activityWeather, compact, hms, sleepLine, type Envelope, type GarminSer
 import {
   errInfo,
   isMultisportParent,
+  multisportDuplicates,
   multisportLegIds,
   parseRangeSet,
   SCOPE_DAILY,
@@ -56,7 +57,6 @@ import {
 import {
   buildSessions,
   decouplingEligible,
-  duplicatesOfMultisport,
   sessionFromActivity,
   sessionFromImported,
   sessionsFromMultisport,
@@ -408,7 +408,7 @@ export class AnalyticsService {
     const store = this.#store;
     const rows = store.queryActivities({ to, sort: 'asc' });
     const isParent = (a: ActivityRow) => isMultisportParent(a.raw);
-    const duplicates = duplicatesOfMultisport(rows, isParent);
+    const duplicates = multisportDuplicates(rows);
     const multisportNotes: string[] = [];
     const inputs: SessionInput[] = rows.flatMap((a) => {
       if (duplicates.has(a.id)) return [];

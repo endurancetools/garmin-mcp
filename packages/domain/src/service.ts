@@ -14,7 +14,7 @@ import {
   type IsoDate,
   type Logger,
 } from 'garmin-mcp-config';
-import { errInfo, FATAL_CODES, isFresh, isSolarDevice, SCOPE_DAILY, solarDays, signInPause, TTL, type DailyKind, type DetailKind, type EnsureResult, type ReferenceKind, type Store, type SyncJobProgress, type SyncJobReport, type SyncJobRunner, type SyncScope, type Syncer, type TrainingPlanCache, type CourseCache, type BadgeCache } from 'garmin-mcp-store';
+import { errInfo, FATAL_CODES, isFresh, isSolarDevice, multisportDuplicates, SCOPE_DAILY, solarDays, signInPause, TTL, type DailyKind, type DetailKind, type EnsureResult, type ReferenceKind, type Store, type SyncJobProgress, type SyncJobReport, type SyncJobRunner, type SyncScope, type Syncer, type TrainingPlanCache, type CourseCache, type BadgeCache } from 'garmin-mcp-store';
 import fs from 'node:fs';
 import path from 'node:path';
 import { activityBrief, activityListItem, eventTypeKey, periodActivitySummary } from './activities.js';
@@ -310,6 +310,15 @@ function workoutSportNote(sport: string): string {
  * covers them (fetching on demand within a time budget), then compute with pure
  * domain functions. Adapters only shape input and output.
  */
+/**
+ * Activities without the second recordings of a multisport leg (`multisportDuplicates`): a bike
+ * computer's copy of a triathlon's bike leg would add its Garmin load and hours a second time.
+ */
+function withoutLegCopies<T extends { id: number; start_time_utc: string | null; duration_s: number | null; raw: unknown }>(rows: T[]): T[] {
+  const copies = multisportDuplicates(rows);
+  return copies.size === 0 ? rows : rows.filter((a) => !copies.has(a.id));
+}
+
 export class GarminService {
   readonly client: GarminClient;
   readonly store: Store;
@@ -1377,7 +1386,7 @@ export class GarminService {
       this.syncer.ensureTrainingMetrics(to, this.#budget),
     ]);
     const statusRows = this.store.getDaily('training_status', addDays(to, -89) < from ? addDays(to, -89) : from, to);
-    const activities = this.store.queryActivities({ from: warmup, to, sort: 'asc' }).map((a) => ({ date: a.date ?? '', training_load: a.training_load }));
+    const activities = withoutLegCopies(this.store.queryActivities({ from: warmup, to, sort: 'asc' })).map((a) => ({ date: a.date ?? '', training_load: a.training_load }));
     const metrics = this.store.latestTrainingMetrics(to);
     const overview = trainingOverview(statusRows, activities, from, to, q.include_series ?? false, metrics);
     const gap = this.#dailyGap('training', ['training_status'], from, to);
@@ -1430,11 +1439,11 @@ export class GarminService {
       this.syncer.ensureActivities(warmup, to, this.#budget),
       this.syncer.ensureDaily(['daily_summary', 'sleep', 'hrv'], from, to, this.#budget),
     ]);
-    const activities = this.store.queryActivities({ from, to, sort: 'asc' });
+    const activities = withoutLegCopies(this.store.queryActivities({ from, to, sort: 'asc' }));
     const daily = this.store.getDaily('daily_summary', from, to);
     const metrics: HealthMetric[] = ['sleep', 'resting_hr', 'hrv', 'steps', 'stress', 'body_battery'];
     const table = healthTable(metrics, { daily, sleep: this.store.getDaily('sleep', from, to), hrv: this.store.getDaily('hrv', from, to) }, from, to, 'day');
-    const loadActs = this.store.queryActivities({ from: warmup, to, sort: 'asc' }).map((a) => ({ date: a.date ?? '', training_load: a.training_load }));
+    const loadActs = withoutLegCopies(this.store.queryActivities({ from: warmup, to, sort: 'asc' })).map((a) => ({ date: a.date ?? '', training_load: a.training_load }));
     const load = trainingOverview([], loadActs, from, to, false).garmin_load_model;
     const energy = energyBalance(daily);
     // Without synced activities an empty period would read as "no sessions, every day a rest day".

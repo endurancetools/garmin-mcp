@@ -263,39 +263,6 @@ export function sessionsFromMultisport(parent: ActivityRow, legSummaries: readon
   return out;
 }
 
-/** Start and end of an activity row in epoch ms; `undefined` without a UTC start or a duration. */
-function span(a: ActivityRow): [number, number] | undefined {
-  const start = a.start_time_utc ? Date.parse(a.start_time_utc) : Number.NaN;
-  const d = a.duration_s;
-  return Number.isFinite(start) && typeof d === 'number' && d > 0 ? [start, start + d * 1000] : undefined;
-}
-
-/** Slack at both ends when an activity is matched to the window of a multisport activity (ms). */
-const OVERLAP_SLACK_MS = 60_000;
-
-/**
- * Ids of the activities recorded inside the window of a multisport activity: a second device
- * (a bike computer next to the watch) records one leg again as an activity of its own. The
- * multisport legs already count that effort, so the copy is left out of the load. Multisport
- * parents themselves are never dropped.
- */
-export function duplicatesOfMultisport(rows: readonly ActivityRow[], isParent: (a: ActivityRow) => boolean): Map<number, number> {
-  const windows = rows.filter(isParent).flatMap((p) => {
-    const w = span(p);
-    return w ? [{ id: p.id, w }] : [];
-  });
-  const out = new Map<number, number>();
-  if (windows.length === 0) return out;
-  for (const a of rows) {
-    if (isParent(a)) continue;
-    const w = span(a);
-    if (!w) continue;
-    const p = windows.find(({ w: pw }) => w[0] >= pw[0] - OVERLAP_SLACK_MS && w[1] <= pw[1] + OVERLAP_SLACK_MS);
-    if (p) out.set(a.id, p.id);
-  }
-  return out;
-}
-
 /** Positive number, else `undefined`: Garmin lists 0 for a running dynamic it did not measure. */
 const pos = (v: unknown): number | undefined => {
   const n = num(v);

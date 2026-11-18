@@ -1749,6 +1749,20 @@ describe('GarminService', () => {
     expect(res.data.health?.sleep).toMatchObject({ avg: 8 });
   });
 
+  it('leaves a second recording of a multisport leg out of the summary and the Garmin load model', async () => {
+    const tri = summary(1, '2026-10-05', { activityType: { typeKey: 'multi_sport' }, isParent: true, duration: 7200, averageHR: undefined, activityTrainingLoad: 300 });
+    // A bike computer recorded the bike leg again, inside the multisport activity.
+    const copy = summary(2, '2026-10-05', { activityType: { typeKey: 'road_biking' }, startTimeGMT: '2026-10-05 05:30:00', duration: 3000, activityTrainingLoad: 150 });
+    const ride = summary(3, '2026-10-07', { activityType: { typeKey: 'cycling' }, duration: 3600 });
+    const { service } = setup({ activities: [tri, copy, ride] });
+    const week = await service.getPeriodSummary('week', { anchor_date: '2026-10-07' });
+    expect(week.data.training).toMatchObject({ sessions: 2, total_training_load: 400 });
+    const alone = setup({ activities: [tri, ride] }).service;
+    const expected = (await alone.getTrainingStatus({ to: '2026-10-08' })).data.garmin_load_model;
+    expect((await service.getTrainingStatus({ to: '2026-10-08' })).data.garmin_load_model).toEqual(expected);
+    expect(week.data.garmin_load_model).toEqual((await alone.getPeriodSummary('week', { anchor_date: '2026-10-07' })).data.garmin_load_model);
+  });
+
   it('summarises an arbitrary range like a week', async () => {
     const { service } = setup({ activities: [summary(1, '2026-09-27'), summary(2, '2026-10-05'), summary(3, '2026-10-07', { activityType: { typeKey: 'cycling' }, duration: 7200 })] });
     const res = await service.getPeriodSummary('range', { from: '2026-09-28', to: '2026-10-07' });
