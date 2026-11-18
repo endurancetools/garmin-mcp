@@ -217,8 +217,9 @@ export function fakeId<T extends number | string>(value: T, salt: string): T {
  * `user-settings`, `weigh-ins` and `calendar-month`: weight, bone and muscle
  * mass in grams, height in cm, body fat and water in %, `difference` (a
  * calendar weigh-in's change) in grams, FTP in W, lactate threshold heart rate
- * in bpm and speed as Garmin gives it, VO2max. Time series (heart rate, sleep,
- * HRV, stress) stay.
+ * in bpm and speed as Garmin gives it, VO2max. Power zone floors are scaled
+ * to the neutral FTP (see scaleZoneFloors). Time series (heart rate, sleep,
+ * HRV, stress) and heart rate zones stay.
  */
 const BODY_VALUES = new Map<string, number>([
   ['weight', 70000], ['height', 175], ['bmi', 22.9], ['bodyFat', 20], ['bodyWater', 55], ['boneMass', 3000],
@@ -232,6 +233,24 @@ const SETS = /sets$/i;
 function bodyValue(key: string, parent: string): number | undefined {
   if (SETS.test(parent)) return undefined;
   return BODY_VALUES.get(key) ?? BODY_PREFIXES.find(([re]) => re.test(key))?.[1];
+}
+
+/** `zone1Floor`..`zone7Floor` of a power zone set (`power-zones`), in W. */
+const ZONE_FLOOR = /^zone\d+Floor$/;
+/**
+ * Power zone floors are percentages of FTP in W, so the real FTP could be read
+ * back from them (zone 5 starts at about 105 %). In an object with a numeric
+ * `functionalThresholdPower`, every non-zero floor is scaled to the neutral FTP
+ * of BODY_VALUES; a zero (a zone the sport does not use) stays. Heart rate zones
+ * have no FTP and stay.
+ */
+function scaleZoneFloors(value: object): object {
+  const ftp = (value as { functionalThresholdPower?: unknown }).functionalThresholdPower;
+  if (typeof ftp !== 'number' || !(ftp > 0)) return value;
+  const neutral = BODY_VALUES.get('functionalThresholdPower') as number;
+  return Object.fromEntries(
+    Object.entries(value).map(([k, v]) => [k, ZONE_FLOOR.test(k) && typeof v === 'number' && v !== 0 ? Math.round((v * neutral) / ftp) : v]),
+  );
 }
 
 /** An enum-like constant such as `RUNNING`, `INTERVAL_ACTIVE` or `5K`. */
@@ -265,8 +284,8 @@ export interface CoordinateShift {
  * this call only. An object key of six or more digits is taken for an id too.
  * Dictionary ids (types, categories, units...; see DICTIONARY_ID) stay. Gear
  * names the owner gave are replaced, and body measurements and the profile's
- * thresholds and VO2max become neutral constants (see BODY_VALUES); time
- * series stay.
+ * thresholds and VO2max become neutral constants (see BODY_VALUES), power zone
+ * floors scaled to the neutral FTP; time series stay.
  * A weather station's id and name (e.g. an airport code) would reveal where the
  * activity took place, so every string inside `weatherStationDTO` is replaced.
  * Device serial numbers, MAC addresses, network and device names are replaced
@@ -290,7 +309,7 @@ export function anonymize(
   };
   if (value && typeof value === 'object' && !Array.isArray(value)) {
     const out = Object.fromEntries(
-      Object.entries(value).map(([k, v]) => [idAsKey(k, ctx), k === 'id' && typeof v === 'number' ? 90001 : scrub(v, k, ctx, '')]),
+      Object.entries(scaleZoneFloors(value)).map(([k, v]) => [idAsKey(k, ctx), k === 'id' && typeof v === 'number' ? 90001 : scrub(v, k, ctx, '')]),
     );
     return scrubMetricRows(out, shift);
   }
@@ -347,7 +366,7 @@ function scrub(value: unknown, key: string, ctx: Scrub, parent: string): unknown
     );
   }
   if (value && typeof value === 'object') {
-    return Object.fromEntries(Object.entries(value).map(([k, v]) => [idAsKey(k, ctx), scrub(v, k, ctx, key)]));
+    return Object.fromEntries(Object.entries(scaleZoneFloors(value)).map(([k, v]) => [idAsKey(k, ctx), scrub(v, k, ctx, key)]));
   }
   if (typeof value === 'string' && (POLYLINE.test(key) || (ctx.names && key === 'name'))) return `anon-${key}`;
   if (DEVICE_IDENTIFIERS.test(key) && (typeof value === 'string' || typeof value === 'number')) return typeof value === 'number' ? 90002 : `anon-${key}`;

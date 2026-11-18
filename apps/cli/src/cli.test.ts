@@ -416,6 +416,26 @@ describe('anonymize', () => {
     });
   });
 
+  it('scales power zone floors to the neutral FTP and keeps zeros and heart rate zones', () => {
+    const out = anonymize(
+      [
+        { sport: 'CYCLING', functionalThresholdPower: 250, zone1Floor: 0, zone2Floor: 138, zone3Floor: 188, zone4Floor: 225, zone5Floor: 263, zone6Floor: 300, zone7Floor: 375 },
+        { sport: 'RUNNING', functionalThresholdPower: 300, zone1Floor: 195, zone2Floor: 236, zone6Floor: 0, zone7Floor: 0 },
+        { sport: 'DEFAULT', trainingMethod: 'HR_MAX', maxHeartRateUsed: 190, zone1Floor: 95, zone2Floor: 114, zone5Floor: 171 },
+      ],
+      NO_SHIFT,
+      { salt: SALT },
+    );
+    expect(out).toEqual([
+      // floor * 200 / FTP, rounded: the real FTP cannot be read back from the floors.
+      { sport: 'CYCLING', functionalThresholdPower: 200, zone1Floor: 0, zone2Floor: 110, zone3Floor: 150, zone4Floor: 180, zone5Floor: 210, zone6Floor: 240, zone7Floor: 300 },
+      { sport: 'RUNNING', functionalThresholdPower: 200, zone1Floor: 130, zone2Floor: 157, zone6Floor: 0, zone7Floor: 0 },
+      { sport: 'DEFAULT', trainingMethod: 'HR_MAX', maxHeartRateUsed: 190, zone1Floor: 95, zone2Floor: 114, zone5Floor: 171 },
+    ]);
+    // A single zone set at the top of a recording too.
+    expect(anonymize({ functionalThresholdPower: 400, zone3Floor: 300 }, NO_SHIFT, { salt: SALT })).toEqual({ functionalThresholdPower: 200, zone3Floor: 150 });
+  });
+
   // POSIX modes do not apply on Windows.
   it.skipIf(process.platform === 'win32')('keeps the salt in the data directory, private, and reuses it', () => {
     const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'record-data-'));
