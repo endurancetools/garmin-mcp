@@ -472,6 +472,46 @@ describe('anonymize', () => {
     }
   });
 
+  it('replaces the age, fitness ages, body fat and resting heart rate of fitness-age and the fitness age of max-metrics', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'record-'));
+    try {
+      const read = (file: string): unknown => JSON.parse(fs.readFileSync(file, 'utf8'));
+      const age = {
+        chronologicalAge: 52, fitnessAge: 47.912345, achievableFitnessAge: 44.25, previousFitnessAge: 48.1,
+        components: {
+          bodyFat: { value: 27, stale: false, lastMeasurementDate: '2026-10-09' },
+          vigorousDaysAvg: { value: 2.1, stale: false, numOfWeeksForIm: 6 },
+          rhr: { value: 61, stale: false },
+          vigorousMinutesAvg: { value: 95.4, stale: false, numOfWeeksForIm: 6 },
+        },
+        lastUpdated: '2026-10-10T00:00:00.0',
+      };
+      // The age of someone born on 1990-01-01 (the `birthDate` of the profile) in 2026; fixed fitness ages,
+      // body fat and resting heart rate as in BODY_VALUES; the averages of vigorous days and minutes stay.
+      expect(read(writeFixture(dir, 'fitness-age', age, SALT).file)).toEqual({
+        chronologicalAge: 36, fitnessAge: 30.5, achievableFitnessAge: 29, previousFitnessAge: 30.6,
+        components: {
+          bodyFat: { value: 20, stale: false, lastMeasurementDate: '2026-10-09' },
+          vigorousDaysAvg: { value: 2.1, stale: false, numOfWeeksForIm: 6 },
+          rhr: { value: 50, stale: false },
+          vigorousMinutesAvg: { value: 95.4, stale: false, numOfWeeksForIm: 6 },
+        },
+        lastUpdated: '2026-10-10T00:00:00.0',
+      });
+      const vo2 = [{ calendarDate: '2026-10-07', generic: { calendarDate: '2026-10-07', vo2MaxPreciseValue: 41.2, vo2MaxValue: 41, fitnessAge: 47 }, cycling: null }];
+      expect(read(writeFixture(dir, 'max-metrics', vo2, SALT).file)).toEqual([
+        { calendarDate: '2026-10-07', generic: { calendarDate: '2026-10-07', vo2MaxPreciseValue: 50, vo2MaxValue: 50, fitnessAge: 30.5 }, cycling: null },
+      ]);
+      // A `value` under any other key stays.
+      expect(anonymize({ steps: { value: 61 } }, NO_SHIFT, { salt: SALT })).toEqual({ steps: { value: 61 } });
+      // The committed fixture went through the same rule.
+      const fixture: unknown = JSON.parse(fs.readFileSync(fileURLToPath(new URL('../../../packages/client/fixtures/fitness-age.json', import.meta.url)), 'utf8'));
+      expect(anonymize(fixture, NO_SHIFT, { salt: SALT })).toEqual(fixture);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it('scales the power zone boundaries of an activity and keeps zeros, time in zone and heart rate zones', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'record-'));
     try {

@@ -218,22 +218,37 @@ export function fakeId<T extends number | string>(value: T, salt: string): T {
  * weight, bone and muscle mass in grams, height in cm, body fat and water in %,
  * `difference` (a calendar weigh-in's change) in grams, FTP in W, HRmax and
  * resting heart rate of the zones in bpm, lactate threshold heart rate in bpm
- * and speed as Garmin gives it, VO2max (also in `max-metrics`). Zone floors are
- * scaled to the neutral FTP or HRmax (see scaleZoneFloors), and a threshold's
- * history to the neutral value (see THRESHOLD_HISTORY). Time series (heart
- * rate, sleep, HRV, stress) stay.
+ * and speed as Garmin gives it, VO2max (also in `max-metrics`), and the ages of
+ * `fitness-age` in years: the age is the one in 2026 of the `birthDate`
+ * anonymize writes (1990-01-01), the fitness ages are fixed too, so neither
+ * the real ones nor their ratio to the age can be read back (`fitnessAge` of
+ * `max-metrics` as well). Zone floors are scaled to the neutral FTP or HRmax
+ * (see scaleZoneFloors), and a threshold's history to the neutral value (see
+ * THRESHOLD_HISTORY). Time series (heart rate, sleep, HRV, stress) stay.
  */
 const BODY_VALUES = new Map<string, number>([
   ['weight', 70000], ['height', 175], ['bmi', 22.9], ['bodyFat', 20], ['bodyWater', 55], ['boneMass', 3000],
   ['muscleMass', 30000], ['metabolicAge', 35], ['visceralFat', 10], ['physiqueRating', 5], ['weightDelta', 0],
   ['difference', 0], ['functionalThresholdPower', 200], ['maxHeartRateUsed', 175], ['restingHeartRateUsed', 50],
+  ['chronologicalAge', 36], ['fitnessAge', 30.5], ['previousFitnessAge', 30.6], ['achievableFitnessAge', 29],
 ]);
 /** Prefixes for the variants per sport: `vo2MaxRunning`, `vo2MaxPreciseValue`, `lactateThresholdHeartRateCycling`. */
 const BODY_PREFIXES: [RegExp, number][] = [[/^vo2Max/, 50], [/^lactateThresholdHeartRate/, 160], [/^lactateThresholdSpeed/, 0.35]];
 /** In a list of sets (`exerciseSets`), `weight` is the load lifted, not the owner's. */
 const SETS = /sets$/i;
+/**
+ * `fitness-age` gives what the fitness age is computed from as `components`,
+ * each a `{ value }` under its own key: body fat in % and resting heart rate in
+ * bpm become the neutral values of BODY_VALUES; the averages of vigorous days
+ * and minutes stay, like the intensity minutes of the daily summary.
+ */
+const COMPONENT_VALUES = new Map([['bodyFat', 'bodyFat'], ['rhr', 'restingHeartRateUsed']]);
 function bodyValue(key: string, parent: string): number | undefined {
   if (SETS.test(parent)) return undefined;
+  if (key === 'value') {
+    const component = COMPONENT_VALUES.get(parent);
+    return component === undefined ? undefined : BODY_VALUES.get(component);
+  }
   return BODY_VALUES.get(key) ?? BODY_PREFIXES.find(([re]) => re.test(key))?.[1];
 }
 
@@ -339,12 +354,13 @@ export interface CoordinateShift {
  * stay consistent with each other; without one, a random salt hides them for
  * this call only. An object key of six or more digits is taken for an id too.
  * Dictionary ids (types, categories, units...; see DICTIONARY_ID) stay. Gear
- * names the owner gave are replaced, and body measurements and the profile's
- * thresholds and VO2max become neutral constants (see BODY_VALUES), power and
- * heart rate zone floors scaled to the neutral FTP and HRmax, with
- * `powerZoneBoundaries` an activity's power zone boundaries scaled too (see
- * scaleZoneBoundaries) and with `thresholdHistory` a threshold's history (see
- * THRESHOLD_HISTORY); time series stay.
+ * names the owner gave are replaced, and body measurements, the profile's
+ * thresholds and VO2max, the age and fitness age with the body fat and resting
+ * heart rate behind it become neutral constants (see BODY_VALUES and
+ * COMPONENT_VALUES), power and heart rate zone floors scaled to the neutral
+ * FTP and HRmax, with `powerZoneBoundaries` an activity's power zone
+ * boundaries scaled too (see scaleZoneBoundaries) and with `thresholdHistory`
+ * a threshold's history (see THRESHOLD_HISTORY); time series stay.
  * A weather station's id and name (e.g. an airport code) would reveal where the
  * activity took place, so every string inside `weatherStationDTO` is replaced.
  * Device serial numbers, MAC addresses, network and device names are replaced
