@@ -15,6 +15,8 @@ export interface FakeClientOptions {
   failWith?: (method: string, arg?: unknown) => Error | undefined;
   /** Device 7 charges from the sun, so a devices refresh also fetches its solar days. */
   solarDevice?: boolean;
+  /** `getActivity` answers for these ids (multisport parents and their legs, which the list leaves out). */
+  details?: Record<number, unknown>;
 }
 
 export function activity(id: number, day: string, extra: Partial<ActivitySummary> = {}): ActivitySummary {
@@ -72,6 +74,7 @@ export function fakeClient(opts: FakeClientOptions = {}) {
       }),
     getActivity: (id: number) =>
       call('getActivity', id, () => {
+        if (opts.details?.[id] !== undefined) return opts.details[id];
         const a = activities.find((x) => x.activityId === id);
         if (!a) throw Object.assign(new Error(`Garmin returned 404 for /activity-service/activity/${id}`), { code: 'NOT_FOUND' });
         return { activityId: id, activityName: a.activityName, summaryDTO: { startTimeLocal: a.startTimeLocal } };

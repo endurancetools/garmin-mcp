@@ -1,6 +1,16 @@
 import type { Device, DeviceSettings, GarminClient, WeightEntry } from 'garmin-mcp-client';
 import { addDays, dateIn, eachDay, endOfMonth, silentLogger, type IsoDate, type Logger } from 'garmin-mcp-config';
-import { hrvColumns, dailySummaryColumns, isSolarDevice, sleepColumns, solarDays, trainingColumns, type SolarDaySummary } from './extract.js';
+import {
+  hrvColumns,
+  dailySummaryColumns,
+  isMultisportParent,
+  isSolarDevice,
+  multisportLegIds,
+  sleepColumns,
+  solarDays,
+  trainingColumns,
+  type SolarDaySummary,
+} from './extract.js';
 import { isDayFresh, isFresh, isIntradayFresh, TTL } from './freshness.js';
 import { addRange, gaps, parseRangeSet, type RangeSet } from './ranges.js';
 import type { DailyKind, IntradayKind, ReferenceKind, Store, TrainingMetricsData } from './store.js';
@@ -164,12 +174,15 @@ export class Syncer {
   async syncActivities(from: IsoDate, to: IsoDate, force = false): Promise<StepResult> {
     const ranges = this.#activityRangesToFetch(from, to, force);
     return this.#step('activities', async (res) => {
+      const tried = new Set<number>();
       for (const [a, b] of ranges) {
-        const pages = await this.#fetchActivities(a, b);
+        const pages = await this.#fetchActivities(a, b, tried);
         res.requests += pages.requests;
         res.fetched.activities = (res.fetched.activities ?? 0) + pages.count;
         if (pages.removed) res.removed.activities = (res.removed.activities ?? 0) + pages.removed;
       }
+      // Multisport activities listed by an earlier sync, before legs were fetched.
+      res.requests += await this.#fetchLegs(from, to > this.today() ? this.today() : to, tried);
     });
   }
 
@@ -568,7 +581,7 @@ export class Syncer {
    * the range it no longer has are removed (#removeGone), so the cache mirrors deletions made
    * in Garmin Connect; a list that fails part way removes nothing.
    */
-  async #fetchActivities(from: IsoDate, to: IsoDate): Promise<{ count: number; requests: number; removed: number }> {
+  async #fetchActivities(from: IsoDate, to: IsoDate, tried = new Set<number>()): Promise<{ count: number; requests: number; removed: number }> {
     const startedAt = this.#now();
     const listed = new Set<number>();
     let requests = 0;
@@ -580,7 +593,52 @@ export class Syncer {
     this.#markCovered('activities', from, to);
     if (to >= addDays(this.today(), -1)) this.#store.setMeta('activities:listed_at', String(startedAt));
     const gone = await this.#removeGone(from, to, listed);
-    return { count: listed.size, requests: Math.max(requests, 1) + gone.requests, removed: gone.removed };
+    const legs = await this.#fetchLegs(from, to, tried);
+    return { count: listed.size, requests: Math.max(requests, 1) + gone.requests + legs, removed: gone.removed };
+  }
+
+  /**
+   * Legs of the multisport activities of [from, to] (a triathlon's swim, bike, run and
+   * transitions), stored as the summary detail of each leg. Garmin lists only the parent,
+   * without heart rate, power or pace, so the load model scores the legs instead. One request
+   * for the parent's summary (its `childIds`) when it is not stored, then one per leg not stored
+   * yet; stored legs are never fetched again. A request that fails other than fatally is
+   * skipped and tried again by a later sync (`tried` keeps one sync from asking twice).
+   * Returns the requests sent.
+   */
+  async #fetchLegs(from: IsoDate, to: IsoDate, tried: Set<number>): Promise<number> {
+    let requests = 0;
+    for (const a of this.#store.queryActivities({ from, to, sort: 'asc' })) {
+      if (!isMultisportParent(a.raw)) continue;
+      let ids = multisportLegIds(this.#store.getActivityDetail(a.id, 'summary')?.raw);
+      if (ids === undefined) {
+        if (tried.has(a.id)) continue;
+        tried.add(a.id);
+        requests++;
+        ids = multisportLegIds(await this.#fetchSummary(a.id)) ?? [];
+      }
+      for (const id of ids) {
+        if (tried.has(id) || this.#store.getActivityDetail(id, 'summary')) continue;
+        tried.add(id);
+        requests++;
+        await this.#fetchSummary(id);
+      }
+    }
+    return requests;
+  }
+
+  /** The summary detail of one activity, stored; `undefined` when Garmin answered with a non-fatal error. */
+  async #fetchSummary(id: number): Promise<unknown> {
+    try {
+      const raw = await this.#client.getActivity(id);
+      this.#store.putActivityDetail(id, 'summary', raw, this.#now());
+      return raw;
+    } catch (err) {
+      const info = errInfo(err);
+      if (FATAL_CODES.has(info.code)) throw err;
+      this.#log.warn({ id, err: info }, 'could not fetch a multisport activity or leg; a later sync tries again');
+      return undefined;
+    }
   }
 
   /**

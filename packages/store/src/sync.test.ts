@@ -113,6 +113,24 @@ describe('Syncer', () => {
     expect(syncer.activityGaps('2023-12-01', '2025-12-31')).toEqual([]);
   });
 
+  it('downloads the legs of a multisport activity once, also for one listed before', async () => {
+    const parent = activity(10, '2026-10-04', { activityType: { typeId: 89, typeKey: 'multi_sport', parentTypeId: 17 }, averageHR: undefined, isParent: true });
+    const leg = (id: number, typeKey: string) => ({ activityId: id, activityTypeDTO: { typeKey }, summaryDTO: { startTimeLocal: '2026-10-04T07:00:00.0', duration: 1200, averageHR: 150 } });
+    const details = { 10: { activityId: 10, metadataDTO: { childIds: [11, 12] } }, 11: leg(11, 'open_water_swimming'), 12: leg(12, 'cycling') };
+    let legFails = true;
+    const { syncer, store, calls } = setup({ activities: [parent, activity(1, '2026-10-05')], details, failWith: (m, id) => (m === 'getActivity' && id === 12 && legFails ? new Error('boom') : undefined) });
+    const first = await syncer.syncActivities('2026-10-01', '2026-10-08');
+    // List, parent summary, two legs; the failed leg is tried again by the next sync.
+    expect(first.requests).toBe(4);
+    expect(store.getActivityDetail(11, 'summary')).toBeDefined();
+    expect(store.getActivityDetail(12, 'summary')).toBeUndefined();
+    legFails = false;
+    expect((await syncer.syncActivities('2026-10-01', '2026-10-08')).requests).toBe(1);
+    expect(store.getActivityDetail(12, 'summary')).toBeDefined();
+    expect((await syncer.syncActivities('2026-10-01', '2026-10-08')).requests).toBe(0);
+    expect(calls.getActivity).toBe(4);
+  });
+
   it('refreshes the recent activity list after its TTL even when covered', async () => {
     let now = NOW;
     const { syncer, calls } = setup({ activities: [activity(1, '2026-10-07')] }, () => now);

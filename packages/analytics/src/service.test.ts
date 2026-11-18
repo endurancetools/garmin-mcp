@@ -297,6 +297,47 @@ describe('AnalyticsService.getLoad', () => {
     expect(auto.data.note).toMatch(/swimming speed \/ CSS/);
   });
 
+  it('scores a multisport activity by its legs and leaves out a second recording of a leg', async () => {
+    const t = setup();
+    t.store.markReferenceFetched('profile', NOW);
+    const tri = activity(9100, TODAY, { activityType: { typeKey: 'multi_sport' }, isParent: true, duration: 7200, distance: 50_000, averageHR: undefined, activityTrainingLoad: 300 });
+    // A bike computer recorded the bike leg again, inside the multisport window.
+    const copy = activity(9200, TODAY, { activityType: { typeKey: 'road_biking' }, startTimeGMT: `${TODAY} 07:30:00`, duration: 3000, averageHR: 150, activityTrainingLoad: 150 });
+    t.activities([tri, copy], addDays(TODAY, -1), TODAY);
+    t.daily('daily_summary', addDays(TODAY, -40), TODAY, () => ({ resting_hr: 50 }));
+    t.store.addThreshold({ date: '2026-01-01', param: 'lthr_run', value: 170, source: 'manual', created_at: NOW });
+    const before = await t.analytics.getLoad({ from: TODAY, include_activities: true });
+    expect(before.data.activities?.map((a) => [a.id, a.load_source])).toEqual([[9100, 'none']]);
+    expect(before.meta.note).toContain(`Multisport activities without their legs downloaded count as one activity with no heart rate or power, so with little or no load: ${TODAY} 9100.`);
+    const leg = (id: number, typeKey: string, start: string, duration: number, extra: Record<string, unknown> = {}) => ({
+      activityId: id,
+      activityName: typeKey,
+      activityTypeDTO: { typeKey },
+      summaryDTO: { startTimeLocal: `${TODAY}T${start}.0`, duration, averageHR: 150, ...extra },
+    });
+    // Garmin's load of a leg is the load so far: the run ends at the multisport activity's 300.
+    t.store.putActivityDetail(9100, 'summary', { activityId: 9100, metadataDTO: { childIds: [9101, 9102, 9103] } }, NOW);
+    t.store.putActivityDetail(9101, 'summary', leg(9101, 'open_water_swimming', '07:00:00', 1800, { activityTrainingLoad: 60 }), NOW);
+    t.store.putActivityDetail(9102, 'summary', leg(9102, 'cycling', '07:30:00', 3600, { normalizedPower: 200, activityTrainingLoad: 210 }), NOW);
+    t.store.putActivityDetail(9103, 'summary', leg(9103, 'running', '08:30:00', 1800, { activityTrainingLoad: 300 }), NOW);
+    const after = await t.analytics.getLoad({ from: TODAY, include_activities: true, include_by_sport: true, source: 'garmin_load' });
+    expect(loadOutput.safeParse(after).success).toBe(true);
+    expect(after.data.activities?.map((a) => [a.id, a.sport, a.parent_id, a.g_load])).toEqual([
+      [9101, 'swim', 9100, 60],
+      [9102, 'bike', 9100, 150],
+      [9103, 'run', 9100, 90],
+    ]);
+    expect(after.data.latest?.tss).toBe(300);
+    expect(after.meta.note ?? '').not.toContain('Multisport');
+    const auto = await t.analytics.getLoad({ from: TODAY, include_activities: true });
+    // LTHR 170, RHR 50, 150 bpm: IF 0.833, 69.4 per hour, from heart rate (no FTP for the bike's NP).
+    expect(auto.data.activities?.map((a) => [a.id, a.load_source, a.tss])).toEqual([
+      [9101, 'hr', 34.7],
+      [9102, 'hr', 69.4],
+      [9103, 'hr', 34.7],
+    ]);
+  });
+
   it('auto counts strength without heart rate from the session RPE of its summary detail; flags.rpe_calibration overrides 0.23', async () => {
     const t = setup();
     t.store.markReferenceFetched('profile', NOW);

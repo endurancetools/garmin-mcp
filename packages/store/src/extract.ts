@@ -93,6 +93,27 @@ export function activityColumnsFromDetail(a: Activity): Partial<ActivityColumns>
   };
 }
 
+/**
+ * A multisport activity (a triathlon, a duathlon...) as Garmin lists it: one parent entry with
+ * the whole duration and Garmin's load, but no average heart rate, power or pace. Its legs
+ * (swim, bike, run, transitions) are separate activities that the activity list leaves out.
+ */
+export function isMultisportParent(listRaw: unknown): boolean {
+  const raw = listRaw !== null && typeof listRaw === 'object' ? (listRaw as Record<string, unknown>) : undefined;
+  if (raw?.isParent === true || raw?.parent === true) return true;
+  const type = raw?.activityType;
+  return type !== null && typeof type === 'object' && (type as Record<string, unknown>).typeKey === 'multi_sport';
+}
+
+/** Ids of the legs of a multisport parent from its summary detail (`metadataDTO.childIds`); `undefined` when the summary has none. */
+export function multisportLegIds(summaryRaw: unknown): number[] | undefined {
+  const meta = (summaryRaw as { metadataDTO?: { childIds?: unknown } } | null | undefined)?.metadataDTO;
+  const ids = meta?.childIds;
+  if (!Array.isArray(ids)) return undefined;
+  const out = ids.filter((v): v is number => typeof v === 'number' && Number.isInteger(v) && v > 0);
+  return out.length > 0 ? out : undefined;
+}
+
 export function dailySummaryColumns(d: DailySummary | null) {
   const moderate = n(d?.moderateIntensityMinutes);
   const vigorous = n(d?.vigorousIntensityMinutes);

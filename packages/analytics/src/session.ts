@@ -16,6 +16,8 @@ export interface SessionInput {
   type?: string;
   name?: string;
   event_type?: string;
+  /** For a leg of a multisport activity (a triathlon's swim, bike, run, transition): the id of the multisport activity. */
+  parent_id?: number;
   duration_s?: number;
   moving_s?: number;
   distance_m?: number;
@@ -68,6 +70,8 @@ export interface Session {
   sport: SportGroup;
   name?: string;
   event_type?: string;
+  /** For a leg of a multisport activity: the id of the multisport activity. */
+  parent_id?: number;
   duration_s?: number;
   moving_s?: number;
   distance_m?: number;
@@ -195,6 +199,101 @@ export function sessionFromActivity(a: ActivityRow, summaryRaw?: unknown, splits
     laps: lapsFrom(splitsRaw),
     source: 'db',
   };
+}
+
+/**
+ * Session inputs of the legs of a multisport activity (swim, bike, run, transitions), one per
+ * leg, from each leg's summary detail (`activity_details(kind=summary)` of the leg id):
+ * duration, moving time, distance, heart rate, power, NP, grade adjusted speed, cadence,
+ * Garmin's load and Training Effect of the leg. The parent's list entry has none of the
+ * intensity fields, so scoring it would give no load. Every leg keeps the parent's event type
+ * and `parent_id`. Garmin gives each leg the load accumulated since the start of the multisport
+ * activity (the last leg has the parent's load), so when the loads rise leg by leg up to the
+ * parent's, each leg gets its increase over the leg before. `undefined` when a leg summary is
+ * missing or has no duration: the parent is then used as it is, until a sync downloads the legs.
+ */
+export function sessionsFromMultisport(parent: ActivityRow, legSummaries: readonly unknown[]): SessionInput[] | undefined {
+  if (!parent.date || legSummaries.length === 0) return undefined;
+  const event = str(obj(obj(parent.raw)?.['eventType'])?.['typeKey']);
+  const out: SessionInput[] = [];
+  for (const raw of legSummaries) {
+    const leg = obj(raw);
+    const s = obj(leg?.['summaryDTO']);
+    const id = num(leg?.['activityId']);
+    const duration = num(s?.['duration']);
+    if (id === undefined || !s || duration === undefined || !(duration > 0)) return undefined;
+    const local = str(s['startTimeLocal']);
+    const m = local ? /^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})/.exec(local) : null;
+    const rpe10 = num(s['directWorkoutRpe']);
+    out.push({
+      id,
+      date: (m?.[1] ?? parent.date) as IsoDate,
+      start_local: m ? `${m[1]}T${m[2]}` : undefined,
+      type: str(obj(leg?.['activityTypeDTO'])?.['typeKey']),
+      name: str(leg?.['activityName']),
+      event_type: event,
+      parent_id: parent.id,
+      duration_s: duration,
+      moving_s: num(s['movingDuration']),
+      distance_m: num(s['distance']),
+      elev_gain_m: num(s['elevationGain']),
+      elev_loss_m: num(s['elevationLoss']),
+      avg_hr: num(s['averageHR']),
+      max_hr: num(s['maxHR']),
+      avg_power_w: num(s['averagePower']),
+      np_w: num(s['normalizedPower']),
+      avg_cadence: num(s['averageRunCadence']) ?? num(s['averageBikeCadence']),
+      calories: num(s['calories']),
+      g_load: num(s['activityTrainingLoad']),
+      aerobic_te: num(s['trainingEffect']),
+      anaerobic_te: num(s['anaerobicTrainingEffect']),
+      rpe: rpe10 === undefined ? undefined : rpe10 / 10,
+      feel: num(s['directWorkoutFeel']),
+      gap_mps: num(s['avgGradeAdjustedSpeed']),
+      source: 'db',
+    });
+  }
+  const loads = out.map((l) => l.g_load);
+  const total = opt(parent.training_load);
+  const cumulative =
+    total !== undefined &&
+    loads.every((v, i) => v !== undefined && (i === 0 || v >= (loads[i - 1] ?? 0))) &&
+    Math.abs((loads.at(-1) ?? 0) - total) <= Math.max(1, total * 0.01);
+  if (cumulative) out.forEach((l, i) => (l.g_load = (loads[i] ?? 0) - (i === 0 ? 0 : (loads[i - 1] ?? 0))));
+  return out;
+}
+
+/** Start and end of an activity row in epoch ms; `undefined` without a UTC start or a duration. */
+function span(a: ActivityRow): [number, number] | undefined {
+  const start = a.start_time_utc ? Date.parse(a.start_time_utc) : Number.NaN;
+  const d = a.duration_s;
+  return Number.isFinite(start) && typeof d === 'number' && d > 0 ? [start, start + d * 1000] : undefined;
+}
+
+/** Slack at both ends when an activity is matched to the window of a multisport activity (ms). */
+const OVERLAP_SLACK_MS = 60_000;
+
+/**
+ * Ids of the activities recorded inside the window of a multisport activity: a second device
+ * (a bike computer next to the watch) records one leg again as an activity of its own. The
+ * multisport legs already count that effort, so the copy is left out of the load. Multisport
+ * parents themselves are never dropped.
+ */
+export function duplicatesOfMultisport(rows: readonly ActivityRow[], isParent: (a: ActivityRow) => boolean): Map<number, number> {
+  const windows = rows.filter(isParent).flatMap((p) => {
+    const w = span(p);
+    return w ? [{ id: p.id, w }] : [];
+  });
+  const out = new Map<number, number>();
+  if (windows.length === 0) return out;
+  for (const a of rows) {
+    if (isParent(a)) continue;
+    const w = span(a);
+    if (!w) continue;
+    const p = windows.find(({ w: pw }) => w[0] >= pw[0] - OVERLAP_SLACK_MS && w[1] <= pw[1] + OVERLAP_SLACK_MS);
+    if (p) out.set(a.id, p.id);
+  }
+  return out;
 }
 
 /** Positive number, else `undefined`: Garmin lists 0 for a running dynamic it did not measure. */
@@ -543,6 +642,7 @@ export function sessionMetrics(input: SessionInput, ctx: SessionContext, onNote?
     sport,
     name: input.name,
     event_type: input.event_type,
+    parent_id: input.parent_id,
     duration_s: round(input.duration_s, 0),
     moving_s: round(input.moving_s, 0),
     distance_m: round(input.distance_m, 0),

@@ -2,11 +2,14 @@ import { addDays, assertIsoDate, dateIn, InputError, type IsoDate } from 'garmin
 import { activityWeather, compact, hms, sleepLine, type Envelope, type GarminService, type ResponseMeta, type SyncProgressOptions } from 'garmin-mcp-domain';
 import {
   errInfo,
+  isMultisportParent,
+  multisportLegIds,
   parseRangeSet,
   SCOPE_DAILY,
   THRESHOLD_PARAMS,
   type DailyKind,
   type EnsureResult,
+  type ActivityRow,
   type RangeSet,
   type ThresholdParam,
   type ThresholdRow,
@@ -50,7 +53,16 @@ import {
   type ReadinessRating,
   type ReadinessSignalName,
 } from './readiness.js';
-import { buildSessions, decouplingEligible, sessionFromActivity, sessionFromImported, type Session, type SessionInput } from './session.js';
+import {
+  buildSessions,
+  decouplingEligible,
+  duplicatesOfMultisport,
+  sessionFromActivity,
+  sessionFromImported,
+  sessionsFromMultisport,
+  type Session,
+  type SessionInput,
+} from './session.js';
 import { sportGroup, sportList, type SportGroup } from './sport.js';
 import {
   FTP_ESTIMATE_DAYS,
@@ -394,10 +406,22 @@ export class AnalyticsService {
     no_laps: Set<number | string>;
   } {
     const store = this.#store;
-    const inputs: SessionInput[] = store
-      .queryActivities({ to, sort: 'asc' })
-      .flatMap((a) => sessionFromActivity(a, store.getActivityDetail(a.id, 'summary')?.raw, store.getActivityDetail(a.id, 'splits')?.raw) ?? []);
-    const noLaps = new Set(inputs.filter((i) => i.laps === undefined).map((i) => i.id));
+    const rows = store.queryActivities({ to, sort: 'asc' });
+    const isParent = (a: ActivityRow) => isMultisportParent(a.raw);
+    const duplicates = duplicatesOfMultisport(rows, isParent);
+    const multisportNotes: string[] = [];
+    const inputs: SessionInput[] = rows.flatMap((a) => {
+      if (duplicates.has(a.id)) return [];
+      const summary = store.getActivityDetail(a.id, 'summary')?.raw;
+      if (isParent(a)) {
+        const legIds = multisportLegIds(summary);
+        const legs = legIds && sessionsFromMultisport(a, legIds.map((id) => store.getActivityDetail(id, 'summary')?.raw));
+        if (legs) return legs;
+        multisportNotes.push(`${a.date} ${a.id}`);
+      }
+      return sessionFromActivity(a, summary, store.getActivityDetail(a.id, 'splits')?.raw) ?? [];
+    });
+    const noLaps = new Set(inputs.filter((i) => i.laps === undefined && i.parent_id === undefined).map((i) => i.id));
     const covered = parseRangeSet(store.getMeta('activities:covered'));
     for (const r of store.getImportedActivities('0000-01-01', to)) {
       if (!inRanges(covered, r.date)) inputs.push(sessionFromImported(r));
@@ -409,6 +433,11 @@ export class AnalyticsService {
       .map((d) => ({ date: d.date, resting_hr: d.resting_hr }));
     const floors = profileZoneFloors(store.getProfile()?.raw);
     const { sessions, notes } = buildSessions(inputs, { thresholds, daily, rpe_calibration: rpeCalibration, floors, hr_method: hrMethod });
+    if (multisportNotes.length > 0) {
+      notes.push(
+        `Multisport activities without their legs downloaded count as one activity with no heart rate or power, so with little or no load: ${multisportNotes.join(', ')}. Run garmin sync --scope activities for their dates to score each leg.`,
+      );
+    }
     return { sessions, notes, thresholds, daily, floors, no_laps: noLaps };
   }
 
