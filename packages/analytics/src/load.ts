@@ -205,6 +205,20 @@ export function loadOn(series: readonly LoadDay[], date: IsoDate): LoadDay | und
   return series.findLast((d) => d.date <= date);
 }
 
+/**
+ * Load model point for a morning decision on `date` (`get_readiness`): TSB of `date`, which the model
+ * computes before that day's sessions, with ACWR and monotony of the day before. ACWR and monotony
+ * of `date` include its own sessions, so a race or a morning warm-up recorded before the question
+ * would vote on that morning; the day before is what a 5 a.m. check sees. Without a point on the day
+ * before (the first day of the series), ACWR and monotony are 0.
+ */
+export function morningLoad(series: readonly LoadDay[], date: IsoDate): LoadDay | undefined {
+  const day = loadOn(series, date);
+  if (!day || day.date < date) return day;
+  const prev = loadOn(series, addDays(date, -1));
+  return { ...day, acwr: prev?.acwr ?? 0, monotony: prev?.monotony ?? 0 };
+}
+
 /** The part of a day of the load model `by_sport` of `get_load` reports per sport group. */
 export const SPORT_LOAD_KEYS = ['ctl', 'atl', 'tsb', 'acwr'] as const;
 export type SportLoadKey = (typeof SPORT_LOAD_KEYS)[number];

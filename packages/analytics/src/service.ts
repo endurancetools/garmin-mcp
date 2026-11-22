@@ -26,6 +26,7 @@ import {
   LOAD_SOURCES,
   loadFlags,
   loadOn,
+  morningLoad,
   loadRatio,
   loadSeries,
   loadSeriesBySport,
@@ -664,7 +665,7 @@ export class AnalyticsService {
     const store = this.#store;
     const { sessions, notes } = this.#sessions(date);
     const series = loadSeries(sessions, READINESS_LOAD_SOURCE, date);
-    const load = loadOn(series, date);
+    const load = morningLoad(series, date);
     const result = readiness({
       date,
       today,

@@ -6,6 +6,7 @@ import {
   loadFlags,
   LOAD_RATIO_DAYS,
   loadOn,
+  morningLoad,
   loadRatio,
   loadSeries,
   loadSeriesBySport,
@@ -213,6 +214,27 @@ describe('loadOn', () => {
     expect(loadOn(series, '2026-05-02')?.date).toBe('2026-05-01');
     expect(loadOn(series, '2026-05-09')?.date).toBe('2026-05-03');
     expect(loadOn(series, '2026-04-30')).toBeUndefined();
+  });
+});
+
+describe('morningLoad', () => {
+  it('keeps TSB of the day and takes ACWR and monotony of the day before', () => {
+    const series = [
+      day({ date: '2026-05-05', tsb: -3, acwr: 0.95, monotony: 1.1 }),
+      day({ date: '2026-05-06', tsb: -2, acwr: 2.21, monotony: 2.5, tss: 900 }),
+    ];
+    expect(morningLoad(series, '2026-05-06')).toMatchObject({ date: '2026-05-06', tsb: -2, acwr: 0.95, monotony: 1.1, tss: 900 });
+  });
+
+  it('first day of the series: ACWR and monotony 0; no point: undefined', () => {
+    const series = [day({ date: '2026-05-06', acwr: 1.4, monotony: 2 })];
+    expect(morningLoad(series, '2026-05-06')).toMatchObject({ acwr: 0, monotony: 0 });
+    expect(morningLoad(series, '2026-05-01')).toBeUndefined();
+  });
+
+  it('series ending before the date: the last point as it is (no sessions since)', () => {
+    const series = [day({ date: '2026-05-03', acwr: 1.2 })];
+    expect(morningLoad(series, '2026-05-06')).toMatchObject({ date: '2026-05-03', acwr: 1.2 });
   });
 });
 
