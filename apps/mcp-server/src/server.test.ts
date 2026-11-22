@@ -189,8 +189,8 @@ describe('MCP server', () => {
     expect(context(tools)).toBeLessThanOrEqual(39_753);
     expect(size(create)).toBeLessThanOrEqual(11_500);
     expect(context(all)).toBeLessThanOrEqual(41_739);
-    expect(size(tools)).toBeLessThanOrEqual(91_664);
-    expect(size(all)).toBeLessThanOrEqual(95_790);
+    expect(size(tools)).toBeLessThanOrEqual(91_936);
+    expect(size(all)).toBeLessThanOrEqual(96_062);
     // Without destructive tools create_workout is a strict object (a stray workout_id fails loudly).
     const { workout_id: _overwrite, ...properties } = overwrite?.properties ?? {};
     expect(create).toEqual({ ...overwrite, properties, additionalProperties: false });

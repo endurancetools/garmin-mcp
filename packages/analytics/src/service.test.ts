@@ -145,7 +145,13 @@ describe('AnalyticsService.getLoad', () => {
       ['2026-W40', 7, 486, 0],
       ['2026-W41', 4, 278, -43],
     ]);
-    expect(res.data.totals).toEqual({ days: 28, sessions: 28, active_days: 28, rest_days: 0, hours: 28, km: 280, elev_m: 0, tss: 1943, hrtss: 1943 });
+    // A session every day: no gap (0 stays), the last one on `to`.
+    expect(res.data.totals).toEqual({
+      days: 28, sessions: 28, active_days: 28, rest_days: 0, hours: 28, km: 280, elev_m: 0, tss: 1943, hrtss: 1943,
+      longest_gap_days: 0, days_since_last_session: 0,
+    });
+    // CTL still rises on `to`, so the peak is `to` itself.
+    expect(res.data.ctl_peak).toEqual({ date: '2026-10-08', ctl: res.data.latest?.ctl });
     expect(res.data.note).toMatch(/differs from garmin_load_model in get_training_status and get_period_summary/);
     expect(res.meta.note).toMatch(/LT1 approximated/);
     // Four months of history: fewer than 8 earlier 28-day windows, so no usual ratio and no drift note.
@@ -284,6 +290,9 @@ describe('AnalyticsService.getLoad', () => {
     const noSeries = await t.analytics.getLoad({ from, include_by_sport: true });
     expect(noSeries.data.series).toBeUndefined();
     expect(noSeries.data.by_sport).toEqual(res.data.by_sport);
+    // The CTL peak of the range also without include_series: the highest CTL of the series, the latest day on a tie.
+    const top = Math.max(...(plain.data.series ?? []).map((d) => d.ctl));
+    expect(noSeries.data.ctl_peak).toEqual({ date: plain.data.series?.findLast((d) => d.ctl === top)?.date, ctl: top });
   });
 
   it('auto scores a swim from its speed against CSS (sTSS), and thresholds_used.by_sport.swim has css', async () => {

@@ -33,6 +33,7 @@ import {
   isLoadFlagValue,
   resolveLoadFlags,
   sportLoadOn,
+  ctlPeak,
   rangeTotals,
   weeklyBySport,
   weekTotals,
@@ -144,6 +145,8 @@ export interface LoadData {
   week_totals: WeekTotal[];
   /** All sports over the whole `from..to`. */
   totals: RangeTotals;
+  /** Highest CTL of the series in `from..to` (the latest day on a tie), also without `include_series`. */
+  ctl_peak?: { date: IsoDate; ctl: number };
   /** Intensity of `flags_used.intensity_sports` (default run, bike, nordic, row) in the last 28 days of the range. */
   intensity: IntensityDistribution;
   thresholds_used: ThresholdsUsed;
@@ -541,7 +544,8 @@ export class AnalyticsService {
       flags_used: flags,
       weeks: weeklyBySport(inRange),
       week_totals: weekTotals(inRange, from, to),
-      totals: rangeTotals(inRange, from, to),
+      totals: rangeTotals(sessions, from, to),
+      ctl_peak: ctlPeak(series, from, to),
       intensity,
       thresholds_used: { date: to, by_sport: bySport, rhr: rhr.value },
       by_sport: perSport && sportLoadOn(perSport, to),

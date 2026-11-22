@@ -1,6 +1,7 @@
 import { addDays, eachDay } from 'garmin-mcp-config';
 import { describe, expect, it } from 'vitest';
 import {
+  ctlPeak,
   DEFAULT_LOAD_FLAGS,
   dailyTss,
   loadFlags,
@@ -423,7 +424,11 @@ describe('weekTotals and rangeTotals', () => {
 
   it('sums the whole range with active and rest days, equal to the sum of the weeks', () => {
     const totals = rangeTotals(sessions, FROM, TO);
-    expect(totals).toEqual({ days: 22, sessions: 5, active_days: 4, rest_days: 18, hours: 6, km: 90, elev_m: 400, tss: 390, hrtss: 365 });
+    expect(totals).toEqual({
+      days: 22, sessions: 5, active_days: 4, rest_days: 18, hours: 6, km: 90, elev_m: 400, tss: 390, hrtss: 365,
+      // Gaps 05-07..08, 05-10..18, 05-20..24, 05-26..27; the session of 05-28 is after `to`.
+      longest_gap_days: 9, longest_gap_from: '2026-05-10', longest_gap_to: '2026-05-18', days_since_last_session: 2,
+    });
     const weeks = weekTotals(sessions, FROM, TO);
     for (const k of ['sessions', 'hours', 'km', 'elev_m', 'tss', 'hrtss'] as const) {
       expect(weeks.reduce((sum, w) => sum + w[k], 0)).toBeCloseTo(totals[k], 6);
@@ -434,7 +439,76 @@ describe('weekTotals and rangeTotals', () => {
     const two = [sess('2026-05-06', { duration_s: 1000, distance_m: 3333, tss: 40.4, hrtss: 33.6 }), sess('2026-05-07', { duration_s: 1000, distance_m: 3333, tss: 40.4, hrtss: 33.6 })];
     expect(weekTotals(two, '2026-05-04', '2026-05-10')).toEqual([{ week: '2026-W19', sessions: 2, hours: 0.56, km: 6.7, elev_m: 0, tss: 81, hrtss: 67 }]);
     expect(weekTotals([], '2026-05-11', '2026-05-11')).toEqual([{ week: '2026-W20', sessions: 0, hours: 0, km: 0, elev_m: 0, tss: 0, hrtss: 0 }]);
-    expect(rangeTotals([], '2026-05-11', '2026-05-11')).toEqual({ days: 1, sessions: 0, active_days: 0, rest_days: 1, hours: 0, km: 0, elev_m: 0, tss: 0, hrtss: 0 });
+    expect(rangeTotals([], '2026-05-11', '2026-05-11')).toEqual({
+      days: 1, sessions: 0, active_days: 0, rest_days: 1, hours: 0, km: 0, elev_m: 0, tss: 0, hrtss: 0,
+      longest_gap_days: 1, longest_gap_from: '2026-05-11', longest_gap_to: '2026-05-11',
+    });
+  });
+
+  it('finds the longest gap at the start, in the middle and at the end, the latest one on a tie', () => {
+    const gaps = (dates: string[], from: string, to: string) => {
+      const t = rangeTotals(dates.map((d) => sess(d)), from, to);
+      return { longest_gap_days: t.longest_gap_days, longest_gap_from: t.longest_gap_from, longest_gap_to: t.longest_gap_to, days_since_last_session: t.days_since_last_session };
+    };
+    // Start: 05-01..05-04 without a session; a session before `from` does not shorten it.
+    expect(gaps(['2026-04-20', '2026-05-05', '2026-05-07', '2026-05-10'], '2026-05-01', '2026-05-10')).toEqual({
+      longest_gap_days: 4,
+      longest_gap_from: '2026-05-01',
+      longest_gap_to: '2026-05-04',
+      days_since_last_session: 0,
+    });
+    // Middle: 05-03..05-07.
+    expect(gaps(['2026-05-01', '2026-05-02', '2026-05-08', '2026-05-10'], '2026-05-01', '2026-05-10')).toEqual({
+      longest_gap_days: 5,
+      longest_gap_from: '2026-05-03',
+      longest_gap_to: '2026-05-07',
+      days_since_last_session: 0,
+    });
+    // End: 05-04..05-10, the last session 7 days before `to`.
+    expect(gaps(['2026-05-01', '2026-05-03'], '2026-05-01', '2026-05-10')).toEqual({
+      longest_gap_days: 7,
+      longest_gap_from: '2026-05-04',
+      longest_gap_to: '2026-05-10',
+      days_since_last_session: 7,
+    });
+    // Tie of 3 days (05-01..03 and 05-07..09): the later one.
+    expect(gaps(['2026-05-04', '2026-05-05', '2026-05-06', '2026-05-10'], '2026-05-01', '2026-05-10')).toEqual({
+      longest_gap_days: 3,
+      longest_gap_from: '2026-05-07',
+      longest_gap_to: '2026-05-09',
+      days_since_last_session: 0,
+    });
+    // A session every day: a gap of 0 without its days.
+    expect(gaps(['2026-05-01', '2026-05-02'], '2026-05-01', '2026-05-02')).toEqual({ longest_gap_days: 0, days_since_last_session: 0 });
+    // Only a session before `from`: the whole range is the gap, the last session counts from the history.
+    expect(gaps(['2026-04-28'], '2026-05-01', '2026-05-02')).toEqual({
+      longest_gap_days: 2,
+      longest_gap_from: '2026-05-01',
+      longest_gap_to: '2026-05-02',
+      days_since_last_session: 4,
+    });
+  });
+});
+
+describe('ctlPeak', () => {
+  const series = [
+    day({ date: '2026-05-01', ctl: 40 }),
+    day({ date: '2026-05-02', ctl: 52.3 }),
+    day({ date: '2026-05-03', ctl: 50 }),
+    day({ date: '2026-05-04', ctl: 52.3 }),
+    day({ date: '2026-05-05', ctl: 51 }),
+    day({ date: '2026-05-06', ctl: 60 }),
+  ];
+
+  it('takes the highest CTL in the range, the latest day on a tie', () => {
+    expect(ctlPeak(series, '2026-05-01', '2026-05-05')).toEqual({ date: '2026-05-04', ctl: 52.3 });
+    expect(ctlPeak(series, '2026-05-02', '2026-05-03')).toEqual({ date: '2026-05-02', ctl: 52.3 });
+    expect(ctlPeak(series, '2026-05-01', '2026-05-10')).toEqual({ date: '2026-05-06', ctl: 60 });
+  });
+
+  it('is undefined when the series has no day in the range', () => {
+    expect(ctlPeak(series, '2026-04-01', '2026-04-30')).toBeUndefined();
+    expect(ctlPeak([], '2026-05-01', '2026-05-05')).toBeUndefined();
   });
 });
 

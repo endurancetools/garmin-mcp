@@ -362,9 +362,16 @@ export interface RangeTotals {
   elev_m: number;
   tss: number;
   hrtss: number;
+  /** Longest run of days in `from..to` without a session (0 when every day has one); the latest such run on a tie. */
+  longest_gap_days: number;
+  /** First and last day of that run; absent when it is 0 days. */
+  longest_gap_from?: IsoDate;
+  longest_gap_to?: IsoDate;
+  /** Days from the last session on or before `to` (also before `from`) to `to`; 0 = a session on `to`, absent without any. */
+  days_since_last_session?: number;
 }
 
-type Volume = Pick<WeekTotal, 'sessions' | 'hours' | 'km' | 'elev_m' | 'tss' | 'hrtss'>;
+type Volume =Pick<WeekTotal, 'sessions' | 'hours' | 'km' | 'elev_m' | 'tss' | 'hrtss'>;
 
 /** Σ of the sessions with the roundings of {@link weeklyBySport}. */
 function volume(sessions: readonly Session[]): Volume {
@@ -405,13 +412,39 @@ export function weekTotals(sessions: readonly Session[], from: IsoDate, to: IsoD
   return out;
 }
 
-/** Volume of all sports over `from..to` with the number of days, days with a session and days without one. */
+/**
+ * Volume of all sports over `from..to` with the number of days, days with a session and days without one,
+ * the longest gap without a session and the days since the last session. `sessions` may hold the whole
+ * history: only the range counts for the volume and the gap, and the history up to `to` for the last session.
+ */
 export function rangeTotals(sessions: readonly Session[], from: IsoDate, to: IsoDate): RangeTotals {
   const inRange = between(sessions, from, to);
   const days = daysBetween(from, to) + 1;
-  const activeDays = new Set(inRange.map((s) => s.date)).size;
+  const active = new Set(inRange.map((s) => s.date));
   const { sessions: n, ...v } = volume(inRange);
-  return { days, sessions: n, active_days: activeDays, rest_days: days - activeDays, ...v };
+  const out: RangeTotals = { days, sessions: n, active_days: active.size, rest_days: days - active.size, ...v, longest_gap_days: 0 };
+  let start: IsoDate | undefined;
+  for (let d = from; d <= to; d = addDays(d, 1)) {
+    if (active.has(d)) {
+      start = undefined;
+      continue;
+    }
+    start ??= d;
+    const len = daysBetween(start, d) + 1;
+    if (len >= out.longest_gap_days) Object.assign(out, { longest_gap_days: len, longest_gap_from: start, longest_gap_to: d });
+  }
+  const last = sessions.reduce<IsoDate | undefined>((m, s) => (s.date <= to && (m === undefined || s.date > m) ? s.date : m), undefined);
+  if (last !== undefined) out.days_since_last_session = daysBetween(last, to);
+  return out;
+}
+
+/** Highest CTL of the series in `from..to` (the latest day on a tie); undefined when the series has no day there. */
+export function ctlPeak(series: readonly Pick<LoadDay, 'date' | 'ctl'>[], from: IsoDate, to: IsoDate): { date: IsoDate; ctl: number } | undefined {
+  let peak: { date: IsoDate; ctl: number } | undefined;
+  for (const d of series) {
+    if (d.date >= from && d.date <= to && (peak === undefined || d.ctl > peak.ctl || (d.ctl === peak.ctl && d.date > peak.date))) peak = { date: d.date, ctl: d.ctl };
+  }
+  return peak;
 }
 
 /** Hours in the reference window below which `week_jump` is not raised (percentages of almost nothing). */

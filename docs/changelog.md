@@ -15,6 +15,8 @@ What changed in each release. All `garmin-mcp-*` packages share one version; the
 
 - **Week and range totals in `get_load`.** Next to `weeks` (one row per ISO week and sport), the answer has `week_totals`: one row per ISO week of the range, also a week without sessions, with sessions, hours, km, elevation gain, TSS and hrTSS of all sports together and `tss_change_pct` against the week before; and `totals` for the whole range: days, sessions, days with and without a session and the same volume. The assistant no longer adds up the weeks itself. `garmin load` prints the week sum as an `all` row under each week and the range total below the table. How it works: [Training analytics](analytics.md#load-model).
 
+- **Breaks and the CTL peak in `get_load`.** `totals` also has the longest run of days without a session in the range with its first and last day (`longest_gap_days`, `longest_gap_from`, `longest_gap_to`) and `days_since_last_session` up to `to`, counted from the whole history; next to it `ctl_peak` gives the highest CTL of the range and its date, also without `include_series`. The assistant no longer scans the series for them. How it works: [Training analytics](analytics.md#load-model).
+
 ## 0.7.1 (2026-11-22)
 
 ### Training analytics
