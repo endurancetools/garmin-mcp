@@ -223,6 +223,8 @@ interface ActivitySections {
     avg_pace?: string;
     avg_gap_pace?: string;
     avg_speed_kmh?: number;
+    /** Swimming: the same speed as pace per 100 m, "m:ss /100m". */
+    avg_pace_100m?: string;
     avg_hr_bpm?: number;
     max_hr_bpm?: number;
     avg_power_w?: number;
@@ -813,7 +815,7 @@ export class GarminService {
         const bucket = opts.bucket ?? 'km';
         const date = (row?.start_time_local ?? s.startTimeLocal ?? undefined)?.slice(0, 10);
         const weight = bucket === 'climbs' && date !== undefined ? this.#weightOn(date) : undefined;
-        extra.stream_summary = streamSummary(samples, bucket, footSport, { weightKg: weight?.kg });
+        extra.stream_summary = streamSummary(samples, bucket, footSport, { weightKg: weight?.kg, sport: row?.type ?? summary.raw.activityTypeDTO?.typeKey ?? undefined });
         if (!extra.stream_summary) missing.push(`a usable stream${bucket === 'km' ? ' with distance' : bucket === 'climbs' ? ' with distance and elevation' : ''}`);
         else if (bucket === 'climbs' && extra.stream_summary.buckets.length === 0)
           notes.push(`No climbs: a climb is at least ${CLIMB_RULES.minLengthM} m long, ${CLIMB_RULES.minAvgGradePct} % steep on average and ${CLIMB_RULES.minGainM} m high.`);

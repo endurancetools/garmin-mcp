@@ -11,6 +11,7 @@ import {
   hrZonesCandidate,
   intensityFactor,
   lapsFrom,
+  loadActivity,
   NO_CSS_NOTE,
   NO_FTP_NOTE,
   NO_THRESHOLD_PACE_NOTE,
@@ -605,5 +606,19 @@ describe('aerobic decoupling (Pa:Hr, Pw:Hr)', () => {
     ]);
     expect(sessionFromActivity(activity(), undefined, { lapDTOs: [{ duration: 600, averageHR: 140 }] })?.laps).toEqual([{ duration_s: 600, avg_hr: 140 }]);
     expect(sessionFromActivity(activity())?.laps).toBeUndefined();
+  });
+});
+
+describe('loadActivity (get_load activities)', () => {
+  it('puts the grade adjusted pace right after gap_mps for foot sports only', () => {
+    const run = sessionMetrics(input({ distance_m: 10_000, gap_mps: 10_000 / 3000 }), CTX);
+    const row = loadActivity(run);
+    expect(row.gap_pace).toBe('5:00 /km');
+    const keys = Object.keys(row);
+    expect(keys[keys.indexOf('gap_mps') + 1]).toBe('gap_pace');
+    expect(loadActivity(sessionMetrics(input({ type: 'hiking', distance_m: 5000, gap_mps: 1.25 }), CTX)).gap_pace).toBe('13:20 /km');
+    // A ride with a grade adjusted speed and a run without one get no pace.
+    expect(loadActivity(sessionMetrics(input({ type: 'road_biking', gap_mps: 8 }), CTX))).not.toHaveProperty('gap_pace');
+    expect(loadActivity(sessionMetrics(input({ distance_m: 10_000 }), CTX))).not.toHaveProperty('gap_pace');
   });
 });

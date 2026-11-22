@@ -14,6 +14,8 @@ export interface ActivityBrief {
   distance_km?: number;
   avg_pace?: string;
   avg_speed_kmh?: number;
+  /** Swimming: the same speed as pace per 100 m, "m:ss /100m". */
+  avg_pace_100m?: string;
   elevation_gain_m?: number;
   avg_hr_bpm?: number;
   max_hr_bpm?: number;

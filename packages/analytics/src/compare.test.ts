@@ -63,6 +63,12 @@ describe('compare activities', () => {
     const row = compareRow(session({ gct_ms: 250, ef: 1.533, z4_s: 300 }), { temp_c: 18, dew_point_c: 12, humidity_pct: 70 }, 'reference');
     expect(row).toMatchObject({ id: 1, match: 'reference', duration: '50:00', distance_km: 10, pace: '5:00 /km', gap_pace: '5:00 /km', gct_ms: 250, ef: 1.533, z4_z5_pct: 9, temp_c: 18, dew_point_c: 12 });
     expect(compareRow(session({ type: 'road_biking', sport: 'bike', distance_m: 30_000 }), undefined)).toMatchObject({ avg_speed_kmh: 36, pace: undefined, gap_pace: undefined });
+    expect(compareRow(session({ type: 'road_biking', sport: 'bike', distance_m: 30_000 }), undefined).avg_pace_100m).toBeUndefined();
+    // 2000 m in 40:00 = 2:00 /100m.
+    const swim = compareRow(session({ type: 'lap_swimming', sport: 'swim', distance_m: 2000, duration_s: 2400, gap_mps: undefined }), undefined);
+    expect(swim).toMatchObject({ avg_speed_kmh: 3, avg_pace_100m: '2:00 /100m' });
+    expect(swim.pace).toBeUndefined();
+    expect(compareRow(session(), undefined).avg_pace_100m).toBeUndefined();
   });
 
   it('takes the best 5 and 20 min power from a stored power curve only', () => {

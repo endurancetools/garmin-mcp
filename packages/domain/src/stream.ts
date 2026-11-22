@@ -1,5 +1,5 @@
 import { detectClimbs, type Climb } from './climbs.js';
-import { hms, km, pacePerKm, round } from './format.js';
+import { hms, km, pacePerKm, round, speedFields } from './format.js';
 
 /**
  * Server-side aggregates of the activity stream (`activity/{id}/details`) for `get_activity`
@@ -49,6 +49,8 @@ export interface StreamBucketRow {
   distance_km?: number;
   avg_pace?: string;
   avg_speed_kmh?: number;
+  /** Swimming: the same speed as pace per 100 m, "m:ss /100m". */
+  avg_pace_100m?: string;
   avg_gap_pace?: string;
   avg_hr_bpm?: number;
   max_hr_bpm?: number;
@@ -115,12 +117,13 @@ const COUNTS: Record<StreamBucket, number | undefined> = { km: undefined, '5min'
  * quarters of the timer time, or climbs (`detectClimbs` on distance and `directElevation`;
  * time outside climbs is left out). A sample's interval goes to the bucket of its midpoint, so
  * a bucket edge between two samples is off by at most one sample spacing. Pace is the bucket's
- * distance over its time; for foot sports pace, else speed. A climb also has its length, gain,
+ * distance over its time; for foot sports pace, else speed, for swimming (`sport`, the activity
+ * type) with the pace per 100 m next to it. A climb also has its length, gain,
  * grades, VAM (gain per hour of timer time) and, with `weightKg` and power, W/kg. `undefined`
  * with fewer than two timed samples, for `km` without distance, or for `climbs` without
  * distance and elevation; no climbs is an empty list.
  */
-export function streamSummary(samples: readonly StreamSample[], bucket: StreamBucket, footSport: boolean, opts: { weightKg?: number } = {}): StreamSummary | undefined {
+export function streamSummary(samples: readonly StreamSample[], bucket: StreamBucket, footSport: boolean, opts: { weightKg?: number; sport?: string } = {}): StreamSummary | undefined {
   const firstTs = num(samples[0]?.directTimestamp);
   const timed = samples.flatMap((s) => {
     const t = timeOf(s, firstTs);
@@ -194,7 +197,7 @@ export function streamSummary(samples: readonly StreamSample[], bucket: StreamBu
         from: hms(a.t0) ?? '0:00',
         to: hms(a.t1) ?? '0:00',
         distance_km: km(dist),
-        ...(footSport ? { avg_pace: pacePerKm(mps), avg_gap_pace: pacePerKm(gap) } : { avg_speed_kmh: round(mps === undefined ? undefined : mps * 3.6, 1) }),
+        ...(footSport ? { avg_pace: pacePerKm(mps), avg_gap_pace: pacePerKm(gap) } : speedFields(opts.sport, mps)),
         avg_hr_bpm: round(mean(a, 'avg_hr_bpm'), 0),
         max_hr_bpm: a.maxHr,
         avg_power_w: round(power, 0),

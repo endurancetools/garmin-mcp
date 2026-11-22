@@ -1,4 +1,4 @@
-import { hms, pacePerKm, round, type ActivityWeather } from 'garmin-mcp-domain';
+import { hms, pacePerKm, round, speedFields, type ActivityWeather } from 'garmin-mcp-domain';
 import type { DecouplingBasis, Session } from './session.js';
 
 /**
@@ -109,6 +109,8 @@ export interface CompareRow {
   pace?: string;
   gap_pace?: string;
   avg_speed_kmh?: number;
+  /** Swimming: the same speed as pace per 100 m, "m:ss /100m". */
+  avg_pace_100m?: string;
   elev_gain_m?: number;
   avg_hr?: number;
   max_hr?: number;
@@ -255,7 +257,7 @@ export function compareRow(s: Session, weather: ActivityWeather | undefined, mat
     distance_km: dist > 0 ? round(dist / 1000, 2) : undefined,
     pace: foot && dist > 0 && dur > 0 ? pacePerKm(dist / dur) : undefined,
     gap_pace: foot ? pacePerKm(s.gap_mps) : undefined,
-    avg_speed_kmh: !foot && dist > 0 && dur > 0 ? round((dist / dur) * 3.6, 1) : undefined,
+    ...(!foot && dist > 0 && dur > 0 ? speedFields(s.type, dist / dur) : {}),
     elev_gain_m: s.elev_gain_m,
     avg_hr: s.avg_hr,
     max_hr: s.max_hr,

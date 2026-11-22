@@ -43,6 +43,10 @@ describe('stream summary', () => {
     // Not a foot sport: speed instead of pace.
     expect(q?.[0]).toMatchObject({ avg_speed_kmh: 12 });
     expect(q?.[0]?.avg_pace).toBeUndefined();
+    expect(q?.[0]?.avg_pace_100m).toBeUndefined();
+    // Swimming: the speed and the same speed per 100 m (3⅓ m/s = 0:30 /100m).
+    expect(streamSummary(steady, 'quarters', false, { sport: 'open_water_swimming' })?.buckets[0]).toMatchObject({ avg_speed_kmh: 12, avg_pace_100m: '0:30 /100m' });
+    expect(streamSummary(steady, 'halves', true, { sport: 'running' })?.buckets[0]?.avg_pace_100m).toBeUndefined();
   });
 
   it('needs two timed samples, and distance for kilometres', () => {

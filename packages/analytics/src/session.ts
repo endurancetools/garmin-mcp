@@ -1,5 +1,5 @@
 import { isoWeek, type IsoDate } from 'garmin-mcp-config';
-import { round } from 'garmin-mcp-domain';
+import { isFootSport, pacePerKm, round } from 'garmin-mcp-domain';
 import type { ActivityRow, ImportedActivityRow } from 'garmin-mcp-store';
 import { RPE_LOAD_CALIBRATION, type HrMethod } from './load.js';
 import { sportGroup, type SportGroup } from './sport.js';
@@ -652,6 +652,17 @@ export function sessionMetrics(input: SessionInput, ctx: SessionContext, onNote?
     ...(decOk ? sessionDecoupling(sport, input.laps ?? []) : {}),
     source: input.source,
   };
+}
+
+/** A row of `get_load` `activities`: the session plus, for foot sports, the grade adjusted pace next to `gap_mps`. */
+export type LoadActivity = Session & { gap_pace?: string };
+
+/** `gap_pace` ("m:ss /km") from `gap_mps` for running, walking and hiking types; other sessions unchanged. */
+export function loadActivity(s: Session): LoadActivity {
+  const pace = isFootSport(s.type) ? pacePerKm(s.gap_mps) : undefined;
+  if (pace === undefined) return s;
+  // Right after `gap_mps`, so the two read together.
+  return Object.fromEntries(Object.entries(s).flatMap(([k, v]) => (k === 'gap_mps' ? [[k, v], ['gap_pace', pace]] : [[k, v]]))) as LoadActivity;
 }
 
 /** `sessionMetrics` for many inputs, sorted by date and start time; notes deduplicated. */

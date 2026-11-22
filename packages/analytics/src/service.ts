@@ -63,9 +63,11 @@ import {
 import {
   buildSessions,
   decouplingEligible,
+  loadActivity,
   sessionFromActivity,
   sessionFromImported,
   sessionsFromMultisport,
+  type LoadActivity,
   type Session,
   type SessionInput,
 } from './session.js';
@@ -153,7 +155,7 @@ export interface LoadData {
   /** CTL, ATL, TSB and ACWR on `to` of every sport group with a session up to `to`, each from its own sessions only (`include_by_sport`). */
   by_sport?: Partial<Record<SportGroup, SportLoad>>;
   series?: LoadSeriesDay[];
-  activities?: Session[];
+  activities?: LoadActivity[];
   efficiency?: EfficiencyRow[];
   dynamics?: DynamicsTrend;
   note: string;
@@ -550,7 +552,7 @@ export class AnalyticsService {
       thresholds_used: { date: to, by_sport: bySport, rhr: rhr.value },
       by_sport: perSport && sportLoadOn(perSport, to),
       series: q.include_series ? withSportColumns(series.filter((d) => d.date >= from && d.date <= to), perSport ?? new Map()) : undefined,
-      activities: q.include_activities ? inRange : undefined,
+      activities: q.include_activities ? inRange.map(loadActivity) : undefined,
       efficiency: q.include_efficiency ? efficiencyTrend(inRange, 'month', efficiencySports(flags.intensity_sports)) : undefined,
       dynamics: q.include_dynamics ? dynamicsTrend(inRange) : undefined,
       note,

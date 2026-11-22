@@ -113,6 +113,18 @@ describe('lapSummary', () => {
     ]);
     expect(lapSummary(undefined, 'running')).toEqual([]);
   });
+
+  it('gives a pool swim the pace per 100 m from the summed time and distance', () => {
+    const laps = [
+      { intensityType: 'ACTIVE', duration: 100, distance: 50, averageHR: 140 },
+      { intensityType: 'ACTIVE', duration: 110, distance: 50, averageHR: 150 },
+      { intensityType: 'REST', duration: 30, distance: 0 },
+    ];
+    expect(lapSummary(laps, 'lap_swimming')).toEqual([
+      { intensity: 'active', laps: 2, duration: '3:30', distance_km: 0.1, avg_speed_kmh: 1.7, avg_pace_100m: '3:30 /100m', avg_hr_bpm: 145 },
+      { intensity: 'rest', laps: 1, duration: '0:30', distance_km: 0 },
+    ]);
+  });
 });
 
 describe('splitSummaries', () => {

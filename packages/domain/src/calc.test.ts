@@ -1,9 +1,9 @@
 import { InputError } from 'garmin-mcp-config';
 import { describe, expect, it } from 'vitest';
 import type { ActivityRow, DailyRows } from 'garmin-mcp-store';
-import { periodActivitySummary } from './activities.js';
+import { activityListItem, periodActivitySummary } from './activities.js';
 import { calendarEvent } from './calendar.js';
-import { compact, hms, pacePerKm } from './format.js';
+import { compact, hms, isSwimSport, pacePer100m, pacePerKm, speedOrPace } from './format.js';
 import { healthTable } from './health.js';
 import { formState, trainingLoadSeries } from './load.js';
 import { decodeCursor, encodeCursor, pageBySize } from './paging.js';
@@ -20,6 +20,16 @@ describe('format', () => {
     expect(hms(3725)).toBe('1:02:05');
     expect(hms(65)).toBe('1:05');
     expect(pacePerKm(1000 / 300)).toBe('5:00 /km');
+  });
+  it('gives swimming the pace per 100 m next to the speed, running only the pace', () => {
+    expect(pacePer100m(100 / 105)).toBe('1:45 /100m');
+    expect(pacePer100m(0)).toBeUndefined();
+    expect([isSwimSport('lap_swimming'), isSwimSport('open_water_swimming'), isSwimSport('road_biking'), isSwimSport(undefined)]).toEqual([true, true, false, false]);
+    // 1500 m in 26:15 = 1:45 /100m (3.4 km/h).
+    expect(speedOrPace('lap_swimming', 1500, 1575)).toEqual({ avg_speed_kmh: 3.4, avg_pace_100m: '1:45 /100m' });
+    expect(speedOrPace('road_biking', 30_000, 3600)).toEqual({ avg_speed_kmh: 30 });
+    expect(speedOrPace('running', 10_000, 3000)).toEqual({ avg_pace: '5:00 /km' });
+    expect(speedOrPace('lap_swimming', 0, 1575)).toEqual({});
   });
   it('compacts empty values recursively', () => {
     expect(compact({ a: 1, b: null, c: '', d: [], e: { f: undefined }, g: [null, 2], h: 0 })).toEqual({ a: 1, g: [2], h: 0 });
@@ -300,5 +310,16 @@ describe('unzip', () => {
     const [entry] = unzip(makeZip('123_ACTIVITY.fit', fit));
     expect(entry?.name).toBe('123_ACTIVITY.fit');
     expect(Buffer.from(entry?.data ?? []).equals(Buffer.from(fit))).toBe(true);
+  });
+});
+
+describe('activityListItem (get_activities)', () => {
+  it('gives a swim its speed and pace per 100 m, a run its pace only', () => {
+    // 2000 m in 40:00 = 2:00 /100m.
+    expect(activityListItem(act(1, '2026-01-05', 'lap_swimming', { duration_s: 2400, distance_m: 2000 }))).toMatchObject({ avg_speed_kmh: 3, avg_pace_100m: '2:00 /100m' });
+    const run = activityListItem(act(2, '2026-01-05', 'running', { duration_s: 3000 }));
+    expect(run).toMatchObject({ avg_pace: '5:00 /km' });
+    expect(run).not.toHaveProperty('avg_pace_100m');
+    expect(run).not.toHaveProperty('avg_speed_kmh');
   });
 });
