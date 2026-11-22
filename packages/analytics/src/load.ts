@@ -395,19 +395,28 @@ function volume(sessions: readonly Session[]): Volume {
 
 const between = (sessions: readonly Session[], from: IsoDate, to: IsoDate) => sessions.filter((s) => s.date >= from && s.date <= to);
 
+/** Below this weekly TSS the week before is too empty for a percentage to mean anything. */
+export const WEEK_CHANGE_MIN_TSS = 20;
+
 /**
  * Every ISO week of `from..to`, also one without a session, with the volume of all sports on
  * its days in the range and the TSS change against the week before (from the rounded `tss`).
+ * The change is given only between two whole weeks of the range and when the week before has at
+ * least `WEEK_CHANGE_MIN_TSS`: a week cut by `from` or `to`, or one with 2 TSS after an illness,
+ * would give a percentage the model would quote as a fact (+134 % against three days, +6450 %).
  */
 export function weekTotals(sessions: readonly Session[], from: IsoDate, to: IsoDate): WeekTotal[] {
   const out: WeekTotal[] = [];
+  let prevWhole = false;
   for (let monday = startOfWeek(from); monday <= to; monday = addDays(monday, 7)) {
     const sunday = addDays(monday, 6);
+    const whole = monday >= from && sunday <= to;
     const week: WeekTotal = { week: isoWeek(monday), ...volume(between(sessions, monday < from ? from : monday, sunday < to ? sunday : to)) };
     const prev = out.at(-1);
-    const change = prev && pct(week.tss, prev.tss);
+    const change = prev && whole && prevWhole && prev.tss >= WEEK_CHANGE_MIN_TSS ? pct(week.tss, prev.tss) : undefined;
     if (change !== undefined) week.tss_change_pct = round(change, 0);
     out.push(week);
+    prevWhole = whole;
   }
   return out;
 }

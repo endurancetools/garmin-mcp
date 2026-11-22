@@ -161,10 +161,10 @@ describe('AnalyticsService.getLoad', () => {
     // 2026-09-11 (Friday of W37) .. 2026-10-08 (Thursday of W41): partial weeks count only their days in the range.
     expect(res.data.week_totals?.map((w) => [w.week, w.sessions, w.tss, w.tss_change_pct])).toEqual([
       ['2026-W37', 3, 208, undefined],
-      ['2026-W38', 7, 486, 134],
+      ['2026-W38', 7, 486, undefined], // W37 is cut by `from` (Friday)
       ['2026-W39', 7, 486, 0],
       ['2026-W40', 7, 486, 0],
-      ['2026-W41', 4, 278, -43],
+      ['2026-W41', 4, 278, undefined], // cut by `to` (Thursday)
     ]);
     // A session every day: no gap (0 stays), the last one on `to`.
     expect(res.data.totals).toEqual({

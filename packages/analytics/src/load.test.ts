@@ -415,10 +415,26 @@ describe('weekTotals and rangeTotals', () => {
   it('sums all sports per ISO week of the range, with an empty week and the TSS change', () => {
     expect(weekTotals(sessions, FROM, TO)).toEqual([
       { week: '2026-W19', sessions: 3, hours: 3.5, km: 65, elev_m: 400, tss: 180, hrtss: 165 },
-      { week: '2026-W20', sessions: 0, hours: 0, km: 0, elev_m: 0, tss: 0, hrtss: 0, tss_change_pct: -100 },
-      // After a week with 0 TSS there is no change.
+      // W19 is cut by FROM (Wednesday), so W20 gets no change; after a week under 20 TSS there is none either.
+      { week: '2026-W20', sessions: 0, hours: 0, km: 0, elev_m: 0, tss: 0, hrtss: 0 },
       { week: '2026-W21', sessions: 1, hours: 1.5, km: 15, elev_m: 0, tss: 120, hrtss: 110 },
-      { week: '2026-W22', sessions: 1, hours: 1, km: 10, elev_m: 0, tss: 90, hrtss: 90, tss_change_pct: -25 },
+      // W22 is cut by TO (Wednesday): no change.
+      { week: '2026-W22', sessions: 1, hours: 1, km: 10, elev_m: 0, tss: 90, hrtss: 90 },
+    ]);
+  });
+
+  it('gives the TSS change only between whole weeks after a week with at least 20 TSS', () => {
+    const whole = [
+      sess('2026-05-04', { tss: 100 }), // W19
+      sess('2026-05-11', { tss: 150 }), // W20: +50 %
+      sess('2026-05-18', { tss: 10 }), // W21: -93 %
+      sess('2026-05-25', { tss: 90 }), // W22: after 10 TSS, none
+    ];
+    expect(weekTotals(whole, '2026-05-04', '2026-05-31').map((w) => [w.week, w.tss, w.tss_change_pct])).toEqual([
+      ['2026-W19', 100, undefined],
+      ['2026-W20', 150, 50],
+      ['2026-W21', 10, -93],
+      ['2026-W22', 90, undefined],
     ]);
   });
 
