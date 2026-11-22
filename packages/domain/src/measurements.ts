@@ -17,6 +17,24 @@ export function localToUtc(timeZone: string, local: string): number {
   return t;
 }
 
+const INSTANT = /^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2})(:\d{2})?(?:\.\d+)?(Z|[+-]\d{2}:?\d{2})?$/;
+
+/**
+ * Local "YYYY-MM-DDTHH:MM:SS" in `timeZone` (the format of an activity's `start_local`) of a Garmin
+ * instant: epoch ms, or an ISO string with `Z` or an offset ("+0000", "+00:00"); a string without a
+ * zone is GMT, like Garmin's `*GMT` fields and `timestamp`. Undefined for anything else.
+ */
+export function utcToLocal(timeZone: string, value: unknown): string | undefined {
+  let ms: number | undefined;
+  if (typeof value === 'number' && Number.isFinite(value)) ms = value;
+  else if (typeof value === 'string') {
+    const m = INSTANT.exec(value.trim());
+    const zone = m?.[4];
+    if (m) ms = Date.parse(`${m[1]}T${m[2]}${m[3] ?? ':00'}${zone === undefined || zone === 'Z' ? 'Z' : `${zone.slice(0, 3)}:${zone.slice(-2)}`}`);
+  }
+  return ms === undefined || Number.isNaN(ms) ? undefined : localDateTime(timeZone, ms);
+}
+
 /**
  * When a measurement was taken, from `--date`: now when left out; a bare date is now on today
  * and 12:00 on an earlier day; "YYYY-MM-DD HH:MM" (or with a T) is that local time in `timeZone`.

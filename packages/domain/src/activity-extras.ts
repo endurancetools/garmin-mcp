@@ -1,4 +1,5 @@
 import { hms, isFootSport, km, pacePerKm, round, speedOrPace } from './format.js';
+import { utcToLocal } from './measurements.js';
 
 /**
  * Pure mappers for the optional activity sections of `get_activity`: time in HR or
@@ -56,9 +57,10 @@ const fToC = (f: number | undefined) => (f === undefined ? undefined : round(((f
 /**
  * `activity/{id}/weather`. Garmin sends temperatures in Fahrenheit whatever the
  * account units, and wind in the account's display unit (km/h, or mph for
- * `statute_us`). Not confirmed by a recording yet (E2-8). Output is always metric.
+ * `statute_us`). Not confirmed by a recording yet (E2-8). Output is always metric;
+ * `observed_at` is local in `timeZone`, left out without one (rows that show only temperatures).
  */
-export function activityWeather(raw: unknown, units: string | undefined): ActivityWeather | undefined {
+export function activityWeather(raw: unknown, units: string | undefined, timeZone?: string): ActivityWeather | undefined {
   const w = obj(raw);
   if (!w || num(w.temp) === undefined) return undefined;
   const wind = (v: unknown) => {
@@ -76,7 +78,7 @@ export function activityWeather(raw: unknown, units: string | undefined): Activi
     wind_dir_deg: round(num(w.windDirection), 0),
     conditions: str(obj(w.weatherTypeDTO)?.desc)?.toLowerCase(),
     station: str(obj(w.weatherStationDTO)?.name),
-    observed_at: str(w.issueDate),
+    observed_at: timeZone === undefined ? undefined : utcToLocal(timeZone, w.issueDate),
   };
 }
 

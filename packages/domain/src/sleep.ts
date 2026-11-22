@@ -1,13 +1,14 @@
 import type { DailyRows } from 'garmin-mcp-store';
 import { compact, hms, hours, round } from './format.js';
+import { utcToLocal } from './measurements.js';
 import { mean } from './stats.js';
 
 type SleepRow = DailyRows['sleep'];
 
 export interface SleepNight {
   date: string;
-  start_utc?: string;
-  end_utc?: string;
+  start_local?: string;
+  end_local?: string;
   duration?: string;
   duration_h?: number;
   score?: number;
@@ -25,7 +26,8 @@ function rawOf(row: SleepRow): Record<string, unknown> {
   return (row.raw && typeof row.raw === 'object' ? row.raw : {}) as Record<string, unknown>;
 }
 
-export function sleepNight(row: SleepRow): SleepNight {
+/** One night; bed and wake times local in `timeZone` (Garmin stores them in GMT). */
+export function sleepNight(row: SleepRow, timeZone: string): SleepNight {
   const raw = rawOf(row);
   const dto = (raw.dailySleepDTO ?? {}) as Record<string, unknown>;
   const scores = (dto.sleepScores ?? {}) as { overall?: { qualifierKey?: string } };
@@ -34,8 +36,8 @@ export function sleepNight(row: SleepRow): SleepNight {
   const num = (v: unknown) => (typeof v === 'number' ? v : undefined);
   return {
     date: row.date,
-    start_utc: row.start_utc ?? undefined,
-    end_utc: row.end_utc ?? undefined,
+    start_local: utcToLocal(timeZone, row.start_utc),
+    end_local: utcToLocal(timeZone, row.end_utc),
     duration: hms(row.duration_s),
     duration_h: hours(row.duration_s),
     score: row.score ?? undefined,
@@ -191,15 +193,10 @@ export function sleepTimeline(sleepRaw: unknown, hrvRaw: unknown, timeZone: stri
  */
 export function sleepLine(row: SleepRow, timeZone: string): string | undefined {
   if (!row.duration_s) return undefined;
-  const night = sleepNight(row);
+  const night = sleepNight(row, timeZone);
   const awakenings = sleepTimeline(row.raw, undefined, timeZone)?.awakenings?.count;
-  const clockFmt = new Intl.DateTimeFormat('en-GB', { timeZone, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
-  const clock = (utc: string | undefined) => {
-    const ms = utc === undefined ? Number.NaN : Date.parse(utc);
-    return Number.isNaN(ms) ? undefined : clockFmt.format(new Date(ms));
-  };
-  const start = clock(night.start_utc);
-  const end = clock(night.end_utc);
+  const start = night.start_local?.slice(11, 16);
+  const end = night.end_local?.slice(11, 16);
   const minutes = Math.round(row.duration_s / 60);
   const h = (v: number | undefined, label: string) => (v === undefined ? undefined : `${label} ${round(v, 1)} h`);
   const parts = [
@@ -227,7 +224,7 @@ export interface SleepRangeSummary {
   short_nights_under_6h: number;
 }
 
-export function sleepRange(rows: readonly SleepRow[]): { summary: SleepRangeSummary; nights: SleepNight[] } {
+export function sleepRange(rows: readonly SleepRow[], timeZone: string): { summary: SleepRangeSummary; nights: SleepNight[] } {
   const withSleep = rows.filter((r) => (r.duration_s ?? 0) > 0);
   const scored = withSleep.filter((r) => r.score !== null).toSorted((a, b) => (a.score ?? 0) - (b.score ?? 0));
   return {
@@ -241,6 +238,6 @@ export function sleepRange(rows: readonly SleepRow[]): { summary: SleepRangeSumm
       worst_night: scored[0] && { date: scored[0].date, score: scored[0].score ?? undefined },
       short_nights_under_6h: withSleep.filter((r) => (r.duration_s ?? 0) < 6 * 3600).length,
     },
-    nights: rows.map(sleepNight),
+    nights: rows.map((r) => sleepNight(r, timeZone)),
   };
 }

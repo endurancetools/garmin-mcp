@@ -33,7 +33,7 @@ import { compact, hms, isFootSport, iso, km, round, speedOrPace } from './format
 import { healthTable, tablesFor, type HealthGranularity, type HealthMetric, type HealthTable } from './health.js';
 import { hourlyTable, intradayKinds, isHourlyMetric } from './intraday.js';
 import { activityListRow, activityTypeName, checkEditMode, checkManualActivity } from './manual-activity.js';
-import { checkFatPct, checkPulse, checkWaterMl, checkWeightKg, measuredAt, parseBloodPressure } from './measurements.js';
+import { checkFatPct, checkPulse, checkWaterMl, checkWeightKg, measuredAt, parseBloodPressure, utcToLocal } from './measurements.js';
 import { decodeCursor, encodeCursor, pageBySize } from './paging.js';
 import { bestEfforts, durationLabel, type BestEffort } from './power-curve.js';
 import { sleepNight, sleepRange, sleepTimeline } from './sleep.js';
@@ -794,7 +794,7 @@ export class GarminService {
       const weather = await this.#detail(id, 'weather', () => this.client.getActivityWeather(id), true);
       sources.push({ source: weather.live ? 'live' : 'cache' });
       times.push(weather.fetched_at);
-      extra.weather = activityWeather(weather.raw, this.#units());
+      extra.weather = activityWeather(weather.raw, this.#units(), this.#tz);
       if (!extra.weather && detail === 'weather') missing.push('weather (indoor activity or no station data)');
     }
     if (detail === 'exercise_sets' || detail === 'full') {
@@ -1367,14 +1367,14 @@ export class GarminService {
       if (!row.duration_s) return { data: { date, sleep: null, note: 'No sleep recorded for this date.' }, meta: this.#meta([ensured], [row.fetched_at]) };
       // The timeline reads only what the cache already has: no HRV request for a night without a row.
       const [hrv] = this.store.getDaily('hrv', date, date);
-      return { data: compact({ ...sleepNight(row), timeline: sleepTimeline(row.raw, hrv?.raw, this.#tz) }), meta: this.#meta([ensured], [row.fetched_at]) };
+      return { data: compact({ ...sleepNight(row, this.#tz), timeline: sleepTimeline(row.raw, hrv?.raw, this.#tz) }), meta: this.#meta([ensured], [row.fetched_at]) };
     }
     const { from, to } = this.range(q.from, q.to, 7);
     const historyFrom = addDays(to, -27) < from ? addDays(to, -27) : from;
     const ensured = await this.syncer.ensureDaily(['sleep'], historyFrom, to, this.#budget);
     const rows = this.store.getDaily('sleep', from, to);
     const history = this.store.getDaily('sleep', historyFrom, to);
-    const { summary, nights } = sleepRange(rows);
+    const { summary, nights } = sleepRange(rows, this.#tz);
     return {
       data: compact({
         from,
@@ -1406,7 +1406,7 @@ export class GarminService {
     ]);
     const statusRows = this.store.getDaily('training_status', addDays(to, -89) < from ? addDays(to, -89) : from, to);
     const metrics = this.store.latestTrainingMetrics(to);
-    const overview = trainingOverview(statusRows, this.#garminLoadInputs(to), from, to, q.include_series ?? false, metrics);
+    const overview = trainingOverview(statusRows, this.#garminLoadInputs(to), from, to, q.include_series ?? false, this.#tz, metrics);
     const gap = this.#dailyGap('training', ['training_status'], from, to);
     // Race predictions, scores and records are fetched by a training sync that reaches today.
     const metricsGap = metrics ? {} : this.#gap('training', addDays(this.today(), -6), this.today(), 'race predictions, endurance/hill score, fitness age, personal records and acclimation');
@@ -1425,7 +1425,7 @@ export class GarminService {
     const historyFrom = addDays(to, -27) < from ? addDays(to, -27) : from;
     const ensured = await this.syncer.ensureWeighIns(historyFrom, to, this.#budget);
     const rows = this.store.getBodyComposition(from, to);
-    const summary = bodyComposition(rows, to, this.store.getBodyComposition(historyFrom, to));
+    const summary = bodyComposition(rows, to, this.#tz, this.store.getBodyComposition(historyFrom, to));
     const gaps = this.syncer.weighInGaps(from, to);
     const gap = gaps.length ? this.#gap('health', (gaps[0] as [IsoDate, IsoDate])[0], (gaps.at(-1) as [IsoDate, IsoDate])[1], 'weigh-ins in this range') : {};
     return { data: compact({ from, to, ...summary }), meta: this.#meta([ensured], rows.map((r) => r.fetched_at), gap) };
@@ -1489,7 +1489,7 @@ export class GarminService {
     const daily = this.store.getDaily('daily_summary', from, to);
     const metrics: HealthMetric[] = ['sleep', 'resting_hr', 'hrv', 'steps', 'stress', 'body_battery'];
     const table = healthTable(metrics, { daily, sleep: this.store.getDaily('sleep', from, to), hrv: this.store.getDaily('hrv', from, to) }, from, to, 'day');
-    const load = trainingOverview([], this.#garminLoadInputs(to), from, to, false).garmin_load_model;
+    const load = trainingOverview([], this.#garminLoadInputs(to), from, to, false, this.#tz).garmin_load_model;
     const energy = energyBalance(daily);
     // Without synced activities an empty period would read as "no sessions, every day a rest day".
     const activitiesMissing = this.syncer.activityGaps(from, to).length > 0;
@@ -1999,7 +1999,7 @@ export class GarminService {
             model: d.model,
             firmware: d.raw.currentFirmwareVersion,
             primary: d.raw.primaryActivityTrackerIndicator === true ? true : undefined,
-            last_sync_utc: d.last_sync_utc,
+            last_sync_local: utcToLocal(this.#tz, d.last_sync_utc),
             settings: deviceSettings(d.settings),
             solar: deviceSolar(d.solar),
           }),

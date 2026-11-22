@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { checkPulse, checkWaterMl, checkWeightKg, localToUtc, measuredAt, parseBloodPressure } from './measurements.js';
+import { checkPulse, checkWaterMl, checkWeightKg, localToUtc, measuredAt, parseBloodPressure, utcToLocal } from './measurements.js';
 
 /** 2026-11-17 09:15 in Warsaw (UTC+1). */
 const NOW = Date.parse('2026-11-17T08:15:00Z');
@@ -50,5 +50,31 @@ describe('measurement checks', () => {
     expect(() => checkWaterMl(2.5)).toThrow('water (ml) must be a whole number');
     expect(checkPulse(62)).toBe(62);
     expect(() => checkPulse(Number.NaN)).toThrow('got not a number');
+  });
+});
+
+describe('utcToLocal', () => {
+  it('turns every form of a Garmin instant into local wall-clock time', () => {
+    expect(utcToLocal(WAW, '2026-10-10T06:00:00Z')).toBe('2026-10-10T08:00:00');
+    expect(utcToLocal(WAW, '2026-10-07T07:00:00.000+0000')).toBe('2026-10-07T09:00:00');
+    expect(utcToLocal(WAW, '2026-10-10T06:00:00.000+00:00')).toBe('2026-10-10T08:00:00');
+    expect(utcToLocal(WAW, '2026-10-10T08:00:00+02:00')).toBe('2026-10-10T08:00:00');
+    // Without a zone the string is GMT (Garmin's `*GMT` fields, readiness `timestamp`).
+    expect(utcToLocal(WAW, '2026-10-09T21:13:30.0')).toBe('2026-10-09T23:13:30');
+    expect(utcToLocal(WAW, '2026-11-17 08:15')).toBe('2026-11-17T09:15:00');
+    expect(utcToLocal(WAW, Date.parse('2026-11-17T08:15:00Z'))).toBe('2026-11-17T09:15:00');
+    expect(utcToLocal('UTC', '2026-10-10T06:00:00Z')).toBe('2026-10-10T06:00:00');
+  });
+
+  it('follows the October clock change, also across midnight', () => {
+    // 2026-10-25 03:00 CEST becomes 02:00 CET (01:00 UTC).
+    expect(utcToLocal(WAW, '2026-10-24T22:30:00Z')).toBe('2026-10-25T00:30:00');
+    expect(utcToLocal(WAW, '2026-10-25T00:30:00Z')).toBe('2026-10-25T02:30:00');
+    expect(utcToLocal(WAW, '2026-10-25T01:30:00Z')).toBe('2026-10-25T02:30:00');
+    expect(utcToLocal(WAW, '2026-10-26T06:00:00Z')).toBe('2026-10-26T07:00:00');
+  });
+
+  it('is undefined for anything that is not an instant', () => {
+    for (const v of [undefined, null, '', 'yesterday', '2026-10-10', '2026-10-10T00:00:00Z#123', Number.NaN, {}]) expect(utcToLocal(WAW, v)).toBeUndefined();
   });
 });

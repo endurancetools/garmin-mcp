@@ -1,18 +1,27 @@
 import type { IsoDate } from 'garmin-mcp-config';
 import type { BodyCompositionRow } from 'garmin-mcp-store';
 import { round } from './format.js';
+import { utcToLocal } from './measurements.js';
 import { trend, type Trend } from './stats.js';
 
 export interface BodyCompositionSummary {
-  measurements: { time_utc: string; date: string; sample_pk?: number; weight_kg?: number; body_fat_pct?: number; muscle_mass_kg?: number; bmi?: number }[];
+  measurements: { time_local: string; date: string; sample_pk?: number; weight_kg?: number; body_fat_pct?: number; muscle_mass_kg?: number; bmi?: number }[];
   latest?: { date: string; weight_kg?: number; body_fat_pct?: number };
   change_kg?: number;
   weight_trend?: Trend;
   body_fat_trend?: Trend;
 }
 
-/** Measurements in kg plus weight and body-fat trends (`get_body_composition`). */
-export function bodyComposition(rows: readonly BodyCompositionRow[], to: IsoDate, history: readonly BodyCompositionRow[] = rows): BodyCompositionSummary {
+/**
+ * When a weigh-in was taken, local in `timeZone`; a weigh-in Garmin sent without a time (stored as
+ * "<date>T00:00:00Z#<samplePk>") is only its date.
+ */
+function weighInTime(r: BodyCompositionRow, timeZone: string): string {
+  return r.sample_time_utc.includes('#') ? r.date : (utcToLocal(timeZone, r.sample_time_utc) ?? r.date);
+}
+
+/** Measurements in kg plus weight and body-fat trends (`get_body_composition`); times local in `timeZone`. */
+export function bodyComposition(rows: readonly BodyCompositionRow[], to: IsoDate, timeZone: string, history: readonly BodyCompositionRow[] = rows): BodyCompositionSummary {
   const sorted = rows.toSorted((a, b) => a.sample_time_utc.localeCompare(b.sample_time_utc));
   // One value per day (the last measurement) for trends.
   const perDay = (xs: readonly BodyCompositionRow[], f: (r: BodyCompositionRow) => number | null) => {
@@ -27,7 +36,7 @@ export function bodyComposition(rows: readonly BodyCompositionRow[], to: IsoDate
   const last = sorted.findLast((r) => r.weight_kg !== null);
   return {
     measurements: sorted.map((r) => ({
-      time_utc: r.sample_time_utc,
+      time_local: weighInTime(r, timeZone),
       date: r.date,
       sample_pk: r.sample_pk ?? undefined,
       weight_kg: round(r.weight_kg, 1),

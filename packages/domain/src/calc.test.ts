@@ -58,7 +58,7 @@ describe('training load', () => {
   it('labels Garmin status phrases', () => expect(statusLabel('PRODUCTIVE_1')).toBe('productive'));
 
   it('explains that form bands are scaled to CTL, not Coggan\'s absolute TSB bands', () => {
-    const note = trainingOverview([], [{ date: day(0), training_load: 80 }], day(0), day(0), false).note;
+    const note = trainingOverview([], [{ date: day(0), training_load: 80 }], day(0), day(0), false, 'UTC').note;
     expect(note).toContain('garmin_load_model.form uses TSB bands scaled to CTL');
     expect(note).toContain('not Coggan\'s absolute TSB bands, because Garmin training load is on an EPOC scale');
   });

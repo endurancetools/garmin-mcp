@@ -77,6 +77,38 @@ describe('GarminService', () => {
     expect(JSON.stringify(range.data)).not.toContain('timeline');
   });
 
+  it('gives times in the data local in GARMIN_TIMEZONE, without the UTC fields', async () => {
+    const { service, store } = setup({ timeZone: 'Europe/Warsaw', activities: [summary(1, '2026-10-07')] });
+    const sleep = fixture('sleep') as Parameters<typeof sleepColumns>[0];
+    store.putDaily('sleep', '2026-10-07', sleepColumns(sleep), sleep, NOW);
+    // The fixture night runs 21:13:31-04:48:30 GMT, CEST is UTC+2.
+    const night = await service.getSleep({ date: '2026-10-07' });
+    expect(night.data).toMatchObject({ start_local: '2026-10-09T23:13:31', end_local: '2026-10-10T06:48:30' });
+    expect((await service.getDevices()).data.devices[0]?.last_sync_local).toBe('2026-10-11T19:48:39');
+    expect((await service.getActivity(1, 'weather')).data.weather?.observed_at).toBe('2026-10-07T09:00:00');
+    expect((await service.getTrainingStatus({})).data.recovery).toEqual({ remaining_h: 10, as_of: '2026-10-08T12:00:00' });
+    const all = JSON.stringify([night, await service.getDevices()]);
+    expect(all).not.toMatch(/_utc|"start_local":"[^"]*Z"/);
+
+    // Weigh-ins either side of the October clock change (2026-10-25), and one Garmin sent without a time.
+    const later = setup({ timeZone: 'Europe/Warsaw', autoFetch: false, now: Date.parse('2026-11-02T12:00:00Z') });
+    const entries = [
+      { samplePk: 1, calendarDate: '2026-10-24', timestampGMT: Date.parse('2026-10-24T06:00:00Z'), weight: 75_300 },
+      { samplePk: 2, calendarDate: '2026-10-26', timestampGMT: Date.parse('2026-10-26T07:00:00Z'), weight: 75_000 },
+      { samplePk: 3, calendarDate: '2026-10-27', weight: 74_800 },
+      { samplePk: 4, calendarDate: '2026-10-31', timestampGMT: Date.parse('2026-10-30T23:30:00Z'), weight: 74_900 },
+    ];
+    later.store.replaceWeighIns('2026-10-20', '2026-10-31', entries as never, NOW);
+    const body = await later.service.getBodyComposition('2026-10-20', '2026-10-31');
+    expect(body.data.measurements.map((m) => [m.time_local, m.date])).toEqual([
+      ['2026-10-24T08:00:00', '2026-10-24'],
+      ['2026-10-26T08:00:00', '2026-10-26'],
+      ['2026-10-27', '2026-10-27'],
+      ['2026-10-31T00:30:00', '2026-10-31'],
+    ]);
+    expect(JSON.stringify(body.data)).not.toContain('_utc');
+  });
+
   it('answers a 90-day health question from the cache after the first fetch', async () => {
     const { service, count } = setup();
     const first = await service.queryHealth(['steps', 'sleep', 'hrv'], '2026-07-11', '2026-10-08', 'week');
@@ -249,7 +281,7 @@ describe('GarminService', () => {
     const res = await service.getTrainingStatus({});
     expect(res.data).toMatchObject({
       vo2max: { running: 50 },
-      recovery: { remaining_h: 10, as_of: '2026-10-08T10:00:00.0' },
+      recovery: { remaining_h: 10, as_of: '2026-10-08T10:00:00' },
       load_focus: {
         feedback: 'aerobic high shortage',
         aerobic_low: { load: 610, target_min: 300, target_max: 600, status: 'above' },
@@ -481,7 +513,7 @@ describe('GarminService', () => {
       wind_dir_deg: 315,
       conditions: 'partly cloudy',
       station: 'Warsaw Chopin',
-      observed_at: '2026-10-07T07:00:00.000+0000',
+      observed_at: '2026-10-07T07:00:00',
     });
 
     const e = await service.getActivity(1, 'exercise_sets');
@@ -1414,7 +1446,7 @@ describe('GarminService', () => {
       model: 'fenix 8 - 47mm, Solar',
       firmware: '23.39',
       primary: true,
-      last_sync_utc: '2026-10-11T17:48:39Z',
+      last_sync_local: '2026-10-11T17:48:39',
       settings: { time_format: 'time_twenty_four_hr', date_format: 'date_day_month', units: 'metric', alarms: 0, alarms_on: 0 },
       // Daily sums of the trimmed E8-8a recording (12 readings a day); the readings stay out.
       solar: [

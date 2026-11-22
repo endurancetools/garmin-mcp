@@ -61,6 +61,8 @@ export function setup(
     solar?: unknown;
     /** Daily request limit of the requests a read makes outside sync jobs (`Syncer.lazyRequest`); none by default. */
     maxRequestsPerDay?: number;
+    /** GARMIN_TIMEZONE of the service and its syncer; UTC by default. */
+    timeZone?: string;
   } = {},
 ) {
   const now = opts.now ?? NOW;
@@ -340,15 +342,15 @@ export function setup(
     downloadActivity: (id: number, format: string) => rec('downloadActivity', [id, format], () => ({ data: opts.zip ?? new Uint8Array([1, 2, 3]), contentType: 'application/zip', filename: undefined })),
   };
   const store = Store.open(':memory:');
-  const syncer = new Syncer(client as unknown as GarminClient, store, { timeZone: 'UTC', now: () => now, fetchOnDemand: opts.autoFetch ?? true, maxRequestsPerDay: opts.maxRequestsPerDay });
-  const jobs = new SyncJobRunner(syncer, store, { chunkDays: 7, pause: { minMs: 0, maxMs: 0 }, maxRequestsPerDay: 10_000, timeZone: 'UTC', now: () => now });
+  const syncer = new Syncer(client as unknown as GarminClient, store, { timeZone: opts.timeZone ?? 'UTC', now: () => now, fetchOnDemand: opts.autoFetch ?? true, maxRequestsPerDay: opts.maxRequestsPerDay });
+  const jobs = new SyncJobRunner(syncer, store, { chunkDays: 7, pause: { minMs: 0, maxMs: 0 }, maxRequestsPerDay: 10_000, timeZone: opts.timeZone ?? 'UTC', now: () => now });
   const downloadDir = fs.mkdtempSync(path.join(os.tmpdir(), 'garmin-dl-'));
   const service = new GarminService({
     client: client as unknown as GarminClient,
     store,
     syncer,
     jobs,
-    timeZone: 'UTC',
+    timeZone: opts.timeZone ?? 'UTC',
     downloadDir,
     budgetMs: opts.budgetMs ?? 2000,
     autoSync: opts.autoSync ?? false,

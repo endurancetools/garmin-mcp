@@ -15,7 +15,7 @@ Everything works without configuration. Settings are environment variables passe
 | `GARMIN_REDACT` | `true` | the raw activity output (`get_activity` with `detail: "full"`) leaves out your name, profile and photo links, device and sensor serial numbers and GPS positions; `false` returns Garmin's data as sent |
 | `GARMIN_DATA_DIR` | `~/.garmin-mcp` | where tokens, the database and `config.json` live |
 | `GARMIN_FIT_DOWNLOAD_DIR` | `~/.garmin-mcp/downloads` | where activity files are saved |
-| `GARMIN_TIMEZONE` | your system's | IANA zone used for "today" and week boundaries |
+| `GARMIN_TIMEZONE` | your system's | IANA zone used for "today", week boundaries and the times in answers |
 | `GARMIN_REGION` | `global` | `cn` for Garmin China accounts |
 | `GARMIN_BROWSER_PATH` | detected | browser used for the sign-in window |
 | `GARMIN_ENABLED_TOOLS`, `GARMIN_DISABLED_TOOLS` | | comma-separated lists to expose only some tools |

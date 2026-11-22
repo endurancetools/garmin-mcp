@@ -2,6 +2,7 @@ import type { IsoDate } from 'garmin-mcp-config';
 import type { DailyRows, TrainingMetricsRow } from 'garmin-mcp-store';
 import { hms, iso, km, round } from './format.js';
 import { formState, trainingLoadSeries, type LoadInput, type LoadPoint } from './load.js';
+import { utcToLocal } from './measurements.js';
 import { trend, type Trend } from './stats.js';
 
 type StatusRow = DailyRows['training_status'];
@@ -65,6 +66,7 @@ export function trainingOverview(
   from: IsoDate,
   to: IsoDate,
   includeSeries: boolean,
+  timeZone: string,
   metrics?: TrainingMetricsRow,
 ): TrainingOverview {
   const sorted = status.toSorted((a, b) => a.date.localeCompare(b.date));
@@ -96,7 +98,7 @@ export function trainingOverview(
       ratio: acute !== undefined && chronic ? round(acute / chronic, 2) : undefined,
       acwr_status: acwrStatus(latest.raw),
     },
-    recovery: recovery(latest?.raw),
+    recovery: recovery(latest?.raw, timeZone),
     load_focus: loadFocus(latest?.raw),
     garmin_load_model: last && { ...last, form: formState(last).replaceAll('_', ' ') },
     load_series: includeSeries ? series : undefined,
@@ -128,14 +130,19 @@ const label = (v: unknown) => str(v)?.toLowerCase().replaceAll('_', ' ');
 const obj = (v: unknown): Record<string, unknown> | undefined =>
   v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : undefined;
 
-/** Garmin's recovery clock (minutes) from the newest readiness snapshot; "REACHED_ZERO" keeps the old minutes. */
-function recovery(raw: unknown): TrainingOverview['recovery'] {
+/**
+ * Garmin's recovery clock (minutes) from the newest readiness snapshot; "REACHED_ZERO" keeps the old minutes.
+ * `as_of` is local in `timeZone`: from the GMT `timestamp`, or the watch's `timestampLocal` without one.
+ */
+function recovery(raw: unknown, timeZone: string): TrainingOverview['recovery'] {
   const snapshots = (raw as StatusRaw | null)?.readiness ?? [];
-  const latest = snapshots.toSorted((a, b) => String(a.timestampLocal ?? a.timestamp ?? '').localeCompare(String(b.timestampLocal ?? b.timestamp ?? ''))).at(-1);
+  // A wall-clock `timestampLocal` read "as UTC" in UTC is only normalised to YYYY-MM-DDTHH:MM:SS.
+  const at = (s: (typeof snapshots)[number]) => utcToLocal(timeZone, s.timestamp) ?? utcToLocal('UTC', s.timestampLocal);
+  const latest = snapshots.toSorted((a, b) => (at(a) ?? '').localeCompare(at(b) ?? '')).at(-1);
   if (!latest) return undefined;
   const minutes = latest.recoveryTimeChangePhrase === 'REACHED_ZERO' ? 0 : num(latest.recoveryTime);
   if (minutes === undefined || minutes < 0) return undefined;
-  return { remaining_h: round(minutes / 60, 1), as_of: str(latest.timestampLocal) ?? str(latest.timestamp) };
+  return { remaining_h: round(minutes / 60, 1), as_of: at(latest) };
 }
 
 function loadFocus(raw: unknown): LoadFocus | undefined {

@@ -130,7 +130,7 @@ Totals for the 111 reads: 76 full, 14 partial, 21 missing.
 | Heart rate zones | `garmin://profile` → `hr_zones`, `get_thresholds` → `zones` | full | all sports at once; `get_thresholds` also has the power zones, for clients without resources |
 | Gear and gear stats | `get_gear` `include_activities` | full | stats always included |
 | Devices | `get_devices` | full | |
-| Device last used | `get_devices` → `last_sync_utc` | full | |
+| Device last used | `get_devices` → `last_sync_local` | full | in your time zone |
 | Primary training device | `get_devices` → `primary` | full | |
 | Device settings | `get_devices` → `settings` | full | every device, not one by id; time/date format, units, tones, activity tracking alerts, alarm counts |
 | Device alarms | `get_devices` → `settings.alarms`, `settings.alarms_on` | partial | how many alarms are set and how many are on; alarm times and days are not shown until a recording with an alarm set confirms their shape |
