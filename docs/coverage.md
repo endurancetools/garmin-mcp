@@ -25,13 +25,13 @@ Totals for the 111 reads: 76 full, 14 partial, 21 missing.
 | Activities in a date range, by type | `get_activities` `from`, `to`, `type`, `event_type`, `limit`, `cursor` | full | `type` matches the Garmin type key partially; `event_type` (e.g. `race`) the whole key |
 | Activities on one day | `get_activities` `from` = `to` = date | full | |
 | Activity count | `garmin://sync-status` → `tables` | partial | counts activities in the local cache, not on the account |
-| Activity summary | `get_activity` `id`, `detail: "summary"` | full | |
-| Activity laps | `get_activity` `detail: "splits"` | full | laps (`lapDTOs`) |
+| Activity summary | `get_activity` `id`, `detail: "summary"` | full | a swim has the pace per 100 m (`avg_pace_100m`) next to `avg_speed_kmh`, as in `get_activities` and in the laps, typed splits and `stream_summary` buckets of the swim |
+| Activity laps | `get_activity` `detail: "splits"` | full | laps (`lapDTOs`); `lap_summary`: the laps summed per intensity (warmup, active, interval, recovery, rest, cooldown) with count, time, distance, pace or speed from the totals, and heart rate, GAP and power averaged over time |
 | Typed splits (run/walk/stand intervals) | `get_activity` `detail: "splits"` → `typed_splits` | full | run, walk, stand, ClimbPro climbs and other types with start, time, distance, elevation, grade, pace, GAP, HR; ClimbPro climb sections are left out |
-| Split summaries | `get_activity` `detail: "splits"` → `split_summaries` | full | totals per split type (count, time, distance, elevation, pace, GAP, HR); run/walk/stand shares also in `motion` of the summary |
+| Split summaries | `get_activity` `detail: "splits"` → `split_summaries` | full | totals per split type (count, time, distance, elevation, pace, GAP, HR) with `time_pct` and `distance_pct`, the share within the types that split the activity between them (run/walk/stand, the interval types; none for a type alone, such as a climb); run/walk/stand shares also in `motion` of the summary |
 | Time in heart rate zones | `get_activity` `detail: "hr_zones"` | full | |
 | Time in power zones | `get_activity` `detail: "power_zones"` | full | |
-| Activity weather | `get_activity` `detail: "weather"` | full | always metric (°C, km/h) |
+| Activity weather | `get_activity` `detail: "weather"` | full | always metric (°C, km/h); `observed_at` in your time zone |
 | Strength exercise sets | `get_activity` `detail: "exercise_sets"` | full | rest sets become `rest_after` of the preceding set |
 | Gear used in an activity | `get_activity` → `gear_uuid`, name from `get_gear` | partial | one gear item (the one in the activity list), not the full gear list of the activity |
 | Activity types | `garmin://activity-types` | full | type keys with parent type, from the reference sync; the same keys `get_activities` `type` and `update_activity` `type` take |
@@ -69,8 +69,8 @@ Totals for the 111 reads: 76 full, 14 partial, 21 missing.
 | Floors | `query_health` `metrics: [floors]` | full | floors climbed per day; no descended floors or 15-minute series |
 | Training readiness | `get_training_status` `to` = date → `readiness` | full | |
 | Morning training readiness | `get_training_status` → `readiness` | full | morning (`AFTER_WAKEUP_RESET`) value is preferred |
-| Recovery time remaining | `get_training_status` `to` = date → `recovery.remaining_h` | full | newest readiness snapshot of the day; no fallback to recovery time of recent activities |
-| Body composition | `get_body_composition` `from`, `to` | full | |
+| Recovery time remaining | `get_training_status` `to` = date → `recovery.remaining_h` | full | newest readiness snapshot of the day; no fallback to recovery time of recent activities; `recovery.as_of` in your time zone |
+| Body composition | `get_body_composition` `from`, `to` | full | `measurements[].time_local` in your time zone; only the date for a weigh-in Garmin sent without a time |
 | Blood pressure | — | missing | client has `getBloodPressure`; waits for a recording with readings to confirm their shape. |
 | Hydration | `query_health` `metrics: [hydration]` | full | ml drunk, goal and sweat loss per day (week: averages); downloaded per day by the question, days without a water entry left out |
 | All-day events | — | missing | waits for a recording of its shape. |
@@ -81,7 +81,7 @@ Totals for the 111 reads: 76 full, 14 partial, 21 missing.
 | Garmin Connect data | garmin-mcp | Coverage | Note |
 | --- | --- | --- | --- |
 | Sleep of one night, full detail | `get_sleep` `date` → `timeline` | full | stages, score, SpO2, respiration, HRV; `timeline`: stage segments (at most 60), awakenings with times, restless moments, lowest heart rate, HRV and SpO2 with times, Body Battery at the start and end; clock times in the user's time zone |
-| Sleep summary of one night | `get_sleep` `date` | full | |
+| Sleep summary of one night | `get_sleep` `date` | full | bed and wake time as `start_local`, `end_local` in your time zone |
 | Sleep over a date range | `get_sleep` `from`, `to` | full | adds averages and trend |
 
 ### Training
@@ -93,9 +93,9 @@ Totals for the 111 reads: 76 full, 14 partial, 21 missing.
 | Training load balance | `get_training_status` `to` = date → `load_focus` | full | bands with targets and below/within/above |
 | VO2max trend | `get_training_status` `from`, `to` → `vo2max.running_trend` | partial | trend, not the daily series |
 | HRV of one night | `query_health` `metrics: [hrv]` → `hrv_status`, `hrv_baseline_low_ms`, `hrv_baseline_high_ms`; `get_sleep` `date` → `timeline.hrv` | full | last-night average, status and baseline; the night's lowest and highest 5-minute reading with times, not the reading series |
-| HRV trend | `query_health` `metrics: [hrv]`, `from`, `to` | full | |
+| HRV trend | `query_health` `metrics: [hrv]`, `from`, `to`; `get_period_summary` → `health.hrv` | full | `summary.hrv.status_days`: days per HRV status (`balanced`, `unbalanced`, `low`, `poor`, stored days without a status in `no_status`), also with `granularity: "week"`; the same `health.hrv.status_days` in `get_period_summary` |
 | Respiration trend | `query_health` `metrics: [respiration]`, `from`, `to` | full | |
-| Progress summary between dates | `get_period_summary` `period: "range"`, `from`, `to`; `get_activities` | full | any range up to 366 days; `period` week or month with `anchor_date` for calendar periods |
+| Progress summary between dates | `get_period_summary` `period: "range"`, `from`, `to`; `get_activities` | full | any range up to 366 days; `period` week or month with `anchor_date` for calendar periods; `vs_previous`: the change against the period of the same length just before (sessions, hours, km, training load, resting heart rate, HRV, sleep) with its values, from the cache only, left out when that period is not fully synced |
 | Cycling FTP | `garmin://profile` → `power_zones[].ftp_w`, `get_thresholds` `ftp_w` | full | `get_thresholds` dates it with the day Garmin set it |
 | Lactate threshold | `get_thresholds` `lthr_run`, `run_threshold_pace_s_per_km` (`history: true`); `garmin://profile` → `lactate_threshold_hr_bpm` | full | heart rate and pace with Garmin's dates, the last 365 days, downloaded once a day by the analytics reads |
 | Endurance score | `get_training_status` → `metrics.endurance_score` | partial | latest score, class and weekly averages of the 4 weeks before the sync; no arbitrary range, no contributors. |
@@ -181,7 +181,7 @@ garmin-mcp deliberately has few writes; listed so nothing disappears silently.
 | Manual activity | `update_activity` without `id`: `type`, `start` (local time), `duration_min`, optional `distance_km`, `name`, `description`, `rpe`, `feel`, `privacy` (private unless set) |
 | Upload an activity file (FIT, GPX, TCX) | `garmin upload <file...>` (CLI; prints the new activity id and stores the activity in the local cache; a duplicate is reported, not an error) |
 | Workout from a preset (run intervals, walk/run, easy Z2, strength circuit) | `create_workout` `preset` (with `dry_run: true` first: steps and estimated duration, nothing saved) |
-| Workout from typed steps (nestable repeats, HR/pace/power/cadence targets, strength exercises with load) | `create_workout` `definition` (`dry_run: true` shows it first) |
+| Workout from typed steps (nestable repeats, HR/pace/power/cadence targets, strength exercises with load) | `create_workout` `definition` (`dry_run: true` shows it first, with the category and exercise key of each strength exercise; an exercise that is not in Garmin's catalogue is refused with the similar ones, also in a preset or `garmin_json`) |
 | Workout from raw Garmin JSON | `create_workout` `garmin_json` (one per call; `dry_run: true` shows it first) |
 | Edit a saved workout | `create_workout` `workout_id` (opt-in `GARMIN_ENABLE_DESTRUCTIVE`; overwrites in place, the id and calendar entries stay) |
 | Schedule workouts on dates | `schedule_workouts` `items` |
@@ -210,8 +210,10 @@ Not Garmin Connect reads: these are computed by garmin-mcp from data already in 
 | --- | --- | --- |
 | Own load model: TSS per activity (power, pace, heart rate or RPE), CTL/ATL/TSB, ACWR, monotony, strain, flags | `get_load` | activities (normalized power, grade adjusted speed, heart rate, duration), daily resting heart rate, threshold history |
 | Weekly volume per sport, 3-zone intensity split, efficiency trend | `get_load` `include_activities`, `include_efficiency` | activities (HR zones, speed, grade adjusted speed, normalized power) |
+| Week totals of all sports with the TSS change, range totals with rest days, the longest break and the days since the last session, the CTL peak | `get_load` → `week_totals`, `totals`, `ctl_peak` | activities, the load model over the whole history |
 | Morning GO / MODIFY / REST decision | `get_readiness` | HRV, resting heart rate, hours of sleep, the load model; Body Battery, stress, sleep score and training readiness shown, not counted |
 | Threshold history (LTHR per sport, LT1, HRmax, FTP, VO2max...) | `get_thresholds`, `set_threshold` | Garmin profile values recorded on each change, Garmin's lactate threshold and FTP history with its dates, plus your own test results |
 | FTP estimate: 95 % of the best 20 min ride power of 90 days, shown and not recorded | `get_thresholds` → `estimates.ftp_w` | power curves stored by `get_activity` `detail: "power_curve"` |
 | Best 5 and 20 min power next to the other session metrics | `compare_activities` → `best_5min_w`, `best_20min_w` | power curves stored by `get_activity` `detail: "power_curve"` |
+| Differences from the reference session (duration, distance, pace, GAP, heart rate, power, TSS, EF, decoupling, best 5 and 20 min power) | `compare_activities` → `vs_reference` | the compared rows; EF only between the same sport, decoupling only with the same basis |
 | Activities from Garmin Connect CSV exports | `garmin import-activities` (CLI) | for dates the synced activities do not cover |
