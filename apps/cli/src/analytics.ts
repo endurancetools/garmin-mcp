@@ -44,7 +44,22 @@ export function loadMarkdown({ data, meta }: Envelope<LoadData>): string {
     out.push('', `## By sport on ${data.to}`, '', mdTable(rows, ['sport', 'ctl', 'atl', 'tsb', 'acwr']));
   }
   if (data.flags?.length) out.push('', '## Flags', '', ...data.flags.map((f) => `- **${f.code}**: ${f.text}`));
-  out.push('', '## Weeks', '', mdTable(data.weeks ?? [], ['week', 'sport', 'sessions', 'hours', 'km', 'elev_m', 'tss', 'hrtss', 'g_load', 'z12_h', 'z3_h', 'z45_h']));
+  // Each week: its sport rows, then the sum of all sports (`week_totals`), also for a week without sessions.
+  const sportRows = data.weeks ?? [];
+  const weekRows = data.week_totals?.length
+    ? data.week_totals.flatMap((t) => [
+        ...sportRows.filter((r) => r.week === t.week),
+        { ...t, sport: 'all', tss_change_pct: t.tss_change_pct === undefined ? undefined : `${t.tss_change_pct > 0 ? '+' : ''}${t.tss_change_pct}%` },
+      ])
+    : sportRows;
+  out.push('', '## Weeks', '', mdTable(weekRows, ['week', 'sport', 'sessions', 'hours', 'km', 'elev_m', 'tss', 'hrtss', 'tss_change_pct', 'g_load', 'z12_h', 'z3_h', 'z45_h']));
+  const r = data.totals;
+  if (r) {
+    out.push(
+      '',
+      `Range ${data.from}..${data.to}: ${r.days} days, ${r.sessions} sessions on ${r.active_days} days (${r.rest_days} without), ${r.hours} h, ${r.km} km, ${r.elev_m} m up, ${r.tss} tss, ${r.hrtss} hrtss.`,
+    );
+  }
   const i = data.intensity;
   out.push(
     '',

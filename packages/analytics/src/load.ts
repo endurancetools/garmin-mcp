@@ -1,4 +1,4 @@
-import { addDays, daysBetween, type IsoDate } from 'garmin-mcp-config';
+import { addDays, daysBetween, isoWeek, startOfWeek, type IsoDate } from 'garmin-mcp-config';
 import { round, trainingLoadSeries } from 'garmin-mcp-domain';
 import type { Session } from './session.js';
 import { INTENSITY_SPORTS, isSportGroup, SPORT_GROUPS, type SportGroup } from './sport.js';
@@ -336,6 +336,83 @@ export function weeklyBySport(sessions: readonly Session[]): WeekSport[] {
 }
 
 const pct = (cur: number, prev: number): number | undefined => (prev > 0 ? ((cur - prev) / prev) * 100 : undefined);
+
+/** Volume of all sports in one ISO week of the range (a week cut by `from` or `to` counts only its days in the range). */
+export interface WeekTotal {
+  week: string;
+  sessions: number;
+  hours: number;
+  km: number;
+  elev_m: number;
+  tss: number;
+  hrtss: number;
+  /** Change of `tss` against the week before in the range, whole percent; absent in the first week and after a week with 0. */
+  tss_change_pct?: number;
+}
+
+/** Volume of all sports over the whole `from..to`. */
+export interface RangeTotals {
+  days: number;
+  sessions: number;
+  /** Days with at least one session; `rest_days` = `days` - `active_days`. */
+  active_days: number;
+  rest_days: number;
+  hours: number;
+  km: number;
+  elev_m: number;
+  tss: number;
+  hrtss: number;
+}
+
+type Volume = Pick<WeekTotal, 'sessions' | 'hours' | 'km' | 'elev_m' | 'tss' | 'hrtss'>;
+
+/** Σ of the sessions with the roundings of {@link weeklyBySport}. */
+function volume(sessions: readonly Session[]): Volume {
+  const v = { hours: 0, km: 0, elev_m: 0, tss: 0, hrtss: 0 };
+  for (const s of sessions) {
+    v.hours += (s.duration_s ?? 0) / 3600;
+    v.km += (s.distance_m ?? 0) / 1000;
+    v.elev_m += s.elev_gain_m ?? 0;
+    v.tss += s.tss ?? 0;
+    v.hrtss += s.hrtss;
+  }
+  return {
+    sessions: sessions.length,
+    hours: round(v.hours, 2) ?? 0,
+    km: round(v.km, 1) ?? 0,
+    elev_m: round(v.elev_m, 0) ?? 0,
+    tss: round(v.tss, 0) ?? 0,
+    hrtss: round(v.hrtss, 0) ?? 0,
+  };
+}
+
+const between = (sessions: readonly Session[], from: IsoDate, to: IsoDate) => sessions.filter((s) => s.date >= from && s.date <= to);
+
+/**
+ * Every ISO week of `from..to`, also one without a session, with the volume of all sports on
+ * its days in the range and the TSS change against the week before (from the rounded `tss`).
+ */
+export function weekTotals(sessions: readonly Session[], from: IsoDate, to: IsoDate): WeekTotal[] {
+  const out: WeekTotal[] = [];
+  for (let monday = startOfWeek(from); monday <= to; monday = addDays(monday, 7)) {
+    const sunday = addDays(monday, 6);
+    const week: WeekTotal = { week: isoWeek(monday), ...volume(between(sessions, monday < from ? from : monday, sunday < to ? sunday : to)) };
+    const prev = out.at(-1);
+    const change = prev && pct(week.tss, prev.tss);
+    if (change !== undefined) week.tss_change_pct = round(change, 0);
+    out.push(week);
+  }
+  return out;
+}
+
+/** Volume of all sports over `from..to` with the number of days, days with a session and days without one. */
+export function rangeTotals(sessions: readonly Session[], from: IsoDate, to: IsoDate): RangeTotals {
+  const inRange = between(sessions, from, to);
+  const days = daysBetween(from, to) + 1;
+  const activeDays = new Set(inRange.map((s) => s.date)).size;
+  const { sessions: n, ...v } = volume(inRange);
+  return { days, sessions: n, active_days: activeDays, rest_days: days - activeDays, ...v };
+}
 
 /** Hours in the reference window below which `week_jump` is not raised (percentages of almost nothing). */
 export const WEEK_JUMP_MIN_REF_H = 1;

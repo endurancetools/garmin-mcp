@@ -8,6 +8,10 @@ All notable changes to Garmin MCP. All `garmin-mcp-*` packages share one version
 
 - **`create_workout` checks strength exercises against Garmin's catalogue.** Every exercise of a workout (typed steps, a preset or `garmin_json`) is checked before anything is previewed or saved, as `update_activity` already did for `exercise_sets`: an unknown category, or an exercise that is not in its category, fails with the step path and the categories or the similar exercises of that category, so "15 kettlebell swings" with a made-up key never reaches the watch as an unknown exercise. The preview of `dry_run` and `get_workout` now prints the catalogue keys next to the name, e.g. `Kettlebell swing [HIP_RAISE/KETTLEBELL_SWING] 16 kg`, so a key in the wrong category shows before you agree.
 
+### Training analytics
+
+- **Week and range totals in `get_load`.** Next to `weeks` (one row per ISO week and sport), the answer has `week_totals`: one row per ISO week of the range, also a week without sessions, with sessions, hours, km, elevation gain, TSS and hrTSS of all sports together and `tss_change_pct` against the week before; and `totals` for the whole range: days, sessions, days with and without a session and the same volume. The assistant no longer adds up the weeks itself. `garmin load` prints the week sum as an `all` row under each week and the range total below the table. How it works: [Training analytics](https://endurancetools.github.io/garmin-mcp/analytics/#load-model).
+
 ## 0.7.1 (2026-11-22)
 
 ### Training analytics

@@ -107,6 +107,8 @@ export const loadOutput = envelope({
       z45_h: num,
     }),
   ),
+  week_totals: list(z.looseObject({ week: str, sessions: num, hours: num, km: num, elev_m: num, tss: num, hrtss: num, tss_change_pct: num })),
+  totals: obj({ days: num, sessions: num, active_days: num, rest_days: num, hours: num, km: num, elev_m: num, tss: num, hrtss: num }),
   intensity: obj({
     from: str,
     to: str,

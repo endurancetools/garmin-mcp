@@ -137,6 +137,15 @@ describe('AnalyticsService.getLoad', () => {
     expect(res.data.activities?.[0]).toMatchObject({ id: 103, date: '2026-09-11', sport: 'run', tss: 69.4, if: 0.833, load_source: 'hr', hrtss: 69.4, lthr_used: 170, lt1_used: 153, rhr_used: 50, source: 'db' });
     expect(res.data.efficiency?.map((e) => e.period)).toEqual(['2026-09', '2026-10']);
     expect(res.data.weeks?.at(-1)).toMatchObject({ week: '2026-W41', sport: 'run', sessions: 4, hours: 4, km: 40 });
+    // 2026-09-11 (Friday of W37) .. 2026-10-08 (Thursday of W41): partial weeks count only their days in the range.
+    expect(res.data.week_totals?.map((w) => [w.week, w.sessions, w.tss, w.tss_change_pct])).toEqual([
+      ['2026-W37', 3, 208, undefined],
+      ['2026-W38', 7, 486, 134],
+      ['2026-W39', 7, 486, 0],
+      ['2026-W40', 7, 486, 0],
+      ['2026-W41', 4, 278, -43],
+    ]);
+    expect(res.data.totals).toEqual({ days: 28, sessions: 28, active_days: 28, rest_days: 0, hours: 28, km: 280, elev_m: 0, tss: 1943, hrtss: 1943 });
     expect(res.data.note).toMatch(/differs from garmin_load_model in get_training_status and get_period_summary/);
     expect(res.meta.note).toMatch(/LT1 approximated/);
     // Four months of history: fewer than 8 earlier 28-day windows, so no usual ratio and no drift note.

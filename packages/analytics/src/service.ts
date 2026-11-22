@@ -33,7 +33,9 @@ import {
   isLoadFlagValue,
   resolveLoadFlags,
   sportLoadOn,
+  rangeTotals,
   weeklyBySport,
+  weekTotals,
   withSportColumns,
   type HrMethod,
   type LoadDay,
@@ -42,7 +44,9 @@ import {
   type LoadSeriesDay,
   type LoadSource,
   type SportLoad,
+  type RangeTotals,
   type WeekSport,
+  type WeekTotal,
 } from './load.js';
 import {
   DEFAULT_READINESS_RULES,
@@ -136,6 +140,10 @@ export interface LoadData {
   flags: LoadFlag[];
   flags_used: LoadFlags;
   weeks: WeekSport[];
+  /** Every ISO week of the range, all sports together, with the TSS change against the week before. */
+  week_totals: WeekTotal[];
+  /** All sports over the whole `from..to`. */
+  totals: RangeTotals;
   /** Intensity of `flags_used.intensity_sports` (default run, bike, nordic, row) in the last 28 days of the range. */
   intensity: IntensityDistribution;
   thresholds_used: ThresholdsUsed;
@@ -532,6 +540,8 @@ export class AnalyticsService {
       flags: flagList,
       flags_used: flags,
       weeks: weeklyBySport(inRange),
+      week_totals: weekTotals(inRange, from, to),
+      totals: rangeTotals(inRange, from, to),
       intensity,
       thresholds_used: { date: to, by_sport: bySport, rhr: rhr.value },
       by_sport: perSport && sportLoadOn(perSport, to),

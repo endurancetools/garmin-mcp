@@ -14,8 +14,10 @@ import {
   resolveLoadFlags,
   sampleSd,
   sportLoadOn,
+  rangeTotals,
   weekJump,
   weeklyBySport,
+  weekTotals,
   withSportColumns,
   type LoadDay,
 } from './load.js';
@@ -392,6 +394,47 @@ describe('weeklyBySport', () => {
       ['nordic', 1.5, 20],
       ['row', 0.5, 6],
     ]);
+  });
+});
+
+describe('weekTotals and rangeTotals', () => {
+  // 2026-05-06 (Wednesday of W19) .. 2026-05-27 (Wednesday of W22); W20 has no session.
+  const FROM = '2026-05-06';
+  const TO = '2026-05-27';
+  const sessions = [
+    sess('2026-05-04', { tss: 500, hrtss: 500 }), // before `from`, same ISO week
+    sess('2026-05-06', { duration_s: 3600, distance_m: 10_000, elev_gain_m: 100, tss: 60, hrtss: 55 }),
+    sess('2026-05-06', { sport: 'bike', duration_s: 7200, distance_m: 50_000, elev_gain_m: 300, tss: 90, hrtss: 80 }),
+    sess('2026-05-09', { duration_s: 1800, distance_m: 5000, tss: 30, hrtss: 30 }),
+    sess('2026-05-19', { duration_s: 5400, distance_m: 15_000, tss: 120, hrtss: 110 }),
+    sess('2026-05-25', { duration_s: 3600, distance_m: 10_000, tss: 90, hrtss: 90 }),
+    sess('2026-05-28', { tss: 500, hrtss: 500 }), // after `to`, same ISO week
+  ];
+
+  it('sums all sports per ISO week of the range, with an empty week and the TSS change', () => {
+    expect(weekTotals(sessions, FROM, TO)).toEqual([
+      { week: '2026-W19', sessions: 3, hours: 3.5, km: 65, elev_m: 400, tss: 180, hrtss: 165 },
+      { week: '2026-W20', sessions: 0, hours: 0, km: 0, elev_m: 0, tss: 0, hrtss: 0, tss_change_pct: -100 },
+      // After a week with 0 TSS there is no change.
+      { week: '2026-W21', sessions: 1, hours: 1.5, km: 15, elev_m: 0, tss: 120, hrtss: 110 },
+      { week: '2026-W22', sessions: 1, hours: 1, km: 10, elev_m: 0, tss: 90, hrtss: 90, tss_change_pct: -25 },
+    ]);
+  });
+
+  it('sums the whole range with active and rest days, equal to the sum of the weeks', () => {
+    const totals = rangeTotals(sessions, FROM, TO);
+    expect(totals).toEqual({ days: 22, sessions: 5, active_days: 4, rest_days: 18, hours: 6, km: 90, elev_m: 400, tss: 390, hrtss: 365 });
+    const weeks = weekTotals(sessions, FROM, TO);
+    for (const k of ['sessions', 'hours', 'km', 'elev_m', 'tss', 'hrtss'] as const) {
+      expect(weeks.reduce((sum, w) => sum + w[k], 0)).toBeCloseTo(totals[k], 6);
+    }
+  });
+
+  it('rounds like weeks and returns one empty week for a range without sessions', () => {
+    const two = [sess('2026-05-06', { duration_s: 1000, distance_m: 3333, tss: 40.4, hrtss: 33.6 }), sess('2026-05-07', { duration_s: 1000, distance_m: 3333, tss: 40.4, hrtss: 33.6 })];
+    expect(weekTotals(two, '2026-05-04', '2026-05-10')).toEqual([{ week: '2026-W19', sessions: 2, hours: 0.56, km: 6.7, elev_m: 0, tss: 81, hrtss: 67 }]);
+    expect(weekTotals([], '2026-05-11', '2026-05-11')).toEqual([{ week: '2026-W20', sessions: 0, hours: 0, km: 0, elev_m: 0, tss: 0, hrtss: 0 }]);
+    expect(rangeTotals([], '2026-05-11', '2026-05-11')).toEqual({ days: 1, sessions: 0, active_days: 0, rest_days: 1, hours: 0, km: 0, elev_m: 0, tss: 0, hrtss: 0 });
   });
 });
 
