@@ -333,6 +333,12 @@ export const bodyCompositionOutput = envelope({
   body_fat_trend: trend,
 });
 
+/** Values `get_period_summary` compares with the previous period (`vs_previous`): differences, and the previous values. */
+const periodTotals = {
+  training: obj({ sessions: num, hours: num, km: num, training_load: num }),
+  health: obj({ resting_hr_avg: num, hrv_avg_ms: num, sleep_hours_avg: num }),
+};
+
 export const periodSummaryOutput = envelope({
   period: str,
   from: str,
@@ -355,6 +361,7 @@ export const periodSummaryOutput = envelope({
   garmin_load_model: obj({ ...loadPoint, form: str }),
   health: z.record(z.string(), z.looseObject({ avg: num, min: num, max: num, total: num, status_days: hrvStatusDays })).optional(),
   energy: obj({ avg_total_kcal: num, avg_resting_kcal: num, avg_active_kcal: num }),
+  vs_previous: obj({ from: str, to: str, ...periodTotals, previous: obj(periodTotals) }),
 });
 
 export const listWorkoutsOutput = envelope({

@@ -17,7 +17,7 @@ import {
 import { errInfo, FATAL_CODES, isFresh, isSolarDevice, multisportDuplicates, SCOPE_DAILY, solarDays, signInPause, TTL, type DailyKind, type DetailKind, type EnsureResult, type ReferenceKind, type Store, type SyncJobProgress, type SyncJobReport, type SyncJobRunner, type SyncScope, type Syncer, type TrainingPlanCache, type CourseCache, type BadgeCache } from 'garmin-mcp-store';
 import fs from 'node:fs';
 import path from 'node:path';
-import { activityBrief, activityListItem, eventTypeKey, periodActivitySummary } from './activities.js';
+import { activityBrief, activityListItem, eventTypeKey, periodActivitySummary, periodChange, periodVolume, type PeriodTotals } from './activities.js';
 import { activityWeather, MIN_TYPED_SPLIT_S, splitSummaries, strengthSets, typedSplits, zoneTimes, type ActivityWeather, type SplitSummary, type StrengthSets, type TypedSplit, type ZoneTime } from './activity-extras.js';
 import { gapPace, GPS_STREAM_METRICS, hrSource, motionTime, redactActivityRaw, respiration, runningDynamics, stamina, trainingEffectText, type RunningDynamics } from './activity-metrics.js';
 import { badgeSummary, challengeList, type BadgeChallenge, type EarnedBadge } from './badges.js';
@@ -30,7 +30,7 @@ import { energyBalance } from './energy.js';
 import { checkExerciseSets, checkWorkoutExercises, exerciseSetsBody, exerciseSetsInput, rawExerciseSets, type ExerciseSetInput } from './exercise-sets.js';
 import { readFitFile, weightScaleFile, type FitGearChange } from './fit.js';
 import { compact, hms, isFootSport, iso, km, round, speedOrPace } from './format.js';
-import { healthTable, tablesFor, type HealthGranularity, type HealthMetric } from './health.js';
+import { healthTable, tablesFor, type HealthGranularity, type HealthMetric, type HealthTable } from './health.js';
 import { hourlyTable, intradayKinds, isHourlyMetric } from './intraday.js';
 import { activityListRow, activityTypeName, checkEditMode, checkManualActivity } from './manual-activity.js';
 import { checkFatPct, checkPulse, checkWaterMl, checkWeightKg, measuredAt, parseBloodPressure } from './measurements.js';
@@ -293,6 +293,11 @@ function dailyScope(kinds: readonly DailyKind[]): SyncScope {
   const training = kinds.includes('training_status');
   if (!training) return 'health';
   return kinds.every((k) => k === 'training_status') ? 'training' : 'all';
+}
+
+/** The health averages `get_period_summary` compares with the previous period. */
+function healthTotals(summary: HealthTable['summary']): PeriodTotals['health'] {
+  return { resting_hr_avg: summary.resting_hr?.avg, hrv_avg_ms: summary.hrv?.avg, sleep_hours_avg: summary.sleep?.avg };
 }
 
 function withNote(meta: ResponseMeta, note: string): ResponseMeta {
@@ -1439,6 +1444,34 @@ export class GarminService {
     return { from, fullTo };
   }
 
+  /** The period just before a summary period: the week or calendar month before, or as many days before a range. */
+  #previousBounds(period: 'week' | 'month' | 'range', from: IsoDate, fullTo: IsoDate): { from: IsoDate; to: IsoDate } {
+    const to = addDays(from, -1);
+    if (period === 'week') return { from: addDays(from, -7), to };
+    if (period === 'month') return { from: startOfMonth(to), to };
+    return { from: addDays(from, -eachDay(from, fullTo).length), to };
+  }
+
+  /**
+   * `vs_previous` of a period summary, read from the cache only (nothing is downloaded for the
+   * previous period), or the note saying how to sync the previous period when it is not fully stored.
+   */
+  #vsPrevious(prev: { from: IsoDate; to: IsoDate }, current: PeriodTotals): { value?: ReturnType<typeof periodChange>; note?: string } {
+    const actsMissing = this.syncer.activityGaps(prev.from, prev.to).length > 0;
+    const cov = this.syncer.coverage(SCOPE_DAILY.health, prev.from, prev.to);
+    if (actsMissing || !cov.complete) {
+      const what = [...Object.entries(cov.missing).map(([k, n]) => `${n} day(s) of ${k}`), ...(actsMissing ? ['activities'] : [])].join(', ');
+      const scope: SyncScope = actsMissing && !cov.complete ? 'all' : actsMissing ? 'activities' : 'health';
+      return {
+        note: `vs_previous is left out: the previous period ${prev.from}..${prev.to} is not fully synced (${what}). Sync it with \`garmin sync --scope ${scope} --from ${prev.from} --to ${prev.to}\` (or garmin_sync with the same scope and dates) to compare.`,
+      };
+    }
+    const activities = withoutLegCopies(this.store.queryActivities({ from: prev.from, to: prev.to, sort: 'asc' }));
+    const rows = { daily: this.store.getDaily('daily_summary', prev.from, prev.to), sleep: this.store.getDaily('sleep', prev.from, prev.to), hrv: this.store.getDaily('hrv', prev.from, prev.to) };
+    const table = healthTable(['sleep', 'resting_hr', 'hrv'], rows, prev.from, prev.to, 'day');
+    return { value: periodChange(current, { training: periodVolume(activities, prev.from, prev.to), health: healthTotals(table.summary) }, prev.from, prev.to) };
+  }
+
   async getPeriodSummary(period: 'week' | 'month' | 'range', q: { anchor_date?: string; from?: string; to?: string } = {}) {
     const { from, fullTo } = this.#periodBounds(period, q);
     const to = fullTo > this.today() ? this.today() : fullTo;
@@ -1457,6 +1490,11 @@ export class GarminService {
     // Without synced activities an empty period would read as "no sessions, every day a rest day".
     const activitiesMissing = this.syncer.activityGaps(from, to).length > 0;
     const healthMissing = !this.syncer.coverage(['daily_summary', 'sleep', 'hrv'], from, to).complete;
+    const previous = this.#vsPrevious(this.#previousBounds(period, from, fullTo), {
+      training: activitiesMissing ? undefined : periodVolume(activities, from, to),
+      health: healthTotals(table.summary),
+    });
+    const meta = this.#meta([acts, health], [...activities.map((a) => a.fetched_at), ...daily.map((d) => d.fetched_at)], this.#periodGap(from, to));
     return {
       data: compact({
         period,
@@ -1467,8 +1505,9 @@ export class GarminService {
         garmin_load_model: load,
         health: Object.fromEntries(Object.entries(table.summary).map(([k, v]) => [k, { avg: v.avg, min: v.min, max: v.max, total: v.total, status_days: v.status_days }])),
         energy: { avg_total_kcal: energy.avg_total_kcal, avg_resting_kcal: energy.avg_resting_kcal, avg_active_kcal: energy.avg_active_kcal },
+        vs_previous: previous.value,
       }),
-      meta: this.#meta([acts, health], [...activities.map((a) => a.fetched_at), ...daily.map((d) => d.fetched_at)], this.#periodGap(from, to)),
+      meta: previous.note ? withNote(meta, previous.note) : meta,
     };
   }
 

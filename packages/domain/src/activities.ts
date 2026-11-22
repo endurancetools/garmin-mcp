@@ -173,3 +173,41 @@ export function periodActivitySummary(activities: readonly ActivityRow[], from: 
     hardest: hardest && hardest.training_load ? activityBrief(hardest) : undefined,
   };
 }
+
+/** What `get_period_summary` compares with the period before (`vs_previous`). */
+export interface PeriodTotals {
+  training?: { sessions: number; hours: number; km: number; training_load: number };
+  health: { resting_hr_avg?: number; hrv_avg_ms?: number; sleep_hours_avg?: number };
+}
+
+/** Decimals of each compared value; a difference is rounded like the values it subtracts. */
+const PERIOD_DIGITS: Record<string, number> = { sessions: 0, hours: 2, km: 1, training_load: 0, resting_hr_avg: 1, hrv_avg_ms: 1, sleep_hours_avg: 1 };
+
+/** Sessions, hours, km and Garmin training load of the activities dated in [from, to]. */
+export function periodVolume(activities: readonly ActivityRow[], from: IsoDate, to: IsoDate): NonNullable<PeriodTotals['training']> {
+  const inRange = activities.filter((a) => a.date !== null && a.date >= from && a.date <= to);
+  const sum = (f: (a: ActivityRow) => number | null) => inRange.reduce((acc, a) => acc + (f(a) ?? 0), 0);
+  return {
+    sessions: inRange.length,
+    hours: round(sum((a) => a.duration_s) / 3600, PERIOD_DIGITS.hours) ?? 0,
+    km: round(sum((a) => a.distance_m) / 1000, PERIOD_DIGITS.km) ?? 0,
+    training_load: round(sum((a) => a.training_load), PERIOD_DIGITS.training_load) ?? 0,
+  };
+}
+
+/**
+ * The current period minus the previous one, field by field, for the values both periods have
+ * (`training` only when both have it), with the previous values beside the differences.
+ */
+export function periodChange(current: PeriodTotals, previous: PeriodTotals, from: IsoDate, to: IsoDate) {
+  const diff = <T extends Record<string, number | undefined>>(a: T | undefined, b: T | undefined): Partial<T> | undefined => {
+    if (!a || !b) return undefined;
+    const out: Record<string, number | undefined> = {};
+    for (const [k, v] of Object.entries(a)) {
+      const p = b[k];
+      out[k] = v === undefined || p === undefined ? undefined : (round(v - p, PERIOD_DIGITS[k] ?? 1) ?? 0) + 0; // + 0: no -0 in the answer
+    }
+    return out as Partial<T>;
+  };
+  return { from, to, training: diff(current.training, previous.training), health: diff(current.health, previous.health), previous };
+}

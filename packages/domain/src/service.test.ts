@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { eachDay, GarminError } from 'garmin-mcp-config';
-import { clearSignInPause, hrvColumns, requestCounterKey, sleepColumns, TTL } from 'garmin-mcp-store';
+import { clearSignInPause, dailySummaryColumns, hrvColumns, requestCounterKey, sleepColumns, TTL } from 'garmin-mcp-store';
 import { describe, expect, it, vi } from 'vitest';
 import { fitWithPower } from './test-utils/fit.js';
 import { makeZip } from './test-utils/zip.js';
@@ -1565,7 +1565,9 @@ describe('GarminService', () => {
     expect(calls).toEqual([]);
     expect(gap.sync_hint).toEqual({ scope: 'all', from: '2026-09-01', to: '2026-09-30' });
     const summaryMeta = (await service.getPeriodSummary('month', { anchor_date: '2026-09-15' })).meta;
-    expect(gap).toEqual({ note: summaryMeta.note, sync_hint: summaryMeta.sync_hint });
+    // The summary's note adds only how to sync the previous month for vs_previous.
+    expect(gap).toEqual({ note: expect.any(String), sync_hint: summaryMeta.sync_hint });
+    expect(summaryMeta.note).toBe(`${gap.note} vs_previous is left out: the previous period 2026-08-01..2026-08-31 is not fully synced (31 day(s) of daily_summary, 31 day(s) of sleep, 31 day(s) of hrv, activities). Sync it with \`garmin sync --scope all --from 2026-08-01 --to 2026-08-31\` (or garmin_sync with the same scope and dates) to compare.`);
     expect(service.coverage('daily', '2026-09-01', '2026-09-30', ['training_status']).sync_hint).toEqual({ scope: 'training', from: '2026-09-01', to: '2026-09-30' });
     await service.sync('all', '2026-09-01', '2026-09-30');
     expect(service.coverage('period', '2026-09-01', '2026-09-30')).toEqual({});
@@ -1762,6 +1764,53 @@ describe('GarminService', () => {
     const health = await service.queryHealth(['hrv'], '2026-10-05', '2026-10-08', 'week');
     expect(health.data.rows?.[0]).toMatchObject({ hrv_status_last: 'low' });
     expect(health.data.summary?.hrv?.status_days).toEqual(expected);
+  });
+
+  it('compares a period with the one before from the cache, or says how to sync the one before', async () => {
+    const { service, store, calls } = setup({
+      autoFetch: false,
+      activities: [
+        summary(1, '2026-09-29'),
+        summary(2, '2026-10-01', { duration: 3600, distance: 12_000, activityTrainingLoad: 80 }),
+        summary(3, '2026-10-05'),
+        summary(4, '2026-10-06', { activityType: { typeKey: 'cycling' }, duration: 7200, distance: 40_000, activityTrainingLoad: 150 }),
+        summary(5, '2026-10-07'),
+      ],
+    });
+    await service.sync('health', '2026-09-28', '2026-10-08');
+    await service.sync('activities', '2026-09-28', '2026-10-08');
+    // One day of the week before with a higher resting HR and a lower HRV: averages 53 bpm and 59 ms against 52 and 60.
+    const daily = { totalSteps: 8000, restingHeartRate: 59 } as Parameters<typeof dailySummaryColumns>[0];
+    store.putDaily('daily_summary', '2026-09-29', dailySummaryColumns(daily), daily, NOW);
+    const hrv = { hrvSummary: { lastNightAvg: 53 } } as Parameters<typeof hrvColumns>[0];
+    store.putDaily('hrv', '2026-09-29', hrvColumns(hrv), hrv, NOW);
+    const synced = calls.length;
+
+    const week = await service.getPeriodSummary('week', { anchor_date: '2026-10-07' });
+    expect(week.data.vs_previous).toEqual({
+      from: '2026-09-28',
+      to: '2026-10-04',
+      // 3 sessions, 3.67 h, 60 km, load 350 against 2, 1.83 h, 22 km, 180.
+      training: { sessions: 1, hours: 1.84, km: 38, training_load: 170 },
+      health: { resting_hr_avg: -1, hrv_avg_ms: 1, sleep_hours_avg: 0 },
+      previous: { training: { sessions: 2, hours: 1.83, km: 22, training_load: 180 }, health: { resting_hr_avg: 53, hrv_avg_ms: 59, sleep_hours_avg: 8 } },
+    });
+    expect(week.meta.note).toBeUndefined();
+    expect(output.periodSummaryOutput.safeParse(JSON.parse(JSON.stringify(week))).error).toBeUndefined();
+    // A range compares with as many days just before it.
+    const range = await service.getPeriodSummary('range', { from: '2026-10-05', to: '2026-10-08' });
+    expect(range.data.vs_previous).toMatchObject({ from: '2026-10-01', to: '2026-10-04', training: { sessions: 2 }, previous: { training: { sessions: 1 } } });
+
+    // The month before is not stored: no comparison, a note with the sync command, and nothing downloaded.
+    const month = await service.getPeriodSummary('month', { anchor_date: '2026-10-07' });
+    expect(month.data).not.toHaveProperty('vs_previous');
+    expect(month.meta.note).toBe(
+      'vs_previous is left out: the previous period 2026-09-01..2026-09-30 is not fully synced (27 day(s) of daily_summary, 27 day(s) of sleep, 27 day(s) of hrv, activities). Sync it with `garmin sync --scope all --from 2026-09-01 --to 2026-09-30` (or garmin_sync with the same scope and dates) to compare.',
+    );
+    expect(month.meta.sync_hint).toBeUndefined();
+    expect(calls).toHaveLength(synced);
+    await service.sync('activities', '2026-09-01', '2026-09-27');
+    expect((await service.getPeriodSummary('month', { anchor_date: '2026-10-07' })).meta.note).toMatch(/\(27 day\(s\) of daily_summary, 27 day\(s\) of sleep, 27 day\(s\) of hrv\)\. Sync it with `garmin sync --scope health --from 2026-09-01/);
   });
 
   it('leaves a second recording of a multisport leg out of the summary and the Garmin load model', async () => {
