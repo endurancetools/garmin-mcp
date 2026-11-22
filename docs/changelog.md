@@ -23,6 +23,8 @@ What changed in each release. All `garmin-mcp-*` packages share one version; the
 
 - **Breaks and the CTL peak in `get_load`.** `totals` also has the longest run of days without a session in the range with its first and last day (`longest_gap_days`, `longest_gap_from`, `longest_gap_to`) and `days_since_last_session` up to `to`, counted from the whole history; next to it `ctl_peak` gives the highest CTL of the range and its date, also without `include_series`. The assistant no longer scans the series for them. How it works: [Training analytics](analytics.md#load-model).
 
+- **Differences from the reference in `compare_activities`.** Every row but the reference (the first of `ids`, or the `similar_to` activity) has `vs_reference`: the row minus the reference, signed, for the fields both rows have: duration and pace or grade adjusted pace in seconds, distance, speed, average heart rate and power, TSS, elevation gain, EF, decoupling and best 5 and 20 min power, each rounded like the row. EF is compared only between sessions of the same sport and decoupling only with the same basis (Pa:Hr or Pw:Hr). The assistant no longer subtracts the rows itself. How it works: [Training analytics](analytics.md#comparing-sessions).
+
 ## 0.7.1 (2026-11-22)
 
 ### Training analytics

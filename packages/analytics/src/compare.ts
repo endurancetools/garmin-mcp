@@ -137,6 +137,90 @@ export interface CompareRow {
   temp_c?: number;
   dew_point_c?: number;
   humidity_pct?: number;
+  /** Every row but the reference: this row minus the reference row, for the fields both have. */
+  vs_reference?: CompareDiff;
+}
+
+/**
+ * Differences against the reference row (`vs_reference`): this row minus the reference, signed,
+ * each field only when both rows have it. Durations and paces in seconds, the rest in the units
+ * and with the rounding of the row.
+ */
+export interface CompareDiff {
+  duration_s?: number;
+  distance_km?: number;
+  avg_pace_s_per_km?: number;
+  avg_speed_kmh?: number;
+  avg_gap_s_per_km?: number;
+  avg_hr_bpm?: number;
+  avg_power_w?: number;
+  tss?: number;
+  elev_gain_m?: number;
+  ef?: number;
+  decoupling_pct?: number;
+  best_5min_w?: number;
+  best_20min_w?: number;
+}
+
+/** Decimal places of each difference, the rounding of the row (whole seconds for durations and paces). */
+const DIFF_DIGITS: Record<keyof CompareDiff, number> = {
+  duration_s: 0,
+  distance_km: 2,
+  avg_pace_s_per_km: 0,
+  avg_speed_kmh: 1,
+  avg_gap_s_per_km: 0,
+  avg_hr_bpm: 0,
+  avg_power_w: 0,
+  tss: 1,
+  elev_gain_m: 0,
+  ef: 3,
+  decoupling_pct: 1,
+  best_5min_w: 0,
+  best_20min_w: 0,
+};
+
+/** The numbers a row is compared on: the row's own values, durations and paces in seconds from the session. */
+function diffValues(s: Session, row: CompareRow): CompareDiff {
+  const foot = FOOT.has(s.sport);
+  const dur = s.duration_s ?? 0;
+  return {
+    duration_s: dur > 0 ? dur : undefined,
+    distance_km: row.distance_km,
+    avg_pace_s_per_km: foot ? paceS(s, false) : undefined,
+    avg_speed_kmh: row.avg_speed_kmh,
+    avg_gap_s_per_km: foot && s.gap_mps !== undefined && s.gap_mps > 0 ? 1000 / s.gap_mps : undefined,
+    avg_hr_bpm: row.avg_hr,
+    avg_power_w: row.avg_power_w,
+    tss: row.tss,
+    elev_gain_m: row.elev_gain_m,
+    ef: row.ef,
+    decoupling_pct: row.decoupling_pct,
+    best_5min_w: row.best_5min_w,
+    best_20min_w: row.best_20min_w,
+  };
+}
+
+/**
+ * `vs_reference` of one row: its values minus the reference's, both rounded as in the row first,
+ * so the difference is the one between the numbers shown; `undefined` when no field is in both.
+ * EF only between sessions of the same sport (speed or power per beat), decoupling only with the
+ * same basis (Pa:Hr or Pw:Hr): otherwise the two numbers are not the same measure.
+ */
+export function referenceDiff(ref: Session, refRow: CompareRow, s: Session, row: CompareRow): CompareDiff | undefined {
+  const a = diffValues(ref, refRow);
+  const b = diffValues(s, row);
+  const out: CompareDiff = {};
+  for (const key of Object.keys(DIFF_DIGITS) as (keyof CompareDiff)[]) {
+    if (key === 'ef' && ref.sport !== s.sport) continue;
+    if (key === 'decoupling_pct' && ref.decoupling_basis !== s.decoupling_basis) continue;
+    const digits = DIFF_DIGITS[key];
+    const x = round(a[key], digits);
+    const y = round(b[key], digits);
+    if (x === undefined || y === undefined) continue;
+    const d = round(y - x, digits) ?? 0;
+    out[key] = d === 0 ? 0 : d;
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
 }
 
 /**

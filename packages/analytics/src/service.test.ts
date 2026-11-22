@@ -79,6 +79,10 @@ describe('AnalyticsService.compareActivities', () => {
       [600, 'reference'],
       [601, 'duration +3%, pace +6 s/km, same route'],
     ]);
+    // Each similar session against the reference: the reference row has no vs_reference.
+    expect(route.data.activities?.[0]).not.toHaveProperty('vs_reference');
+    expect(route.data.activities?.[1]?.vs_reference).toEqual({ duration_s: 100, distance_km: 0.1, avg_pace_s_per_km: 6, avg_hr_bpm: 0, tss: 1.9, ef: -0.021 });
+    expect(res.data.activities?.slice(1).every((a) => a.vs_reference !== undefined)).toBe(true);
     const none = await t.analytics.compareActivities({ similar_to: 600, easy_only: true });
     expect(none.data.activities).toHaveLength(1);
     expect(none.meta.note).toMatch(/No stored running between 2025-10-08 and 2026-10-08 matches/);
@@ -101,6 +105,23 @@ describe('AnalyticsService.compareActivities', () => {
     // The run without power needs no curve: only ride 701 is counted.
     expect(res.data.activities?.[2]).not.toHaveProperty('best_20min_w');
     expect(res.meta.note).toMatch(/Best 5 and 20 min power is missing for 1 of them until get_activity with detail "power_curve"/);
+    expect(t.calls).toEqual([]);
+  });
+
+  it('gives every row but the first of ids its difference from it, for the fields both rows have', async () => {
+    const t = trained();
+    const ride = { activityType: { typeId: 2, typeKey: 'road_biking' }, avgPower: 220, distance: 30_000, elevationGain: 312.4 };
+    t.activities([activity(700, '2026-10-06', ride), activity(701, '2026-10-07', { ...ride, duration: 3300, distance: 28_600, averageHR: 146, avgPower: 205.6, elevationGain: 280 })], '2026-10-06', '2026-10-07');
+    t.store.putActivityDetail(700, 'power_curve', { best: [{ duration_s: 300, power_w: 331.6, start_s: 120 }, { duration_s: 1200, power_w: 287.4, start_s: 600 }], gear_changes: [] }, NOW);
+    const res = await t.analytics.compareActivities({ ids: [700, 701, 1] });
+    fits(compareOutput, res);
+    expect(compareOutput.safeParse(res).success).toBe(true);
+    const [ref, other, run] = res.data.activities ?? [];
+    expect(ref).not.toHaveProperty('vs_reference');
+    // Best 5 and 20 min power only in the reference, so not compared; tss 58.7 - 69.4.
+    expect(other?.vs_reference).toEqual({ duration_s: -300, distance_km: -1.4, avg_speed_kmh: 1.2, avg_hr_bpm: -4, avg_power_w: -14, tss: -10.7, elev_gain_m: -32 });
+    // A run against a ride: pace and speed, power and elevation are each in one row only.
+    expect(run?.vs_reference).toEqual({ duration_s: 0, distance_km: -20, avg_hr_bpm: 0, tss: 0 });
     expect(t.calls).toEqual([]);
   });
 });

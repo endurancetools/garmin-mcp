@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { compareRow, DEFAULT_COMPARE_CRITERIA, haversineM, routeEnds, similarity, storedBestPower } from './compare.js';
+import { compareRow, DEFAULT_COMPARE_CRITERIA, haversineM, referenceDiff, routeEnds, similarity, storedBestPower } from './compare.js';
 import type { Session } from './session.js';
 
 const session = (extra: Partial<Session> = {}): Session => ({
@@ -75,5 +75,36 @@ describe('compare activities', () => {
     expect(storedBestPower({ best: [], gear_changes: [] }, 300)).toBeUndefined();
     expect(storedBestPower({ best: [{ duration_s: 300, power_w: 250, start_s: 0 }] }, 1200)).toBeUndefined();
     expect(storedBestPower({ best: [{ duration_s: 300, power_w: 250, start_s: 0 }] }, 300)).toBe(250);
+  });
+
+  it('gives a row its difference from the reference row, only for the fields both rows have', () => {
+    const diff = (ref: Session, s: Session, refCurve?: unknown, curve?: unknown) => referenceDiff(ref, compareRow(ref, undefined, 'reference', refCurve), s, compareRow(s, undefined, undefined, curve));
+    // Runs: pace from distance and time, GAP on its own; ef and tss only in the second row.
+    const run = session({ id: 2, duration_s: 3300, distance_m: 11_000, gap_mps: 11_000 / 3300 - 0.05, avg_hr: 150, ef: 1.533, tss: 55.27 });
+    expect(diff(session(), run)).toEqual({ duration_s: 300, distance_km: 1, avg_pace_s_per_km: 0, avg_gap_s_per_km: 5, avg_hr_bpm: 5 });
+    // Slower is a positive pace difference; the same values give 0, never -0.
+    expect(diff(session(), session({ id: 2, distance_m: 9700, gap_mps: undefined, ef: 1.4 }))).toEqual({ duration_s: 0, distance_km: -0.3, avg_pace_s_per_km: 9, avg_hr_bpm: 0 });
+    expect(Object.is(diff(session(), session({ id: 2 }))?.duration_s, 0)).toBe(true);
+
+    // Rides: speed instead of pace, differences of the rounded row values; best power only where both curves are stored.
+    const bike = { type: 'road_biking', sport: 'bike' as const, gap_mps: undefined };
+    const curve = { best: [{ duration_s: 300, power_w: 331.6, start_s: 0 }, { duration_s: 1200, power_w: 287.4, start_s: 0 }] };
+    const ride = session({ ...bike, duration_s: 3600, distance_m: 30_000, avg_power_w: 220, tss: 60.04, elev_gain_m: 312.4, ef: 1.5, decoupling_pct: 3.2, decoupling_basis: 'pw_hr' });
+    const other = session({ ...bike, id: 2, duration_s: 3300, distance_m: 28_600, avg_power_w: 205.6, tss: 55.1, elev_gain_m: 280, ef: 1.418, decoupling_pct: 5.04, decoupling_basis: 'pw_hr' });
+    expect(diff(ride, other, curve, { best: [{ duration_s: 300, power_w: 310.2, start_s: 0 }] })).toEqual({
+      duration_s: -300,
+      distance_km: -1.4,
+      avg_speed_kmh: 1.2,
+      avg_hr_bpm: 0,
+      avg_power_w: -14,
+      tss: -4.9,
+      elev_gain_m: -32,
+      ef: -0.082,
+      decoupling_pct: 1.8,
+      best_5min_w: -22,
+    });
+    // A run against a ride: no pace or speed in both, EF and decoupling are different measures.
+    const paRun = session({ id: 3, ef: 1.4, decoupling_pct: 2, decoupling_basis: 'pa_hr', tss: 70 });
+    expect(diff(ride, paRun)).toEqual({ duration_s: -600, distance_km: -20, avg_hr_bpm: 0, tss: 10 });
   });
 });

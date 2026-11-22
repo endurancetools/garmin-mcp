@@ -16,7 +16,7 @@ import {
   type ThresholdRow,
   type ThresholdSource,
 } from 'garmin-mcp-store';
-import { compareRow, DEFAULT_COMPARE_CRITERIA, routeEnds, similarity, storedBestPower, type CompareCriteria, type CompareRow } from './compare.js';
+import { compareRow, DEFAULT_COMPARE_CRITERIA, referenceDiff, routeEnds, similarity, storedBestPower, type CompareCriteria, type CompareRow } from './compare.js';
 import { dynamicsTrend, type DynamicsTrend } from './dynamics.js';
 import { efficiencySports, efficiencyTrend, type EfficiencyRow } from './efficiency.js';
 import { intensityDistribution, type IntensityDistribution } from './intensity.js';
@@ -634,6 +634,18 @@ export class AnalyticsService {
         const s = byId.get(id);
         return s ? [row(s)] : [];
       });
+    }
+    // The reference is the similar_to activity, or the first of ids (none when that one is unknown).
+    const [refRow, ...others] = rows;
+    const baseSession = refRow && (q.similar_to !== undefined || refRow.id === wanted[0]) ? byId.get(refRow.id) : undefined;
+    if (refRow && baseSession) {
+      rows = [
+        refRow,
+        ...others.map((r) => {
+          const s = byId.get(r.id);
+          return s ? { ...r, vs_reference: referenceDiff(baseSession, refRow, s, r) } : r;
+        }),
+      ];
     }
     const compared = rows.flatMap((r) => {
       const s = byId.get(r.id);
