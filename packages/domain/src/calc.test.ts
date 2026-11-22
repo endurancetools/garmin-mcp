@@ -132,6 +132,43 @@ describe('healthTable', () => {
     expect(w.rows[0]).toMatchObject({ days: 3, floors_avg: 9, hr_max_bpm_avg: 169, hrv_status_last: 'unbalanced', hrv_baseline_low_ms_avg: 54 });
   });
 
+  it('counts the days of each HRV status from the days, also in a weekly table', () => {
+    const hrvRow = (date: string, status: string | null): DailyRows['hrv'] => ({
+      date,
+      fetched_at: 0,
+      raw: {},
+      last_night_avg: status ? 55 : null,
+      weekly_avg: null,
+      status,
+      baseline_low: null,
+      baseline_high: null,
+    });
+    // day(4) is Monday 2026-01-05; day(7) has a stored HRV row without data, day(9) only a daily
+    // summary, day(10) nothing at all (not synced), day(11) a status other than Garmin's four.
+    const src = {
+      daily: [dailyRow(day(9), 10_000, 30)],
+      sleep: [],
+      hrv: [
+        hrvRow(day(4), 'BALANCED'),
+        hrvRow(day(5), 'LOW'),
+        hrvRow(day(6), 'LOW'),
+        hrvRow(day(7), null),
+        hrvRow(day(8), 'UNBALANCED'),
+        hrvRow(day(11), 'NONE'),
+        hrvRow(day(12), 'BALANCED'),
+      ],
+    };
+    const expected = { balanced: 2, unbalanced: 1, low: 2, no_status: 3 };
+    expect(healthTable(['hrv', 'steps'], src, day(4), day(12), 'day').summary.hrv?.status_days).toEqual(expected);
+    const week = healthTable(['hrv', 'steps'], src, day(4), day(12), 'week');
+    expect(week.rows.map((r) => r.hrv_status_last)).toEqual(['unbalanced', 'balanced']);
+    expect(week.summary.hrv?.status_days).toEqual(expected);
+    // Only the statuses that occur; other metrics have none; an empty range has none.
+    expect(healthTable(['hrv'], src, day(5), day(6), 'day').summary.hrv?.status_days).toEqual({ low: 2 });
+    expect(healthTable(['hrv', 'steps'], src, day(4), day(12), 'day').summary.steps?.status_days).toBeUndefined();
+    expect(healthTable(['hrv'], src, day(20), day(21), 'day').summary.hrv?.status_days).toBeUndefined();
+  });
+
   it('leaves floors and min/max HR empty when the raw summary lacks them', () => {
     const t = healthTable(['floors', 'resting_hr'], { daily: [dailyRow(day(4), 10_000, 30)], sleep: [], hrv: [] }, day(4), day(4), 'day');
     expect(t.rows).toEqual([{ date: day(4), floors: undefined, resting_hr_bpm: 50, hr_min_bpm: undefined, hr_max_bpm: undefined }]);

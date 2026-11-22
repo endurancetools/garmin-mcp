@@ -22,6 +22,9 @@ function envelope<S extends z.core.$ZodLooseShape>(data: S) {
   return z.looseObject({ data: z.looseObject(data), meta: responseMetaSchema });
 }
 
+/** Days per HRV status (`query_health` and `get_period_summary`, metric `hrv`). */
+const hrvStatusDays = obj({ balanced: num, unbalanced: num, low: num, poor: num, no_status: num });
+
 const strengthSets = obj({ sets: list(z.unknown()), total_sets: num, total_reps: num, volume_kg: num });
 
 const activityBrief = {
@@ -234,7 +237,10 @@ export const healthOutput = envelope({
   daily: list(z.record(z.string(), z.union([z.string(), z.number()]))),
   events: list(z.looseObject({ type: str, start: str, duration: str, body_battery_impact: num, feedback: str })),
   summary: z
-    .record(z.string(), z.looseObject({ avg: num, min: num, min_at: str, max: num, max_at: str, total: num, days_with_data: num, hours_with_data: num, trend: any }))
+    .record(
+      z.string(),
+      z.looseObject({ avg: num, min: num, min_at: str, max: num, max_at: str, total: num, days_with_data: num, hours_with_data: num, trend: any, status_days: hrvStatusDays }),
+    )
     .optional(),
   note: str,
 });
@@ -347,7 +353,7 @@ export const periodSummaryOutput = envelope({
     hardest: any,
   }),
   garmin_load_model: obj({ ...loadPoint, form: str }),
-  health: z.record(z.string(), z.looseObject({ avg: num, min: num, max: num, total: num })).optional(),
+  health: z.record(z.string(), z.looseObject({ avg: num, min: num, max: num, total: num, status_days: hrvStatusDays })).optional(),
   energy: obj({ avg_total_kcal: num, avg_resting_kcal: num, avg_active_kcal: num }),
 });
 

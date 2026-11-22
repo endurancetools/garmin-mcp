@@ -1465,7 +1465,7 @@ export class GarminService {
         complete: to === fullTo && !activitiesMissing && !healthMissing,
         training: activitiesMissing ? undefined : periodActivitySummary(activities, from, to),
         garmin_load_model: load,
-        health: Object.fromEntries(Object.entries(table.summary).map(([k, v]) => [k, { avg: v.avg, min: v.min, max: v.max, total: v.total }])),
+        health: Object.fromEntries(Object.entries(table.summary).map(([k, v]) => [k, { avg: v.avg, min: v.min, max: v.max, total: v.total, status_days: v.status_days }])),
         energy: { avg_total_kcal: energy.avg_total_kcal, avg_resting_kcal: energy.avg_resting_kcal, avg_active_kcal: energy.avg_active_kcal },
       }),
       meta: this.#meta([acts, health], [...activities.map((a) => a.fetched_at), ...daily.map((d) => d.fetched_at)], this.#periodGap(from, to)),

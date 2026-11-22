@@ -142,6 +142,27 @@ export interface MetricSummary {
   total?: number;
   days_with_data: number;
   trend?: Trend;
+  /** `hrv` only: days of the range per HRV status; days with a row but no status in `no_status`. */
+  status_days?: HrvStatusDays;
+}
+
+/** Garmin's HRV statuses (lowercase, as `hrv_status` shows them). */
+const HRV_STATUSES = ['balanced', 'unbalanced', 'low', 'poor'] as const;
+export type HrvStatusDays = Partial<Record<(typeof HRV_STATUSES)[number] | 'no_status', number>>;
+
+/**
+ * Days per HRV status, counted from the day rows (also for weekly tables, never from
+ * `hrv_status_last`). Only statuses that occur are present; a day the table has (any metric)
+ * without one of Garmin's four statuses counts as `no_status`. Days the cache lacks are not counted.
+ */
+function hrvStatusDays(days: readonly { fields: Fields }[]): HrvStatusDays | undefined {
+  const out: HrvStatusDays = {};
+  for (const d of days) {
+    const s = d.fields.hrv_status;
+    const key = HRV_STATUSES.find((x) => x === s) ?? 'no_status';
+    out[key] = (out[key] ?? 0) + 1;
+  }
+  return days.length > 0 ? out : undefined;
 }
 
 export interface HealthTable {
@@ -225,6 +246,7 @@ export function healthTable(
         to,
         m === 'resting_hr' || m === 'spo2' ? 0.01 : 0.03,
       ),
+      status_days: m === 'hrv' ? hrvStatusDays(days) : undefined,
     };
   }
   return { granularity, rows: tableRows, summary };

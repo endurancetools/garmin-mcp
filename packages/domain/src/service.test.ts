@@ -1749,6 +1749,21 @@ describe('GarminService', () => {
     expect(res.data.health?.sleep).toMatchObject({ avg: 8 });
   });
 
+  it('counts the days of each HRV status in the period summary and the weekly health table', async () => {
+    const { service, store } = setup({ autoFetch: false });
+    const statuses: Record<string, string | null> = { '2026-10-05': 'BALANCED', '2026-10-06': 'LOW', '2026-10-07': 'LOW', '2026-10-08': null };
+    for (const [date, status] of Object.entries(statuses)) {
+      const raw = { hrvSummary: { lastNightAvg: status ? 50 : undefined, status: status ?? undefined } } as Parameters<typeof hrvColumns>[0];
+      store.putDaily('hrv', date, hrvColumns(raw), raw, NOW);
+    }
+    const expected = { balanced: 1, low: 2, no_status: 1 };
+    const week = await service.getPeriodSummary('week', { anchor_date: '2026-10-07' });
+    expect(week.data.health?.hrv).toEqual({ avg: 50, min: 50, max: 50, status_days: expected });
+    const health = await service.queryHealth(['hrv'], '2026-10-05', '2026-10-08', 'week');
+    expect(health.data.rows?.[0]).toMatchObject({ hrv_status_last: 'low' });
+    expect(health.data.summary?.hrv?.status_days).toEqual(expected);
+  });
+
   it('leaves a second recording of a multisport leg out of the summary and the Garmin load model', async () => {
     const tri = summary(1, '2026-10-05', { activityType: { typeKey: 'multi_sport' }, isParent: true, duration: 7200, averageHR: undefined, activityTrainingLoad: 300 });
     // A bike computer recorded the bike leg again, inside the multisport activity.
