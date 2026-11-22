@@ -26,6 +26,8 @@ You do not need to call tools by name; the assistant does. This page tells you w
 | `get_thresholds` | the thresholds in use on a date (LTHR and LT1 per sport, HRmax, 28-day resting heart rate) and their history, including Garmin's own lactate threshold (heart rate and pace) and FTP history with its dates, plus the heart rate and power zones per sport from your Garmin profile and an FTP estimate from your stored power curves ([how](analytics.md#ftp-estimate)), which is only recorded when you agree |
 | `set_threshold` | record a field test result (LTHR, LT1, HRmax, FTP...) from a date; stored locally, never sent to Garmin |
 
+Dates and times in the answers are in your time zone (`GARMIN_TIMEZONE`), as `YYYY-MM-DDTHH:MM:SS` without an offset, also the start and end of a night, a weigh-in, a device's last sync and the time of the weather; only the sync bookkeeping (`meta.fetched_at`, the resume times of `garmin_sync`) and the raw output of `detail: "full"` stay in UTC.
+
 With `GARMIN_ENABLE_DESTRUCTIVE=true` there are also `delete_activity`, `delete_workout`, `delete_weigh_in`, `create_workout` can overwrite a saved workout and `update_activity` can replace the strength sets of an activity.
 
 ## Resources and prompts
