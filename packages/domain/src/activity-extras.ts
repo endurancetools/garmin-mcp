@@ -169,6 +169,9 @@ export interface TypedSplit extends SplitNumbers {
 
 export interface SplitSummary extends SplitNumbers {
   count?: number;
+  /** Share of the time and distance of the type's family (run, walk and stand; the interval types), in percent. */
+  time_pct?: number;
+  distance_pct?: number;
 }
 
 /** Numbers shared by a typed split and a split summary; standing has no pace. */
@@ -304,12 +307,97 @@ export function typedSplits(raw: unknown, sport: string | undefined, minS = MIN_
 }
 
 /**
+ * The family of a split type: its key without the last part (`RWD_RUN` → `RWD`, `INTERVAL_ACTIVE`
+ * → `INTERVAL`). The types of one family split the activity between them; families overlap (the
+ * run/walk/stand splits and the interval splits each cover the whole activity, climbs a part).
+ */
+const splitFamily = (v: unknown) => str(v)?.replace(/_[^_]*$/, '');
+
+/** Share of `part` in `total` in percent, one decimal; undefined without both. */
+const share = (part: number | undefined, total: number) => (part === undefined || !(total > 0) ? undefined : round((part / total) * 100, 1));
+
+/**
  * Totals per split type (`splitType`, `noOfSplits`), from `activity/{id}/split_summaries` or the
- * same `splitSummaries` list of the activity itself.
+ * same `splitSummaries` list of the activity itself. `time_pct` and `distance_pct` are the type's
+ * share in the sum of its family (run, walk and stand together; the interval types together), as
+ * the families overlap; a type alone in its family (a climb, a single interval) has no share.
  */
 export function splitSummaries(list: unknown, sport: string | undefined): SplitSummary[] {
-  return (Array.isArray(list) ? list : [])
-    .map(obj)
-    .filter((s): s is Obj => s !== undefined)
-    .map((s) => ({ type: splitType(s.splitType), count: num(s.noOfSplits), ...splitNumbers(s, splitType(s.splitType), sport) }));
+  const items = (Array.isArray(list) ? list : []).map(obj).filter((s): s is Obj => s !== undefined);
+  const families = new Map<string | undefined, { types: number; duration: number; distance: number }>();
+  for (const s of items) {
+    const f = families.get(splitFamily(s.splitType)) ?? { types: 0, duration: 0, distance: 0 };
+    families.set(splitFamily(s.splitType), { types: f.types + 1, duration: f.duration + (num(s.duration) ?? 0), distance: f.distance + (num(s.distance) ?? 0) });
+  }
+  return items.map((s) => {
+    const family = families.get(splitFamily(s.splitType));
+    const shared = family !== undefined && family.types > 1;
+    return {
+      type: splitType(s.splitType),
+      count: num(s.noOfSplits),
+      ...splitNumbers(s, splitType(s.splitType), sport),
+      time_pct: shared ? share(num(s.duration), family.duration) : undefined,
+      distance_pct: shared ? share(num(s.distance), family.distance) : undefined,
+    };
+  });
+}
+
+export interface LapGroup {
+  intensity?: string;
+  laps: number;
+  duration?: string;
+  distance_km?: number;
+  avg_pace?: string;
+  avg_speed_kmh?: number;
+  avg_gap_pace?: string;
+  avg_hr_bpm?: number;
+  max_hr_bpm?: number;
+  avg_power_w?: number;
+}
+
+/** `key` averaged over `items` weighted by their `duration`, over the ones with a positive value. */
+function timeWeighted(items: Obj[], key: string): number | undefined {
+  let sum = 0;
+  let time = 0;
+  for (const l of items) {
+    const v = num(l[key]);
+    const d = num(l.duration);
+    if (v === undefined || v <= 0 || d === undefined || d <= 0) continue;
+    sum += v * d;
+    time += d;
+  }
+  return time > 0 ? sum / time : undefined;
+}
+
+/**
+ * Laps (`lapDTOs`) grouped by `intensityType` (warmup, active, interval, recovery, rest,
+ * cooldown...), in the order the groups first appear: lap count, total time and distance, pace or
+ * speed from those totals (as for laps), and heart rate, power and grade adjusted speed averaged
+ * over time. Computed from the raw seconds and metres, never from the formatted lap rows.
+ */
+export function lapSummary(laps: unknown, sport: string | undefined): LapGroup[] {
+  const groups = new Map<string | undefined, Obj[]>();
+  for (const l of (Array.isArray(laps) ? laps : []).map(obj)) {
+    if (!l) continue;
+    const key = str(l.intensityType)?.toLowerCase();
+    groups.set(key, [...(groups.get(key) ?? []), l]);
+  }
+  const foot = isFootSport(sport);
+  return [...groups].map(([intensity, items]) => {
+    const total = (key: string) => (items.some((l) => num(l[key]) !== undefined) ? items.reduce((a, l) => a + (num(l[key]) ?? 0), 0) : undefined);
+    const duration = total('duration');
+    const distance = total('distance');
+    const maxHr = items.map((l) => num(l.maxHR)).filter((v): v is number => v !== undefined && v > 0);
+    return {
+      intensity,
+      laps: items.length,
+      duration: hms(duration),
+      distance_km: km(distance),
+      ...speedOrPace(sport, distance, duration),
+      avg_gap_pace: foot ? pacePerKm(timeWeighted(items, 'avgGradeAdjustedSpeed')) : undefined,
+      avg_hr_bpm: round(timeWeighted(items, 'averageHR'), 0),
+      max_hr_bpm: maxHr.length > 0 ? round(Math.max(...maxHr), 0) : undefined,
+      avg_power_w: round(timeWeighted(items, 'averagePower'), 0),
+    };
+  });
 }

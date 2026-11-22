@@ -371,11 +371,13 @@ describe('GarminService', () => {
       avg_grade_pct: 7,
       max_grade_pct: 30.9,
     });
-    expect(res.data.split_summaries?.map((t) => [t.type, t.count])).toEqual([
-      ['stand', 22],
-      ['run', 115],
-      ['walk', 128],
-      ['interval_active', 1],
+    // Shares within the family: run, walk and stand split the activity, and so does the single
+    // interval, which covers all of it, so it has no share.
+    expect(res.data.split_summaries?.map((t) => [t.type, t.count, t.time_pct, t.distance_pct])).toEqual([
+      ['stand', 22, 1.6, 0.2],
+      ['run', 115, 66.3, 79.2],
+      ['walk', 128, 32.1, 20.6],
+      ['interval_active', 1, undefined, undefined],
     ]);
     expect(res.data.split_summaries?.[1]).toEqual({
       type: 'run',
@@ -388,6 +390,8 @@ describe('GarminService', () => {
       max_hr_bpm: 175,
       elevation_gain_m: 780,
       elevation_loss_m: 1663,
+      time_pct: 66.3,
+      distance_pct: 79.2,
     });
     expect(() => output.activityOutput.parse(res)).not.toThrow();
 
@@ -421,6 +425,39 @@ describe('GarminService', () => {
       ['stand', '2:30'],
     ]);
     expect(res.meta.note).toBeUndefined();
+  });
+
+  it('sums the laps of an interval session per intensity, averages weighted by time', async () => {
+    const { service, store } = setup({ activities: [summary(3, '2026-10-07')] });
+    const lap = (lapIndex: number, intensityType: string, duration: number, distance: number, averageHR: number, maxHR: number, more: Record<string, number> = {}) => ({ lapIndex, intensityType, duration, distance, averageHR, maxHR, ...more });
+    store.putActivityDetail(
+      3,
+      'splits',
+      {
+        lapDTOs: [
+          lap(1, 'WARMUP', 600, 1800, 130, 141, { avgGradeAdjustedSpeed: 3.1, averagePower: 250 }),
+          lap(2, 'INTERVAL', 180, 800, 160, 168, { avgGradeAdjustedSpeed: 4.5, averagePower: 360 }),
+          lap(3, 'REST', 90, 100, 150, 165),
+          lap(4, 'INTERVAL', 300, 1200, 170, 179, { avgGradeAdjustedSpeed: 4, averagePower: 330 }),
+          lap(5, 'REST', 120, 140, 140, 158),
+          lap(6, 'COOLDOWN', 300, 900, 135, 140),
+        ],
+      },
+      NOW,
+    );
+    store.putActivityDetail(3, 'typed_splits', { splits: [] }, NOW);
+    const res = await service.getActivity(3, 'splits');
+    // Groups in the order they first appear; pace from total time and distance, heart rate, power
+    // and grade adjusted pace weighted by time (the interval HR is 166, not the plain mean 165).
+    expect(res.data.lap_summary).toEqual([
+      { intensity: 'warmup', laps: 1, duration: '10:00', distance_km: 1.8, avg_pace: '5:33 /km', avg_gap_pace: '5:23 /km', avg_hr_bpm: 130, max_hr_bpm: 141, avg_power_w: 250 },
+      { intensity: 'interval', laps: 2, duration: '8:00', distance_km: 2, avg_pace: '4:00 /km', avg_gap_pace: '3:59 /km', avg_hr_bpm: 166, max_hr_bpm: 179, avg_power_w: 341 },
+      { intensity: 'rest', laps: 2, duration: '3:30', distance_km: 0.24, avg_pace: '14:35 /km', avg_hr_bpm: 144, max_hr_bpm: 165 },
+      { intensity: 'cooldown', laps: 1, duration: '5:00', distance_km: 0.9, avg_pace: '5:33 /km', avg_hr_bpm: 135, max_hr_bpm: 140 },
+    ]);
+    expect(() => output.activityOutput.parse(res)).not.toThrow();
+    expect((await service.getActivity(3, 'full')).data.lap_summary).toEqual(res.data.lap_summary);
+    expect((await service.getActivity(3, 'summary')).data.lap_summary).toBeUndefined();
   });
 
   it('serves power zones, weather and strength sets as detail levels and in full', async () => {
@@ -562,8 +599,8 @@ describe('GarminService', () => {
     ]);
     // The stored activity carries the totals per split type, so they are not fetched.
     expect(laps.data.split_summaries).toEqual([
-      { type: 'run', duration: '49:00' },
-      { type: 'walk', duration: '1:00' },
+      { type: 'run', duration: '49:00', time_pct: 98 },
+      { type: 'walk', duration: '1:00', time_pct: 2 },
     ]);
     expect(count('getActivity')).toBe(0);
     expect(count('getActivitySplits')).toBe(0);

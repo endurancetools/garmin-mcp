@@ -114,8 +114,22 @@ const activityDetail = {
       elevation_loss_m: num,
     }),
   ),
+  lap_summary: list(
+    z.looseObject({
+      intensity: str,
+      laps: num,
+      duration: str,
+      distance_km: num,
+      avg_pace: str,
+      avg_speed_kmh: num,
+      avg_gap_pace: str,
+      avg_hr_bpm: num,
+      max_hr_bpm: num,
+      avg_power_w: num,
+    }),
+  ),
   typed_splits: list(z.looseObject({ type: str, start: str, ...splitNumbers, avg_grade_pct: num, max_grade_pct: num })),
-  split_summaries: list(z.looseObject({ type: str, count: num, ...splitNumbers })),
+  split_summaries: list(z.looseObject({ type: str, count: num, ...splitNumbers, time_pct: num, distance_pct: num })),
   hr_zones: list(zoneTime),
   power_zones: list(zoneTime),
   weather: obj({

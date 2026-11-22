@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MIN_TYPED_SPLIT_S, typedSplits } from './activity-extras.js';
+import { lapSummary, MIN_TYPED_SPLIT_S, splitSummaries, typedSplits } from './activity-extras.js';
 import { fixture } from './test-utils/fake.js';
 
 /** A raw typed split starting `at` seconds after 07:00:00, `duration` s long, at 3 m/s. */
@@ -96,5 +96,43 @@ describe('typedSplits', () => {
     const r = typedSplits(fixture('activity-typed-splits'), 'trail_running');
     expect(r.merged).toBe(5);
     expect(r.splits.map((s) => s.type)).toEqual(['interval_active', 'run', 'climb', 'walk', 'walk', 'walk', 'climb', 'climb']);
+  });
+});
+
+describe('lapSummary', () => {
+  it('gives speed for a ride, groups laps without intensity and weights only laps with a value', () => {
+    const laps = [
+      { intensityType: 'ACTIVE', duration: 1800, distance: 15_000, averageHR: 140, maxHR: 150, averagePower: 200, avgGradeAdjustedSpeed: 8 },
+      { intensityType: 'ACTIVE', duration: 600, distance: 6000, averagePower: 260 },
+      { duration: 60, distance: 0 },
+      'not a lap',
+    ];
+    expect(lapSummary(laps, 'road_biking')).toEqual([
+      { intensity: 'active', laps: 2, duration: '40:00', distance_km: 21, avg_speed_kmh: 31.5, avg_hr_bpm: 140, max_hr_bpm: 150, avg_power_w: 215 },
+      { intensity: undefined, laps: 1, duration: '1:00', distance_km: 0 },
+    ]);
+    expect(lapSummary(undefined, 'running')).toEqual([]);
+  });
+});
+
+describe('splitSummaries', () => {
+  it('gives each type its share of its family, and none to a type alone in its family', () => {
+    const r = splitSummaries(
+      [
+        { splitType: 'RWD_RUN', noOfSplits: 3, duration: 3000, distance: 9000 },
+        { splitType: 'RWD_WALK', noOfSplits: 2, duration: 1000, distance: 1000 },
+        { splitType: 'INTERVAL_WARMUP', noOfSplits: 1, duration: 1000, distance: 2500 },
+        { splitType: 'INTERVAL_ACTIVE', noOfSplits: 4, duration: 3000, distance: 7500 },
+        { splitType: 'CLIMB_PRO_CYCLING_CLIMB', noOfSplits: 2, duration: 900, distance: 2000 },
+      ],
+      'running',
+    );
+    expect(r.map((s) => [s.type, s.time_pct, s.distance_pct])).toEqual([
+      ['run', 75, 90],
+      ['walk', 25, 10],
+      ['interval_warmup', 25, 25],
+      ['interval_active', 75, 75],
+      ['climb', undefined, undefined],
+    ]);
   });
 });

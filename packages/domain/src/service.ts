@@ -18,7 +18,7 @@ import { errInfo, FATAL_CODES, isFresh, isSolarDevice, multisportDuplicates, SCO
 import fs from 'node:fs';
 import path from 'node:path';
 import { activityBrief, activityListItem, eventTypeKey, periodActivitySummary, periodChange, periodVolume, type PeriodTotals } from './activities.js';
-import { activityWeather, MIN_TYPED_SPLIT_S, splitSummaries, strengthSets, typedSplits, zoneTimes, type ActivityWeather, type SplitSummary, type StrengthSets, type TypedSplit, type ZoneTime } from './activity-extras.js';
+import { activityWeather, lapSummary, MIN_TYPED_SPLIT_S, splitSummaries, strengthSets, typedSplits, zoneTimes, type ActivityWeather, type LapGroup, type SplitSummary, type StrengthSets, type TypedSplit, type ZoneTime } from './activity-extras.js';
 import { gapPace, GPS_STREAM_METRICS, hrSource, motionTime, redactActivityRaw, respiration, runningDynamics, stamina, trainingEffectText, type RunningDynamics } from './activity-metrics.js';
 import { badgeSummary, challengeList, type BadgeChallenge, type EarnedBadge } from './badges.js';
 import { bodyComposition } from './body.js';
@@ -231,6 +231,7 @@ interface ActivitySections {
     elevation_loss_m?: number;
     avg_respiration_brpm?: number;
   } & RunningDynamics)[];
+  lap_summary?: LapGroup[];
   typed_splits?: TypedSplit[];
   split_summaries?: SplitSummary[];
   hr_zones?: ZoneTime[];
@@ -755,6 +756,7 @@ export class GarminService {
         }),
       );
       const sport = row?.type ?? summary.raw.activityTypeDTO?.typeKey ?? undefined;
+      extra.lap_summary = lapSummary(laps, sport);
       const typed = await this.#detail(id, 'typed_splits', () => this.client.getActivityTypedSplits(id), true);
       sources.push({ source: typed.live ? 'live' : 'cache' });
       times.push(typed.fetched_at);
