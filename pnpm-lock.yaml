@@ -182,8 +182,8 @@ importers:
   packages/fit:
     dependencies:
       fit-file-parser:
-        specifier: ^6.2.7
-        version: 6.2.7
+        specifier: ^6.2.10
+        version: 6.2.10
 
   packages/store:
     dependencies:
@@ -1864,8 +1864,8 @@ packages:
     resolution: {integrity: sha512-78/PXT1wlLLDgTzDs7sjq9hzz0vXD+zn+7wypEe4fXQxCmdmqfGsEPQxmiCSQI3ajFV91bVSsvNtrJRiW6nGng==}
     engines: {node: '>=10'}
 
-  fit-file-parser@6.2.7:
-    resolution: {integrity: sha512-z/xv9+fxsgDKGP3AmlQWpl5uDVQCzRhNM8ppaMk++tAG8AfQ5xMgcwXNUYGVdU6CYIlV6d3piRB7BFcj7Ogl6w==}
+  fit-file-parser@6.2.10:
+    resolution: {integrity: sha512-BCitfBTjI8WFgk2hOMtwNkACSHhUxYADVzPVIn5HzIXMuNLZy/TaLZsyrZY1eoPyOEqAAf2bOju7zMm/3WZ2mQ==}
 
   flat-cache@6.1.23:
     resolution: {integrity: sha512-f++BY9pTk+983xK1FLzlLpmM0i0z+jHmx3QESGkURMXujQZz1k5wzwX6hjnQ8goaD0B+sYnDK1yZ6MTyZfUaqA==}
@@ -4777,7 +4777,7 @@ snapshots:
       locate-path: 6.0.0
       path-exists: 4.0.0
 
-  fit-file-parser@6.2.7:
+  fit-file-parser@6.2.10:
     dependencies:
       buffer: 6.0.3
 

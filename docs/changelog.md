@@ -5,6 +5,12 @@ nav_order: 11
 ---
 What changed in each release. All `garmin-mcp-*` packages share one version; the Claude Desktop extension of every version is attached to its [GitHub release](https://github.com/endurancetools/garmin-mcp/releases).
 
+## Unreleased
+
+### Dependencies
+
+- **fit-file-parser 6.2.10.** The FIT reader now needs fit-file-parser 6.2.10 or later. Version 6.2.8 fixed a prototype pollution issue: a crafted FIT file could use developer field metadata to change `Array.prototype` for the whole process ([GHSA-gjg8-qvmp-pvp2](https://github.com/jimmykane/fit-parser/security/advisories/GHSA-gjg8-qvmp-pvp2), medium). The server reads only FIT files downloaded from your own Garmin account. Installs from npm already got 6.2.10 through the `^6.2.7` range; the minimum version and the repository's lockfile now match it.
+
 ## 0.8.0 (2026-11-22)
 
 ### Tools

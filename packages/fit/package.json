@@ -44,6 +44,6 @@
     "!dist/test-utils"
   ],
   "dependencies": {
-    "fit-file-parser": "^6.2.7"
+    "fit-file-parser": "^6.2.10"
   }
 }
