@@ -78,7 +78,7 @@ describe('describeWorkout', () => {
         }),
       ),
     );
-    expect(circuit.steps).toEqual(['1. Repeat 3x:', '  1.1. Interval Squat 8 reps', '  1.2. Rest 1:30']);
+    expect(circuit.steps).toEqual(['1. Repeat 3x:', '  1.1. Interval Squat [SQUAT] 8 reps', '  1.2. Rest 1:30']);
     const compiled = describeWorkout(
       compileWorkout({
         name: 'Bench',
@@ -93,7 +93,7 @@ describe('describeWorkout', () => {
         ],
       }),
     );
-    expect(compiled.steps).toEqual(['1. Interval Barbell bench press 80 kg 5 reps']);
+    expect(compiled.steps).toEqual(['1. Interval Barbell bench press [BENCH_PRESS/BARBELL_BENCH_PRESS] 80 kg 5 reps']);
   });
 
   it('formats power, cadence and swim pace targets', () => {

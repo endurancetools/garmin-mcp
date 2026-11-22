@@ -2,6 +2,12 @@
 
 All notable changes to Garmin MCP. All `garmin-mcp-*` packages share one version. The same list is on the [documentation site](https://endurancetools.github.io/garmin-mcp/changelog/).
 
+## Unreleased
+
+### Tools
+
+- **`create_workout` checks strength exercises against Garmin's catalogue.** Every exercise of a workout (typed steps, a preset or `garmin_json`) is checked before anything is previewed or saved, as `update_activity` already did for `exercise_sets`: an unknown category, or an exercise that is not in its category, fails with the step path and the categories or the similar exercises of that category, so "15 kettlebell swings" with a made-up key never reaches the watch as an unknown exercise. The preview of `dry_run` and `get_workout` now prints the catalogue keys next to the name, e.g. `Kettlebell swing [HIP_RAISE/KETTLEBELL_SWING] 16 kg`, so a key in the wrong category shows before you agree.
+
 ## 0.7.1 (2026-11-22)
 
 ### Training analytics

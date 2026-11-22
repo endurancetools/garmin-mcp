@@ -27,7 +27,7 @@ import { CLIMB_RULES } from './climbs.js';
 import { courseBriefFromDetail, courseDetail, courseList, eventCourseRef, type CourseBrief } from './courses.js';
 import { deviceSettings, deviceSolar } from './devices.js';
 import { energyBalance } from './energy.js';
-import { checkExerciseSets, exerciseSetsBody, exerciseSetsInput, rawExerciseSets, type ExerciseSetInput } from './exercise-sets.js';
+import { checkExerciseSets, checkWorkoutExercises, exerciseSetsBody, exerciseSetsInput, rawExerciseSets, type ExerciseSetInput } from './exercise-sets.js';
 import { readFitFile, weightScaleFile, type FitGearChange } from './fit.js';
 import { compact, hms, isFootSport, iso, km, round, speedOrPace } from './format.js';
 import { healthTable, tablesFor, type HealthGranularity, type HealthMetric } from './health.js';
@@ -1794,6 +1794,7 @@ export class GarminService {
    */
   async createWorkout(input: WorkoutInput, workoutId?: number) {
     const { payload } = this.#workoutPayload(input);
+    await this.#checkExercises(input);
     if (workoutId === undefined) {
       const created = await this.client.createWorkout(payload);
       this.store.upsertWorkout(created, this.#now());
@@ -1816,6 +1817,7 @@ export class GarminService {
    */
   async previewWorkout(input: WorkoutInput) {
     const { payload, copied } = this.#workoutPayload(input);
+    await this.#checkExercises(input);
     const { id: _id, estimated_duration_s, ...readable } = describeWorkout(payload);
     // A copied garmin_json that carries its own estimate keeps it on Garmin.
     const given = copied && (typeof payload.estimatedDurationInSecs === 'number' || typeof payload.estimatedDuration === 'number');
@@ -1835,6 +1837,18 @@ export class GarminService {
       }),
       meta: { source: 'local' as const, note: 'Preview computed locally; no request was sent to Garmin.' },
     };
+  }
+
+  /**
+   * Exercise keys of the workout against Garmin's catalogue (`checkWorkoutExercises`), after the
+   * input passed `#workoutPayload` and before anything is sent or previewed.
+   */
+  async #checkExercises(input: WorkoutInput): Promise<void> {
+    await checkWorkoutExercises({
+      definition: input.definition ?? (input.preset ? presetDefinition(input.preset) : undefined),
+      definitionLabel: input.definition ? 'definition' : 'preset',
+      garminJson: input.garmin_json,
+    });
   }
 
   /** Garmin JSON for exactly one of definition, preset or garmin_json; `copied` when it is the caller's garmin_json. */

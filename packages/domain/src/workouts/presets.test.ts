@@ -142,7 +142,7 @@ function expectedLines(steps: WorkoutStep[], prefix = '', indent = ''): string[]
     const label = prefix ? `${prefix}.${i + 1}` : String(i + 1);
     if (step.kind === 'repeat') return [`${indent}${label}. Repeat ${step.count}x:`, ...expectedLines(step.steps, label, `${indent}  `)];
     const parts = [words(step.kind)];
-    if (step.exercise) parts.push(words(step.exercise.name ?? step.exercise.category) + (step.weight_kg ? ` ${step.weight_kg} kg` : ''));
+    if (step.exercise) parts.push(words(step.exercise.name ?? step.exercise.category) + ` [${[step.exercise.category, step.exercise.name].filter(Boolean).map((k) => k!.toUpperCase()).join('/')}]` + (step.weight_kg ? ` ${step.weight_kg} kg` : ''));
     const d = step.duration;
     if (!d || d.type === 'lap_button') parts.push('until lap button');
     else if (d.type === 'time') parts.push(mmss(d.seconds));

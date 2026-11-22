@@ -188,10 +188,15 @@ function describeEnd(step: LooseStep): string | undefined {
   }
 }
 
+/**
+ * "Kettlebell swing [HIP_RAISE/KETTLEBELL_SWING] 16 kg": the name to read and the catalogue keys
+ * Garmin stores, so a key in the wrong category shows in a preview instead of reading as right.
+ */
 function describeExercise(step: LooseStep): string | undefined {
   const name = step.exerciseName || step.category;
   if (!name) return undefined;
-  let text = humanize(name);
+  const keys = [step.category, step.exerciseName].filter((k): k is string => typeof k === 'string' && k !== '');
+  let text = `${humanize(name)} [${keys.join('/')}]`;
   if (step.weightValue != null) {
     const unit = step.weightUnit?.unitKey;
     const factor = step.weightUnit?.factor;

@@ -100,22 +100,7 @@ export async function checkExerciseSets(sets: readonly ExerciseSetInput[], keepT
       throw new InputError(`${field}.duration_s is required without keep_timing`, 'Give each set its length in seconds, or set keep_timing to true to keep the times the watch recorded.');
     }
     if (!set.exercise) return set;
-    const category = exerciseKey(set.exercise.category);
-    if (set.exercise.name !== undefined && exerciseKey(set.exercise.name) === '') throw new InputError(`${field}.exercise.name is empty`, 'Leave name out to give the category only.');
-    const names = EXERCISE_CATALOG[category];
-    if (!names) {
-      throw new InputError(`${field}.exercise.category: unknown exercise category "${set.exercise.category}"`, `Categories: ${Object.keys(EXERCISE_CATALOG).join(', ')}`);
-    }
-    if (set.exercise.name === undefined) return { ...set, exercise: { category } };
-    const name = exerciseKey(set.exercise.name);
-    if (!names.includes(name)) {
-      const words = name.split('_').filter((w) => w.length >= 3);
-      const close = names.filter((n) => words.some((w) => n.includes(w)));
-      const listed = (close.length > 0 ? close : names).slice(0, 40);
-      const hint = names.length === 0 ? `${category} has no exercise names; leave name out.` : `Exercises of ${category}${close.length > 0 ? ' with a similar name' : ''}: ${listed.join(', ')}`;
-      throw new InputError(`${field}.exercise.name: unknown exercise "${set.exercise.name}" in category ${category}`, hint);
-    }
-    return { ...set, exercise: { category, name } };
+    return { ...set, exercise: checkExercise(EXERCISE_CATALOG, set.exercise, `${field}.exercise`) };
   });
 }
 
@@ -168,4 +153,71 @@ export function exerciseSetsBody(current: readonly Obj[], sets: readonly Exercis
     }
   }
   return out;
+}
+
+type Catalog = Readonly<Record<string, readonly string[]>>;
+
+/**
+ * One exercise checked against Garmin's catalogue: the upper-case keys, or an InputError naming
+ * `field` with the categories, or the exercises of the category with a similar name.
+ */
+export function checkExercise(catalog: Catalog, exercise: { category: string; name?: string }, field: string): { category: string; name?: string } {
+  const category = exerciseKey(exercise.category);
+  if (exercise.name !== undefined && exerciseKey(exercise.name) === '') throw new InputError(`${field}.name is empty`, 'Leave name out to give the category only.');
+  const names = catalog[category];
+  if (!names) {
+    throw new InputError(`${field}.category: unknown exercise category "${exercise.category}"`, `Categories: ${Object.keys(catalog).join(', ')}`);
+  }
+  if (exercise.name === undefined) return { category };
+  const name = exerciseKey(exercise.name);
+  if (!names.includes(name)) {
+    const words = name.split('_').filter((w) => w.length >= 3);
+    const close = names.filter((n) => words.some((w) => n.includes(w)));
+    const listed = (close.length > 0 ? close : names).slice(0, 40);
+    const hint = names.length === 0 ? `${category} has no exercise names; leave name out.` : `Exercises of ${category}${close.length > 0 ? ' with a similar name' : ''}: ${listed.join(', ')}`;
+    throw new InputError(`${field}.name: unknown exercise "${exercise.name}" in category ${category}`, hint);
+  }
+  return { category, name };
+}
+
+interface DefinitionStep {
+  kind: string;
+  exercise?: { category: string; name?: string };
+  steps?: DefinitionStep[];
+}
+
+/**
+ * The exercises of a workout checked against the catalogue before anything is compiled or sent
+ * (`create_workout`, also with `dry_run`): typed steps of a definition or preset by their path
+ * (`definition.steps[1].steps[0].exercise`), `garmin_json` steps by `category` and `exerciseName`.
+ * The preview prints an exercise by its name, so a key in the wrong category would read as right.
+ * The catalogue is loaded only when the workout has an exercise.
+ */
+export async function checkWorkoutExercises(input: { definition?: { steps: readonly DefinitionStep[] }; definitionLabel?: string; garminJson?: unknown }): Promise<void> {
+  const found: { exercise: { category: string; name?: string }; field: string }[] = [];
+  const walkDefinition = (steps: readonly DefinitionStep[], path: string) =>
+    steps.forEach((step, i) => {
+      const here = `${path}[${i}]`;
+      if (step.kind === 'repeat') walkDefinition(step.steps ?? [], `${here}.steps`);
+      else if (step.exercise) found.push({ exercise: step.exercise, field: `${here}.exercise` });
+    });
+  const walkGarmin = (steps: unknown, path: string) => {
+    if (!Array.isArray(steps)) return;
+    steps.forEach((raw: unknown, i) => {
+      if (!raw || typeof raw !== 'object') return;
+      const step = raw as { category?: unknown; exerciseName?: unknown; workoutSteps?: unknown };
+      const here = `${path}[${i}]`;
+      if (typeof step.category === 'string' && step.category !== '') {
+        const name = typeof step.exerciseName === 'string' && step.exerciseName !== '' ? step.exerciseName : undefined;
+        found.push({ exercise: { category: step.category, ...(name !== undefined && { name }) }, field: here });
+      }
+      walkGarmin(step.workoutSteps, `${here}.workoutSteps`);
+    });
+  };
+  if (input.definition) walkDefinition(input.definition.steps, `${input.definitionLabel ?? 'definition'}.steps`);
+  const segments = (input.garminJson as { workoutSegments?: unknown } | undefined)?.workoutSegments;
+  if (Array.isArray(segments)) segments.forEach((s: unknown, i) => walkGarmin((s as { workoutSteps?: unknown } | null)?.workoutSteps, `garmin_json.workoutSegments[${i}].workoutSteps`));
+  if (found.length === 0) return;
+  const { EXERCISE_CATALOG } = await import('./exercise-catalog.js');
+  for (const { exercise, field } of found) checkExercise(EXERCISE_CATALOG, exercise, field);
 }
