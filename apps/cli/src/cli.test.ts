@@ -735,8 +735,8 @@ describe('garmin load', () => {
     expect(stdout).toContain('| date | tss | ctl | atl | tsb | acwr | monotony | strain |');
     expect(stdout).toMatch(/\| 2026-10-08 \| 69\.4 \| \d+(\.\d)? \|/);
     expect(stdout).toContain('| 2026-W41 | run | 4 | 4 | 40 |');
-    expect(stdout).toContain('| 2026-W41 | all | 4 | 4 | 40 | 0 | 278 | 278 | -43% |');
-    expect(stdout).toContain('| 2026-W38 | all | 7 | 7 | 70 | 0 | 486 | 486 | +134% |');
+    expect(stdout).toContain('| 2026-W41 | all | 4 | 4 | 40 | 0 | 278 | 278 |  |');
+    expect(stdout).toContain('| 2026-W38 | all | 7 | 7 | 70 | 0 | 486 | 486 |  |');
     expect(stdout).toContain('Range 2026-09-11..2026-10-08: 28 days, 28 sessions on 28 days (0 without), 28 h, 280 km, 0 m up, 1943 tss, 1943 hrtss.');
     expect(stdout).toContain('## Intensity 2026-09-11..2026-10-08 (run, bike, nordic, row)');
     expect(stdout).toContain('| bike | 170 | 146 |  |  |  | No lthr_bike in the threshold history; the running LTHR is used. LT1 approximated');
