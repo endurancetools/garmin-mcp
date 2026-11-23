@@ -30,7 +30,39 @@
       holder.textContent = block.textContent;
       block.parentElement.replaceWith(holder);
     }
-    mermaid.initialize({ startOnLoad: false, theme: "neutral" });
+    // Dark theme in the site's colours (assets/css/main.scss): panels, thin lines, teal accent.
+    mermaid.initialize({
+      startOnLoad: false,
+      theme: "base",
+      themeVariables: {
+        darkMode: true,
+        background: "#07090d",
+        fontFamily: "Inter, system-ui, sans-serif",
+        primaryColor: "#0f141b",
+        primaryTextColor: "#e6edf3",
+        primaryBorderColor: "#2dd4bf",
+        secondaryColor: "#131a23",
+        secondaryTextColor: "#cdd6e0",
+        secondaryBorderColor: "#2a3646",
+        tertiaryColor: "#131a23",
+        tertiaryTextColor: "#cdd6e0",
+        tertiaryBorderColor: "#2a3646",
+        lineColor: "#5b6878",
+        textColor: "#cdd6e0",
+        clusterBkg: "#0b1016",
+        clusterBorder: "#2a3646",
+        edgeLabelBackground: "#0f141b",
+        actorBkg: "#0f141b",
+        actorBorder: "#2dd4bf",
+        actorTextColor: "#e6edf3",
+        actorLineColor: "#2a3646",
+        signalColor: "#9aa8b6",
+        signalTextColor: "#cdd6e0",
+        noteBkgColor: "#1f1a10",
+        noteBorderColor: "#f59e0b",
+        noteTextColor: "#e6edf3",
+      },
+    });
     await mermaid.run({ querySelector: "pre.mermaid" });
   }
 </script>

@@ -2,7 +2,10 @@
   Minimal Mistakes 4.28.1 _includes/page__hero.html with two changes:
   - the hero headline is `header.title` when set, else the page title. The home page uses it to keep its
     headline while `title` carries the search and link-preview title (E7-6);
-  - an action's `track` becomes `data-track`, the name of its GoatCounter click event (footer/custom.html).
+  - an action's `track` becomes `data-track`, the name of its GoatCounter click event (footer/custom.html);
+  - the overlay hero is a two-column grid: a status pill (`header.status`, the tool count and the latest
+    release) above the headline, and on the right the include named in `header.panel`. The actions sit in
+    `.page__hero-actions`; the first one is styled as the primary button (assets/css/main.scss).
   Update from the theme when its version changes.
 {% endcomment %}
 {% assign locale = include.locale | default: site.locale %}
@@ -30,7 +33,12 @@
   style="{% if page.header.overlay_color %}background-color: {{ page.header.overlay_color | default: 'transparent' }};{% endif %} {% if overlay_img_path %}background-image: {% if overlay_filter %}{{ overlay_filter }}, {% endif %}url('{{ overlay_img_path }}');{% endif %}"
 >
   {% if page.header.overlay_color or page.header.overlay_image %}
-    <div class="wrapper">
+    <div class="wrapper page__hero-grid">
+      <div class="page__hero-text">
+      {% if page.header.status %}
+        {%- assign hero_version = site.github.latest_release.tag_name -%}
+        <span class="hero-status"><i></i><b>{{ site.data.facts.tools_default }} tools</b>&nbsp;· open source, MIT{% if hero_version and hero_version != "" %}&nbsp;· {{ hero_version }}{% endif %}</span>
+      {% endif %}
       <h1 id="page-title" class="page__title" itemprop="headline">
         {% if paginator and site.paginate_show_page_num %}
           {{ site.title }}{% unless paginator.page == 1 %} {{ site.data.ui-text[locale].page | default: "Page" }} {{ paginator.page }}{% endunless %}
@@ -45,12 +53,14 @@
       {% endif %}
       {% include page__meta.html locale=locale %}
       {% if page.header.actions %}
-        <p>
+        <p class="page__hero-actions">
         {% for action in page.header.actions %}
           <a href="{{ action.url | relative_url }}" class="btn btn--light-outline btn--large"{% if action.track %} data-track="{{ action.track | escape }}"{% endif %}>{{ action.label | default: site.data.ui-text[locale].more_label | default: "Learn More" }}</a>
         {% endfor %}
         </p>
       {% endif %}
+      </div>
+      {% if page.header.panel %}{% include {{ page.header.panel }} %}{% endif %}
     </div>
   {% else %}
     <img src="{{ page.header.image | relative_url }}" alt="{{ image_description }}" class="page__hero-image">

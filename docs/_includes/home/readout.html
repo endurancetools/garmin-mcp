@@ -1,0 +1,27 @@
+{% comment %}
+  The panel on the right of the home page hero (header.panel in docs/index.md): one get_readiness answer
+  as a readout. Same example numbers as the "Can I train hard today?" section of the home page; change
+  both together.
+{% endcomment %}
+<aside class="dash-panel readout" aria-label="Example answer from get_readiness">
+  <div class="dash-panel__head">
+    <span class="dash-label dash-label--accent">Example · get_readiness</span>
+    <span class="dash-label">One call</span>
+  </div>
+  <p class="readout__ask">You: <b>“Can I train hard today?”</b></p>
+  <div class="readout__decision">
+    <b>MODIFY</b>
+    <span>2 yellow signals, no red pair: keep the session, cut the hard part by a third</span>
+  </div>
+  <ul class="readout__signals">
+    <li class="readout__signal"><span><i class="readout__dot readout__dot--yellow"></i>HRV</span><b>48 ms</b><small>your range 52–64</small></li>
+    <li class="readout__signal"><span><i class="readout__dot readout__dot--yellow"></i>Sleep</span><b>6.4 h</b><small>under 7 h</small></li>
+    <li class="readout__signal"><span><i class="readout__dot readout__dot--ok"></i>Resting HR</span><b>47 bpm</b><small>28-day mean 46.2</small></li>
+    <li class="readout__signal"><span><i class="readout__dot readout__dot--ok"></i>Load</span><b>TSB −8</b><small>ACWR 1.1</small></li>
+    <li class="readout__signal"><span><i class="readout__dot readout__dot--info"></i>Garmin TR</span><b>58</b><small>shown, does not vote</small></li>
+  </ul>
+  <div class="readout__foot">
+    <span>Your baselines · computed locally</span>
+    <a href="{{ '/methods/#morning-readiness' | relative_url }}">How it decides →</a>
+  </div>
+</aside>

@@ -1,49 +1,1300 @@
 ---
-# Minimal Mistakes' main stylesheet with a few additions for this site.
+# Minimal Mistakes' main stylesheet, re-themed as a dark "data dashboard": near-black background
+# with a faint grid, panels with thin borders, Space Grotesk headings, Inter text, IBM Plex Mono for
+# labels and numbers, teal accent with amber and blue as second and third colours.
 search: false
 ---
 
 @charset "utf-8";
 
+/* ==========================================================================
+   1. Tokens. Set before the theme's imports: its variables are all `!default`.
+   ========================================================================== */
+
+$c-bg: #07090d;
+$c-panel: #0f141b;
+$c-panel-2: #131a23;
+$c-line: #1e2733;
+$c-line-2: #2a3646;
+$c-text: #e6edf3;
+$c-body: #cdd6e0;
+$c-muted: #9aa8b6;
+$c-faint: #5b6878; // decoration only, never text
+$c-teal: #2dd4bf;
+$c-teal-hover: #5eead4;
+$c-teal-ink: #04201c; // text on teal
+$c-amber: #f59e0b;
+$c-red: #f43f5e;
+$c-blue: #60a5fa;
+$c-code: #0b1016;
+
+// The theme's root font size grows with the screen; one step smaller than its 16px default, so the
+// largest screens get ~20px text instead of 22px.
+$doc-font-size: 15px;
+
+$f-head: "Space Grotesk", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+$f-body: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+$f-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+$sans-serif: $f-body;
+$sans-serif-narrow: $f-body;
+$header-font-family: $f-head;
+$monospace: $f-mono;
+$caption-font-family: $f-body;
+
+$gray: $c-muted;
+$dark-gray: $c-body;
+$darker-gray: $c-text;
+$light-gray: $c-faint;
+$lighter-gray: $c-line;
+
+$background-color: $c-bg;
+$text-color: $c-body;
+$muted-text-color: $c-muted;
+$border-color: $c-line;
+$code-background-color: $c-code;
+$code-background-color-dark: $c-panel-2;
+$form-background-color: $c-panel;
+$footer-background-color: #0a0d12;
+
+$primary-color: $c-teal;
+$success-color: $c-teal;
+$warning-color: $c-amber;
+$danger-color: $c-red;
+$info-color: $c-blue;
+$focus-color: $c-teal;
+$active-color: rgba($c-teal, 0.08);
+
+$link-color: $c-teal;
+$link-color-hover: $c-teal-hover;
+$link-color-visited: $c-teal;
+$masthead-link-color: $c-muted;
+$masthead-link-color-hover: $c-text;
+$navicon-link-color-hover: $c-panel-2;
+
+$border-radius: 10px;
+$box-shadow: none;
+
+// Rouge syntax colours (the theme's base16 slots).
+$base00: $c-code;
+$base01: $c-panel-2;
+$base02: $c-line;
+$base03: #7f8c9b; // comments
+$base04: $c-muted;
+$base05: $c-body;
+$base06: $c-text;
+$base07: #fff;
+$base08: #f472b6;
+$base09: $c-amber; // numbers, constants
+$base0a: #fcd34d;
+$base0b: #a3e635; // strings
+$base0c: $c-teal-hover;
+$base0d: $c-blue; // functions, JSON keys
+$base0e: $c-teal; // keywords
+$base0f: $c-red;
+
 @import "minimal-mistakes/skins/{{ site.minimal_mistakes_skin | default: 'default' }}"; // skin
 @import "minimal-mistakes"; // main partials
 
-// Home page (docs/index.md): the four pillars of the feature row as a 2 × 2 grid instead of
-// the theme's three columns, which would leave the fourth card alone on a second row.
+/* ==========================================================================
+   2. Fonts: self-hosted (no request to Google), SIL Open Font License 1.1
+   (assets/fonts/OFL-*.txt). Latin and Latin Extended subsets.
+   ========================================================================== */
+
+$latin: unquote("U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD");
+$latin-ext: unquote("U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF");
+
+@mixin face($family, $file, $weight, $style: normal) {
+  @font-face {
+    font-family: $family; font-style: $style; font-weight: $weight; font-display: swap;
+    src: url("../fonts/#{$file}-latin-ext.woff2") format("woff2");
+    unicode-range: $latin-ext;
+  }
+  @font-face {
+    font-family: $family; font-style: $style; font-weight: $weight; font-display: swap;
+    src: url("../fonts/#{$file}-latin.woff2") format("woff2");
+    unicode-range: $latin;
+  }
+}
+
+@include face("Inter", "inter-300-700-normal", 300 700);
+@include face("Inter", "inter-300-700-italic", 300 700, italic);
+@include face("Space Grotesk", "spacegrotesk-400-700-normal", 400 700);
+@include face("IBM Plex Mono", "ibmplexmono-400-normal", 400);
+@include face("IBM Plex Mono", "ibmplexmono-500-normal", 500);
+@include face("IBM Plex Mono", "ibmplexmono-600-normal", 600);
+
+/* ==========================================================================
+   3. Base: background grid with two soft glows, selection, focus
+   ========================================================================== */
+
+$masthead-height: 64px;
+
+html {
+  background-color: $c-bg;
+  color-scheme: dark;
+  scroll-padding-top: $masthead-height + 16px;
+}
+
+body {
+  background-color: $c-bg;
+  background-image:
+    radial-gradient(ellipse 900px 500px at 78% -120px, rgba($c-teal, 0.1), transparent 70%),
+    radial-gradient(ellipse 700px 400px at 0% 40%, rgba($c-amber, 0.035), transparent 70%),
+    linear-gradient(rgba($c-line, 0.38) 1px, transparent 1px),
+    linear-gradient(90deg, rgba($c-line, 0.38) 1px, transparent 1px);
+  background-size: auto, auto, 40px 40px, 40px 40px;
+  background-repeat: no-repeat, no-repeat, repeat, repeat;
+  color: $c-body;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+::selection {
+  background: rgba($c-teal, 0.3);
+  color: #fff;
+}
+
+a:focus-visible,
+button:focus-visible,
+summary:focus-visible {
+  outline: 2px solid $c-teal;
+  outline-offset: 2px;
+}
+
+/* ==========================================================================
+   4. Masthead: sticky, translucent and blurred over the grid
+   ========================================================================== */
+
+.masthead {
+  position: sticky;
+  top: 0;
+  background: rgba($c-bg, 0.82);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid $c-line;
+  animation: none;
+}
+
+.masthead__inner-wrap {
+  padding: 0 1em;
+  min-height: $masthead-height;
+}
+
+.greedy-nav {
+  background: transparent;
+  min-height: $masthead-height;
+
+  a {
+    margin: 0 0.15rem;
+    padding: 0.55rem 0.7rem;
+    border-radius: 8px;
+    font-size: 0.875rem;
+    transition: color 0.15s, background-color 0.15s;
+
+    &:hover {
+      background: $c-panel;
+    }
+  }
+
+  .site-title {
+    margin-right: 1.25rem;
+    padding: 0;
+    color: $c-text;
+    font: 600 1.1875rem/1 $f-head;
+    letter-spacing: -0.015em;
+
+    &:hover {
+      background: none;
+      color: $c-text;
+    }
+
+    // "Garmin MCP" as a wordmark: the second word in teal (_includes/masthead.html).
+    em {
+      font-style: normal;
+      font-weight: 400;
+      color: $c-teal;
+    }
+  }
+
+  .visible-links a {
+    &::before {
+      display: none;
+    }
+  }
+
+  .hidden-links {
+    background: $c-panel;
+    border-color: $c-line-2;
+    box-shadow: 0 24px 48px rgba(#000, 0.55);
+
+    &::after {
+      border-color: $c-panel transparent;
+    }
+
+    &::before {
+      border-color: $c-line-2 transparent;
+    }
+
+    li {
+      border-color: $c-line;
+    }
+
+    a {
+      margin: 0;
+      color: $c-body;
+    }
+  }
+
+  &__toggle .navicon,
+  &__toggle .navicon::before,
+  &__toggle .navicon::after {
+    background: $c-muted;
+  }
+}
+
+.search__toggle {
+  width: 36px;
+  height: 36px;
+  margin-left: 0.5rem;
+  border: 1px solid $c-line;
+  border-radius: 9px;
+  background: $c-panel;
+  color: $c-muted;
+  transition: color 0.15s, border-color 0.15s;
+
+  &:hover {
+    color: $c-text;
+    border-color: $c-line-2;
+  }
+
+  .icon {
+    width: 16px;
+    height: 16px;
+  }
+}
+
+/* ==========================================================================
+   5. Search overlay
+   ========================================================================== */
+
+.search-content {
+  background-color: rgba($c-bg, 0.97);
+
+  .search-input {
+    color: $c-text;
+    font-family: $f-head;
+    letter-spacing: -0.02em;
+
+    &::placeholder {
+      color: $c-faint;
+    }
+  }
+
+  .archive__item-title a {
+    color: $c-text;
+  }
+
+  .archive__item-excerpt {
+    color: $c-muted;
+  }
+
+  .results__found {
+    color: $c-muted;
+    font-family: $f-mono;
+  }
+}
+
+/* ==========================================================================
+   6. Left sidebar (_data/navigation.yml `docs`) and breadcrumbs
+   ========================================================================== */
+
+.sidebar {
+  opacity: 1;
+
+  @include breakpoint($large) {
+    top: $masthead-height + 24px;
+  }
+}
+
+.nav__list {
+  .nav__items {
+    font-size: 1rem;
+
+    a {
+      display: block;
+      margin: 1px 0;
+      padding: 0.35rem 0.75rem;
+      border-left: 2px solid transparent;
+      border-radius: 0 6px 6px 0;
+      color: $c-muted;
+      font-size: 14px;
+      line-height: 1.35;
+      text-decoration: none;
+      transition: color 0.15s, background-color 0.15s;
+
+      &:hover {
+        color: $c-text;
+        background: rgba(#fff, 0.02);
+      }
+    }
+
+    .active {
+      margin-inline-start: 0;
+      padding-inline: 0.75rem;
+      border-left-color: $c-teal;
+      background: rgba($c-teal, 0.06);
+      color: $c-text;
+      font-weight: 500;
+    }
+  }
+
+  // The "Toggle menu" button on narrow screens.
+  label {
+    border: 1px solid $c-line;
+    border-radius: 9px;
+    background: $c-panel;
+    color: $c-body;
+    font-family: $f-mono;
+    font-size: 0.75rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+
+    &:hover {
+      color: $c-text;
+      background: $c-panel-2;
+    }
+  }
+
+  input:checked + label,
+  label:hover {
+    color: $c-text;
+    background: $c-panel-2;
+  }
+
+  .navicon,
+  .navicon::before,
+  .navicon::after {
+    background: $c-muted;
+  }
+}
+
+.nav__sub-title {
+  margin: 1.4rem 0 0.4rem;
+  padding: 0 0.75rem;
+  border: 0;
+  color: $c-muted;
+  font: 500 11px/1.35 $f-mono;
+  letter-spacing: 0.08em;
+
+  .nav__items > li:first-child > & {
+    margin-top: 0;
+  }
+}
+
+.breadcrumbs {
+  font-family: $f-mono;
+  font-size: 0.75rem;
+  color: $c-faint;
+
+  a {
+    color: $c-muted;
+
+    &:hover {
+      color: $c-teal;
+    }
+  }
+
+  .current {
+    color: $c-body;
+  }
+}
+
+/* ==========================================================================
+   7. "On this page" (right sidebar), a panel with a mono header
+   ========================================================================== */
+
+.sidebar__right.sticky {
+  @include breakpoint($large) {
+    top: $masthead-height + 24px;
+    max-height: calc(100vh - #{$masthead-height + 48px});
+    scrollbar-width: thin;
+    scrollbar-color: $c-line-2 transparent;
+  }
+}
+
+.toc {
+  overflow: hidden;
+  border-color: $c-line;
+  border-radius: 14px;
+  background: $c-panel;
+  font-family: $f-body;
+
+  .nav__title {
+    padding: 0.8rem 1rem;
+    border-bottom: 1px solid $c-line;
+    background: transparent;
+    color: $c-teal;
+    font: 500 11px/1.35 $f-mono;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+
+    .fas,
+    .svg-inline--fa {
+      display: none;
+    }
+  }
+
+  .active a {
+    border-left-color: $c-teal;
+    background: rgba($c-teal, 0.06);
+    color: $c-text;
+  }
+}
+
+.toc__menu {
+  padding: 0.4rem 0;
+
+  a {
+    padding: 0.4rem 1rem;
+    border: 0;
+    border-left: 2px solid transparent;
+    color: $c-muted;
+    font-size: 13.5px;
+    font-weight: 400;
+    line-height: 1.4;
+    transition: color 0.15s, background-color 0.15s;
+
+    &:hover {
+      color: $c-text;
+      background: rgba(#fff, 0.02);
+    }
+
+    code {
+      padding: 0;
+      background: none;
+      color: inherit;
+      font-size: 0.92em;
+    }
+  }
+
+  li ul > li a {
+    padding-inline-start: 1.75rem;
+    font-size: 12.5px;
+  }
+}
+
+/* ==========================================================================
+   8. Page text
+   ========================================================================== */
+
+.page__title {
+  color: $c-text;
+  font: 700 2.6rem/1.08 $f-head;
+  letter-spacing: -0.03em;
+
+  @include breakpoint(max-width $medium) {
+    font-size: 2rem;
+  }
+}
+
+.page__lead {
+  color: $c-body;
+  font-size: 1.1875rem;
+  line-height: 1.6;
+}
+
+.page__content {
+  color: $c-body;
+  line-height: 1.7;
+
+  h1, h2, h3, h4, h5, h6 {
+    color: $c-text;
+    font-family: $f-head;
+    letter-spacing: -0.02em;
+  }
+
+  h2 {
+    margin-top: 2.2em;
+    padding-bottom: 0;
+    border-bottom: 0;
+    font-size: 1.62em;
+    font-weight: 600;
+    line-height: 1.2;
+  }
+
+  h3 {
+    margin-top: 1.8em;
+    font-size: 1.22em;
+    font-weight: 600;
+  }
+
+  h4 {
+    font-size: 1.05em;
+    font-weight: 600;
+  }
+
+  .header-link {
+    color: $c-faint;
+
+    &:hover {
+      color: $c-teal;
+    }
+  }
+
+  a:not(.btn) {
+    color: $c-teal;
+    text-decoration: underline;
+    text-decoration-color: rgba($c-teal, 0.35);
+    text-decoration-thickness: 1px;
+    text-underline-offset: 3px;
+
+    &:hover {
+      color: $c-teal-hover;
+      text-decoration-color: currentColor;
+    }
+  }
+
+  strong {
+    color: $c-text;
+    font-weight: 600;
+  }
+
+  ul li::marker {
+    color: $c-teal;
+  }
+
+  ol li::marker {
+    color: $c-teal;
+    font-family: $f-mono;
+    font-size: 0.9em;
+  }
+
+  hr {
+    border-top: 1px solid $c-line;
+  }
+
+  blockquote {
+    margin: 1.6em 0;
+    padding: 0.7em 1.1em;
+    border-left: 3px solid $c-teal;
+    border-radius: 0 10px 10px 0;
+    background: rgba($c-teal, 0.05);
+    color: $c-body;
+    font-style: normal;
+
+    > :first-child {
+      margin-top: 0;
+    }
+
+    > :last-child {
+      margin-bottom: 0;
+    }
+  }
+
+  // Images: a framed panel, like a figure.
+  p:has(> img) {
+    padding: 12px;
+    border: 1px solid $c-line;
+    border-radius: 14px;
+    background: $c-panel;
+    box-shadow: 0 24px 60px -30px rgba(#000, 0.8);
+
+    > img {
+      display: block;
+      width: 100%;
+      height: auto;
+      border-radius: 9px;
+    }
+  }
+
+  // <details> blocks: a collapsible panel with a mono header.
+  details {
+    margin: 1.6em 0;
+    padding: 0 1.1em;
+    border: 1px solid $c-line-2;
+    border-left: 3px solid $c-teal;
+    border-radius: 10px;
+    background: $c-panel;
+    font-size: 0.9375em;
+
+    > summary {
+      margin: 0 -1.1em;
+      padding: 0.8em 1.1em;
+      color: $c-teal;
+      font: 600 0.75rem/1.4 $f-mono;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      cursor: pointer;
+
+      code {
+        background: none;
+        color: inherit;
+        text-transform: none;
+      }
+    }
+
+    &[open] > summary {
+      margin-bottom: 0.6em;
+      border-bottom: 1px solid $c-line;
+    }
+  }
+}
+
+// Inline code: amber on a faint amber wash. The theme pads it with non-breaking spaces in
+// ::before/::after; the background padding does that here.
+.page__content :not(pre) > code {
+  padding: 0.12em 0.4em;
+  border-radius: 4px;
+  background: rgba($c-amber, 0.12);
+  color: $c-amber;
+  font-family: $f-mono;
+  font-size: 0.84em;
+  font-weight: 500;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+
+  &::before,
+  &::after {
+    content: none;
+  }
+}
+
+.page__content a > code {
+  color: inherit;
+}
+
+// Code blocks.
+div.highlighter-rouge,
+figure.highlight {
+  border: 1px solid $c-line;
+  border-radius: 10px;
+  background: $c-code;
+  box-shadow: none;
+
+  &::before {
+    // The theme's language label in the corner.
+    background: $c-panel-2;
+    color: $c-muted;
+    font-family: $f-mono;
+  }
+}
+
+.highlight pre,
+pre.highlight {
+  font-family: $f-mono;
+  font-size: 0.78em;
+  line-height: 1.6;
+}
+
+// Tables: a panel with a darker header row.
+.page__content table {
+  display: table;
+  width: 100%;
+  overflow: hidden;
+  border: 1px solid $c-line;
+  border-collapse: separate;
+  border-spacing: 0;
+  border-radius: 10px;
+  background: $c-panel;
+  font-size: 0.82em;
+}
+
+.page__content thead {
+  background: $c-panel-2;
+}
+
+.page__content th {
+  padding: 0.75em 1em;
+  border-bottom: 1px solid $c-line-2;
+  color: $c-text;
+  font-family: $f-body;
+  font-weight: 600;
+}
+
+.page__content td {
+  padding: 0.75em 1em;
+  vertical-align: top;
+  border-bottom: 0;
+  border-top: 1px solid $c-line;
+}
+
+.page__content tbody tr:first-child td {
+  border-top: 0;
+}
+
+.page__content tbody tr:hover {
+  background: rgba($c-teal, 0.04);
+}
+
+// "On this page" sits inside .page__content: its links keep the TOC look, not the text-link look.
+.page__content .toc__menu a {
+  color: $c-muted;
+  text-decoration: none;
+
+  code {
+    padding: 0;
+    background: none;
+    color: inherit;
+  }
+
+  &:hover {
+    color: $c-text;
+  }
+}
+
+.page__content .toc .active a {
+  color: $c-text;
+}
+
+// Wide tables scroll inside their own box instead of the page.
+@include breakpoint(max-width $medium) {
+  .page__content table {
+    display: block;
+    overflow-x: auto;
+  }
+}
+
+// Previous / next links under a page.
+.pagination--pager {
+  border: 1px solid $c-line;
+  border-radius: 10px;
+  background: $c-panel;
+  color: $c-body;
+  font-family: $f-body;
+
+  &:hover {
+    background: $c-panel-2;
+    color: $c-text;
+  }
+}
+
+.page__meta,
+.page__taxonomy {
+  color: $c-muted;
+  font-family: $f-mono;
+}
+
+/* ==========================================================================
+   9. Buttons
+   ========================================================================== */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: 10px;
+  font-family: $f-body;
+  font-weight: 600;
+  transition: filter 0.15s, border-color 0.15s, background-color 0.15s;
+}
+
+.btn--primary {
+  background: $c-teal;
+  color: $c-teal-ink;
+
+  &:hover {
+    background: $c-teal;
+    color: $c-teal-ink;
+    filter: brightness(1.08);
+  }
+
+  &:visited {
+    color: $c-teal-ink;
+  }
+}
+
+.btn--light-outline,
+.btn--inverse {
+  border: 1px solid $c-line-2;
+  background: rgba($c-panel, 0.7);
+  color: $c-text;
+
+  &:hover {
+    border-color: $c-muted;
+    background: rgba($c-panel, 0.7);
+    color: $c-text;
+  }
+}
+
+/* ==========================================================================
+   10. Home: hero, number strip, pillars (docs/index.md, _includes/page__hero.html)
+   ========================================================================== */
+
+.page__hero--overlay {
+  padding: 4rem 0 0;
+  background: transparent !important;
+
+  .wrapper {
+    max-width: $max-width;
+    padding: 0 1em;
+  }
+
+  .page__title,
+  .page__lead,
+  .btn {
+    text-shadow: none;
+  }
+
+  .page__title {
+    margin: 1.4rem 0 1.25rem;
+    color: $c-text;
+    // In px: the theme's root font size grows with the screen (16-22px), the headline should not.
+    font: 700 62px/1.02 $f-head;
+    letter-spacing: -0.035em;
+    text-wrap: balance;
+
+    em {
+      font-style: normal;
+      color: $c-teal;
+    }
+
+    @include breakpoint(max-width $x-large) {
+      font-size: 54px;
+    }
+
+    @include breakpoint(max-width $large) {
+      font-size: 44px;
+    }
+
+    @include breakpoint(max-width $small) {
+      font-size: 36px;
+    }
+  }
+
+  .page__lead {
+    max-width: 34em;
+    margin: 0 0 1.9rem;
+    color: $c-body;
+    font-size: 19px;
+    line-height: 1.6;
+    text-wrap: pretty;
+  }
+
+  .page__hero-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin: 0;
+  }
+
+  .btn {
+    height: 44px;
+    margin: 0;
+    padding: 0 18px;
+    font-size: 0.9375rem;
+  }
+
+  .page__hero-actions .btn:first-child {
+    border-color: $c-teal;
+    background: $c-teal;
+    color: $c-teal-ink;
+
+    &:hover {
+      filter: brightness(1.08);
+    }
+  }
+}
+
+.page__hero-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2.5rem;
+  align-items: center;
+
+  @include breakpoint($large) {
+    grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+    gap: 3.5rem;
+  }
+}
+
+// The status pill above the headline.
+.hero-status {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  padding: 7px 13px 7px 11px;
+  border: 1px solid $c-line;
+  border-radius: 999px;
+  background: rgba($c-panel, 0.8);
+  color: $c-muted;
+  font: 500 0.75rem/1.2 $f-mono;
+
+  i {
+    flex: none;
+    width: 8px;
+    height: 8px;
+    margin-right: 10px;
+    border-radius: 50%;
+    background: $c-teal;
+    box-shadow: 0 0 0 4px rgba($c-teal, 0.14);
+  }
+
+  b {
+    color: $c-text;
+    font-weight: 500;
+  }
+}
+
+// Shared panel atoms.
+.dash-panel {
+  overflow: hidden;
+  border: 1px solid $c-line;
+  border-radius: 14px;
+  background: $c-panel;
+}
+
+.dash-panel__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 18px;
+  border-bottom: 1px solid $c-line;
+}
+
+.dash-label {
+  color: $c-muted;
+  font: 500 0.6875rem/1.35 $f-mono;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+
+  &--accent {
+    color: $c-teal;
+  }
+}
+
+// The readiness readout on the right of the hero (_includes/home/readout.html).
+.readout {
+  box-shadow: 0 24px 60px -30px rgba(#000, 0.8);
+
+  &__ask {
+    margin: 0;
+    padding: 18px 22px 0;
+    color: $c-muted;
+    font-size: 0.875rem;
+
+    b {
+      color: $c-text;
+      font-weight: 500;
+    }
+  }
+
+  &__decision {
+    display: flex;
+    align-items: baseline;
+    gap: 14px;
+    margin: 14px 22px 0;
+    padding: 12px 16px;
+    border: 1px solid rgba($c-amber, 0.45);
+    border-radius: 10px;
+    background: rgba($c-amber, 0.08);
+
+    b {
+      color: $c-amber;
+      font: 500 1.75rem/1 $f-mono;
+      letter-spacing: -0.02em;
+    }
+
+    span {
+      color: $c-muted;
+      font-size: 0.84rem;
+      line-height: 1.4;
+    }
+  }
+
+  &__signals {
+    margin: 14px 0 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  &__signal {
+    display: grid;
+    grid-template-columns: 7.5em minmax(0, 1fr) auto;
+    align-items: baseline;
+    gap: 12px;
+    margin: 0;
+    padding: 10px 22px;
+    border-top: 1px solid $c-line;
+    font-size: 0.84rem;
+
+    dt,
+    > span:first-child {
+      color: $c-muted;
+    }
+
+    b {
+      color: $c-text;
+      font: 500 1rem/1 $f-mono;
+      white-space: nowrap;
+    }
+
+    small {
+      color: $c-muted;
+      font-size: 0.78rem;
+      text-align: right;
+    }
+  }
+
+  &__dot {
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    margin-right: 8px;
+    border-radius: 50%;
+    vertical-align: 1px;
+
+    &--ok { background: $c-teal; }
+    &--yellow { background: $c-amber; }
+    &--red { background: $c-red; }
+    &--info { background: $c-blue; border-radius: 2px; }
+  }
+
+  &__foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    padding: 12px 22px 16px;
+    border-top: 1px solid $c-line;
+    color: $c-muted;
+    font: 500 0.72rem/1.4 $f-mono;
+
+    a {
+      color: $c-teal;
+      font-family: $f-body;
+      font-size: 0.875rem;
+      font-weight: 600;
+      text-decoration: none;
+
+      &:hover {
+        color: $c-teal-hover;
+      }
+    }
+  }
+}
+
+// The strip of numbers under the hero (docs/index.md, numbers from _data/facts.yml).
+.page__content .kpis {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0 0 3.5rem;
+
+  @include breakpoint($medium) {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  @include breakpoint($large) {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  .kpi {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    padding: 20px 20px 18px;
+    border-top: 1px solid $c-line;
+    border-left: 1px solid $c-line;
+    color: inherit;
+    text-decoration: none;
+    transition: background-color 0.15s;
+
+    &:hover {
+      background: $c-panel-2;
+    }
+
+    &::after {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 20px;
+      width: 28px;
+      height: 2px;
+      background: $c-teal;
+    }
+
+    &--amber::after { background: $c-amber; }
+    &--blue::after { background: $c-blue; }
+
+    .dash-label {
+      min-height: 2.7em;
+      margin-bottom: 10px;
+    }
+
+    b {
+      display: block;
+      color: $c-text;
+      font: 500 2.125rem/1 $f-mono;
+      letter-spacing: -0.04em;
+      white-space: nowrap;
+    }
+
+    span:last-child {
+      margin-top: 10px;
+      color: $c-muted;
+      font-size: 0.78rem;
+      line-height: 1.45;
+    }
+  }
+
+  // Grid lines: hide the outer edges, which the panel border draws.
+  .kpi { margin: -1px 0 0 -1px; }
+}
+
+.page__content .kpis.dash-panel {
+  padding: 1px 0 0 1px;
+}
+
+// The four pillars (feature_row) as a 2 × 2 grid of panels with a coloured accent.
 .pillars .feature__wrapper {
   display: grid;
-  grid-template-columns: 1fr;
-  gap: 2em;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 20px;
+  margin-bottom: 3rem;
   border-bottom: none;
 
   @include breakpoint($small) {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
 .pillars .feature__item {
+  position: relative;
   float: none;
   width: auto;
   margin: 0 !important;
+  padding: 24px;
+  border: 1px solid $c-line;
+  border-radius: 14px;
+  background: $c-panel;
+  font-size: 1em;
+  transition: border-color 0.15s;
+
+  &:hover {
+    border-color: $c-line-2;
+  }
+
+  &::before {
+    content: "";
+    position: absolute;
+    top: -1px;
+    left: 24px;
+    width: 28px;
+    height: 2px;
+    background: $c-teal;
+  }
+
+  &:nth-child(2)::before { background: $c-amber; }
+  &:nth-child(3)::before { background: $c-blue; }
+
+  .archive__item-body {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+  }
+
+  .archive__item-title {
+    margin: 0 0 0.6em;
+    color: $c-text;
+    font: 600 1.3rem/1.2 $f-head;
+    letter-spacing: -0.01em;
+  }
+
+  .archive__item-excerpt {
+    flex: 1;
+    color: $c-body;
+    font-size: 0.9375rem;
+    line-height: 1.55;
+
+    p {
+      margin: 0 0 1em;
+    }
+  }
+
+  .archive__item-excerpt + p {
+    margin: 0;
+  }
+
+  // The card's link reads as a text link, not a button.
+  .btn {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: $c-teal;
+    font-size: 0.9375rem;
+
+    &::after {
+      content: "→";
+    }
+
+    &:hover {
+      color: $c-teal-hover;
+      filter: none;
+    }
+  }
 }
 
-.splash details {
-  margin-bottom: 1.5em;
+.splash .page__content > h2:first-of-type {
+  margin-top: 0;
 }
 
-// Footer (_includes/footer/custom.html): the Instagram row across the top, then the author's round
-// photo in a left column spanning the rest of the footer (author line, disclaimer, links, copyright),
-// the footer text in the middle column and the Buy me a coffee button on the right. On phones the
-// button goes to its own centered row below the rest.
+/* ==========================================================================
+   11. Footer (_includes/footer/custom.html)
+   ========================================================================== */
+
+$footer-line-color: $c-line;
+
+.page__footer {
+  margin-top: 4.5rem;
+  border-top: 1px solid $c-line;
+  background: rgba(#0a0d12, 0.92);
+  color: $c-body;
+
+  a {
+    color: $c-body;
+
+    &:hover {
+      color: $c-teal;
+    }
+  }
+
+  .page__footer-copyright {
+    color: $c-muted;
+    font-family: $f-body;
+  }
+}
+
+.page__footer-follow {
+  .social-icons {
+    .fab,
+    .fas,
+    .svg-inline--fa {
+      color: $c-amber;
+    }
+  }
+
+  li > strong {
+    color: $c-muted;
+    font: 500 0.6875rem/1 $f-mono;
+    letter-spacing: 0.08em;
+  }
+}
+
+// The Instagram row across the top, then the author's round photo in a left column spanning the
+// rest of the footer (author line, disclaimer, links, copyright), the footer text in the middle
+// column and the Buy me a coffee button on the right. On phones the button goes to its own centered
+// row below the rest.
 .page__footer footer {
   display: grid;
   grid-template-columns: auto 1fr;
   column-gap: 1.5em;
+  align-items: center;
 
   @include breakpoint($medium) {
     grid-template-columns: auto 1fr auto;
   }
-  align-items: center;
 
   > * {
     grid-column: 2;
@@ -72,33 +1323,43 @@ search: false
     grid-row: 2 / span 4;
     width: 96px;
     height: 96px;
-    border-radius: 50%;
+    border-radius: 18px;
+    border: 1px solid $c-line-2;
     object-fit: cover;
 
     @include breakpoint($medium) {
-      width: 160px;
-      height: 160px;
+      width: 140px;
+      height: 140px;
     }
   }
 }
 
-// Instagram row at the top of the footer, in the footer's own look (grey text, the theme's sans-serif
-// sizes, a separator line below): avatar with an Instagram badge, name and handle, a tagline and a
-// Follow button styled like the footer's follow links; stacked and centered on phones.
-$footer-line-color: darken($footer-background-color, 10%);
-
+// Instagram row at the top of the footer: a panel with a teal-to-amber edge, avatar with an
+// Instagram badge, name and handle, a tagline and a light Follow button; stacked on phones.
 .page__footer .page__footer-instagram {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 1em;
-  margin: 0 0 1.5em;
-  padding: 0 0 1.5em;
-  border-bottom: 1px solid $footer-line-color;
+  margin: 0 0 2em;
+  padding: 1.25em 1.5em;
+  overflow: hidden;
+  border: 1px solid $c-line;
+  border-radius: 14px;
+  background: $c-panel;
   color: inherit;
-  font-family: $sans-serif;
+  font-family: $f-body;
   text-align: center;
   text-decoration: none;
+
+  &::before {
+    content: "";
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 3px;
+    background: linear-gradient($c-teal, $c-amber);
+  }
 
   @include breakpoint($small) {
     flex-direction: row;
@@ -106,12 +1367,14 @@ $footer-line-color: darken($footer-background-color, 10%);
   }
 
   &:hover {
+    border-color: $c-line-2;
+    color: inherit;
     text-decoration: none;
   }
 
   svg {
-    width: 1em;
-    height: 1em;
+    width: 1.1em;
+    height: 1.1em;
   }
 }
 
@@ -124,7 +1387,7 @@ $footer-line-color: darken($footer-background-color, 10%);
     width: 56px;
     height: 56px;
     border-radius: 50%;
-    box-shadow: 0 0 0 1px $footer-line-color;
+    box-shadow: 0 0 0 1px $c-line-2;
     object-fit: cover;
   }
 }
@@ -139,9 +1402,9 @@ $footer-line-color: darken($footer-background-color, 10%);
   width: 1.5em;
   height: 1.5em;
   border-radius: 50%;
-  background: $dark-gray;
-  box-shadow: 0 0 0 2px $footer-background-color;
-  color: $footer-background-color;
+  background: $c-text;
+  box-shadow: 0 0 0 2px $c-panel;
+  color: $c-bg;
   font-size: $type-size-6;
 }
 
@@ -151,34 +1414,64 @@ $footer-line-color: darken($footer-background-color, 10%);
 
 .page__footer-instagram-name {
   display: block;
-  font-size: $type-size-6;
-  font-weight: bold;
+  color: $c-text;
+  font: 600 1.1rem/1.2 $f-head;
 
   span {
-    font-weight: normal;
+    margin-left: 0.4em;
+    color: $c-teal;
+    font: 500 0.8rem $f-mono;
   }
 }
 
 .page__footer-instagram-tagline {
   display: block;
-  margin-top: 0.25em;
-  font-size: 0.6875em;
+  margin-top: 0.35em;
+  color: $c-body;
+  font-size: 0.8125rem;
+  line-height: 1.5;
 }
 
 .page__footer-instagram-follow {
   display: inline-flex;
   flex-shrink: 0;
   align-items: center;
-  gap: 0.5em;
-  padding: 0.5em 1em;
-  border: 1px solid $footer-line-color;
-  border-radius: $border-radius;
-  font-size: $type-size-6;
-  font-weight: bold;
-  text-transform: uppercase;
-  transition: background-color 0.2s;
+  gap: 0.6em;
+  height: 42px;
+  padding: 0 1.1em;
+  border-radius: 10px;
+  background: $c-text;
+  color: #0b0f15;
+  font-size: 0.875rem;
+  font-weight: 600;
+  transition: background-color 0.15s;
 
   .page__footer-instagram:hover & {
-    background-color: darken($footer-background-color, 4%);
+    background: #fff;
+  }
+}
+
+/* ==========================================================================
+   12. Small screens
+   ========================================================================== */
+
+@include breakpoint(max-width $medium) {
+  .page__hero--overlay {
+    padding-top: 2.25rem;
+  }
+
+  .readout__signal {
+    grid-template-columns: 6.5em minmax(0, 1fr);
+
+    small {
+      grid-column: 1 / -1;
+      text-align: left;
+    }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
   }
 }

@@ -6,8 +6,13 @@ nav_order: 1
 excerpt: "Training load, form and morning readiness from your Garmin Connect data, computed on your machine with cited sports-science methods. Unofficial and open source; not affiliated with Garmin."
 header:
   # The hero headline (E7-2a); `title` above is the page title in search results and link previews.
-  title: "Ask your AI assistant how your training is really going"
-  overlay_color: "#1d3557"
+  # `*…*` is the teal part of the headline.
+  title: "Ask your AI assistant *how your training is really going*"
+  # Transparent: the hero sits on the page's grid background; the colour only switches on the overlay hero.
+  overlay_color: "transparent"
+  # Status pill above the headline and the readout panel on the right (_includes/page__hero.html).
+  status: true
+  panel: home/readout.html
   actions:
     - label: "Get started"
       url: /getting-started/
@@ -36,6 +41,14 @@ feature_row:
     btn_label: "Workouts and calendar"
     btn_class: "btn--primary"
 ---
+
+<div class="kpis dash-panel">
+  <a class="kpi" href="{{ '/tools/' | relative_url }}"><span class="dash-label">Tools</span><b>{{ site.data.facts.tools_default }}</b><span>built around questions, not API endpoints</span></a>
+  <a class="kpi" href="{{ '/how-it-works/#designed-tools' | relative_url }}"><span class="dash-label">Tokens of context</span><b>{{ site.data.facts.tool_tokens }}</b><span>for the whole tool list</span></a>
+  <a class="kpi" href="{{ '/how-it-works/#designed-tools' | relative_url }}"><span class="dash-label">Right tool picked</span><b>{{ site.data.facts.eval_pass }}/{{ site.data.facts.eval_total }}</b><span>questions in the last evaluation</span></a>
+  <a class="kpi kpi--amber" href="{{ '/analytics/' | relative_url }}"><span class="dash-label">Cited papers</span><b>{{ site.data.facts.references }}</b><span>behind the training analytics</span></a>
+  <a class="kpi kpi--blue" href="{{ '/sign-in/' | relative_url }}"><span class="dash-label">Passwords seen</span><b>0</b><span>you sign in on Garmin's own page</span></a>
+</div>
 
 <div class="pillars">
 {% include feature_row %}
